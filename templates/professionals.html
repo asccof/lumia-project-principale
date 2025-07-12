@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professionnels - Lumia</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Montserrat', Arial, sans-serif;
+            background: #f7f5fa;
+            margin: 0;
+            color: #2d1a47;
+        }
+        .navbar {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            position: fixed;
+            top: 0;
+            width: 100%;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(139,92,246,0.1);
+        }
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+        }
+        .nav-logo {
+            color: #8B5CF6;
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-decoration: none;
+        }
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+        .nav-links a {
+            color: #4B3869;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover {
+            color: #8B5CF6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 100px auto 2rem auto;
+            padding: 0 2rem;
+        }
+        .page-header {
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
+            padding: 2rem;
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .page-header h1 {
+            color: #8B5CF6;
+            margin-bottom: 1rem;
+        }
+        .search-section {
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .search-form {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .search-input {
+            flex: 1;
+            padding: 0.8rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        .search-input:focus {
+            outline: none;
+            border-color: #8B5CF6;
+        }
+        .search-btn {
+            background: #8B5CF6;
+            color: #fff;
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .search-btn:hover {
+            background: #6D28D9;
+        }
+        .filters {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .filter-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid #e2e8f0;
+            background: #fff;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            color: #4B3869;
+        }
+        .filter-btn:hover, .filter-btn.active {
+            background: #8B5CF6;
+            color: #fff;
+            border-color: #8B5CF6;
+        }
+        .professionals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 2rem;
+        }
+        .professional-card {
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
+            overflow: hidden;
+            transition: transform 0.2s;
+        }
+        .professional-card:hover {
+            transform: translateY(-4px);
+        }
+        .professional-image {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+        }
+        .professional-content {
+            padding: 1.5rem;
+        }
+        .professional-name {
+            color: #6D28D9;
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        .professional-specialty {
+            color: #8B5CF6;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .professional-location {
+            color: #4B3869;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        .professional-description {
+            color: #4B3869;
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+        .professional-rating {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .stars {
+            color: #fbbf24;
+        }
+        .professional-price {
+            color: #8B5CF6;
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+        .btn-book {
+            width: 100%;
+            background: #8B5CF6;
+            color: #fff;
+            padding: 0.8rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-decoration: none;
+            display: block;
+            text-align: center;
+        }
+        .btn-book:hover {
+            background: #6D28D9;
+        }
+        .no-results {
+            text-align: center;
+            padding: 3rem;
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
+        }
+        .no-results h3 {
+            color: #8B5CF6;
+            margin-bottom: 1rem;
+        }
+        @media (max-width: 768px) {
+            .search-form {
+                flex-direction: column;
+            }
+            .professionals-grid {
+                grid-template-columns: 1fr;
+            }
+            .nav-links {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="nav-logo">Lumia</a>
+            <div class="nav-links">
+                <a href="/">Accueil</a>
+                <a href="/professionals">Professionnels</a>
+                {% if current_user.is_authenticated %}
+                    <a href="/my_appointments">Mes rendez-vous</a>
+                    <a href="/logout">Déconnexion</a>
+                {% else %}
+                    <a href="/login">Connexion</a>
+                    <a href="/register">Inscription</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-header">
+            <h1>Trouvez votre professionnel</h1>
+            <p>Consultez notre réseau de psychologues, thérapeutes et coachs qualifiés</p>
+        </div>
+
+        <div class="search-section">
+            <form class="search-form" method="GET">
+                <input type="text" name="q" placeholder="Rechercher par nom, spécialité, ville..." 
+                       class="search-input" value="{{ search_query or '' }}">
+                <button type="submit" class="search-btn">🔍 Rechercher</button>
+            </form>
+            
+            <div class="filters">
+                <a href="?specialty=all" class="filter-btn {% if specialty == 'all' %}active{% endif %}">Toutes les spécialités</a>
+                <a href="?specialty=Psychologue" class="filter-btn {% if specialty == 'Psychologue' %}active{% endif %}">Psychologue</a>
+                <a href="?specialty=Thérapeute" class="filter-btn {% if specialty == 'Thérapeute' %}active{% endif %}">Thérapeute</a>
+                <a href="?specialty=Coach" class="filter-btn {% if specialty == 'Coach' %}active{% endif %}">Coach</a>
+
+            </div>
+        </div>
+
+        {% if professionals %}
+            <div class="professionals-grid">
+                {% for professional in professionals %}
+                    <div class="professional-card">
+                        <img src="{{ professional.image_url or 'https://via.placeholder.com/350x200/8B5CF6/FFFFFF?text=Professionnel' }}" 
+                             alt="{{ professional.name }}" class="professional-image">
+                        <div class="professional-content">
+                            <h3 class="professional-name">{{ professional.name }}</h3>
+                            <p class="professional-specialty">{{ professional.specialty }}</p>
+                            <p class="professional-location">📍 {{ professional.location }}</p>
+                            <p class="professional-description">{{ professional.description[:100] }}{% if professional.description|length > 100 %}...{% endif %}</p>
+                            
+                            <div class="professional-rating">
+                                <span class="stars">⭐⭐⭐⭐⭐</span>
+                                <span>({{ professional.rating or 4.8 }})</span>
+                            </div>
+                            
+                            <p class="professional-price">{{ professional.consultation_fee }} MAD / consultation</p>
+                            
+                            <a href="/professional/{{ professional.id }}" class="btn-book">Voir le profil</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="no-results">
+                <h3>Aucun professionnel trouvé</h3>
+                <p>Essayez de modifier vos critères de recherche ou de consulter toutes les spécialités.</p>
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html> 

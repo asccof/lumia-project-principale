@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tableau de Bord - Administration Tighri</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-color: #6f42c1;
+            --secondary-color: #5a32a3;
+            --accent-color: #8b5cf6;
+            --dark-color: #1e1e1e;
+            --light-color: #f8f9fa;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 1.5rem;
+            color: white !important;
+        }
+        
+        .sidebar {
+            background: white;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            min-height: calc(100vh - 70px);
+        }
+        
+        .sidebar .nav-link {
+            color: var(--dark-color);
+            padding: 0.75rem 1.5rem;
+            border-radius: 0;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar .nav-link:hover,
+        .sidebar .nav-link.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .sidebar .nav-link i {
+            width: 20px;
+            margin-right: 10px;
+        }
+        
+        .main-content {
+            padding: 2rem;
+        }
+        
+        .stats-card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .stats-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+        
+        .stats-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+        }
+        
+        .stats-number {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0;
+        }
+        
+        .stats-label {
+            color: #6c757d;
+            margin: 0;
+        }
+        
+        .recent-activity {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+            padding: 1.5rem;
+        }
+        
+        .activity-item {
+            padding: 1rem 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+        
+        .btn-primary {
+            background: var(--primary-color);
+            border: none;
+            border-radius: 10px;
+            padding: 0.5rem 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            background: var(--secondary-color);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="{{ url_for('admin_dashboard') }}">
+                <i class="fas fa-shield-alt me-2"></i>Administration Tighri
+            </a>
+            
+            <div class="navbar-nav ms-auto">
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-user me-2"></i>{{ current_user.username }}
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>Profil</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="{{ url_for('admin_logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Déconnexion</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 col-lg-2 px-0">
+                <div class="sidebar">
+                    <nav class="nav flex-column">
+                        <a class="nav-link active" href="{{ url_for('admin_dashboard') }}">
+                            <i class="fas fa-tachometer-alt"></i>Tableau de bord
+                        </a>
+                        <a class="nav-link" href="{{ url_for('admin_products') }}">
+                            <i class="fas fa-user-md"></i>Professionnels
+                        </a>
+                        <a class="nav-link" href="{{ url_for('admin_users') }}">
+                            <i class="fas fa-users"></i>Utilisateurs
+                        </a>
+                        <a class="nav-link" href="{{ url_for('admin_orders') }}">
+                            <i class="fas fa-calendar-check"></i>Rendez-vous
+                        </a>
+                        <a class="nav-link" href="http://localhost:5000" target="_blank">
+                            <i class="fas fa-external-link-alt"></i>Voir le site
+                        </a>
+                    </nav>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 col-lg-10">
+                <div class="main-content">
+                    <!-- Flash Messages -->
+                    {% with messages = get_flashed_messages() %}
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                    <i class="fas fa-check-circle me-2"></i>{{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                    
+                    <!-- Page Header -->
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h1 class="h3 mb-0">Tableau de Bord</h1>
+                            <p class="text-muted">Vue d'ensemble de la plateforme Tighri</p>
+                        </div>
+                        <a href="{{ url_for('admin_add_product') }}" class="btn btn-primary">
+                            <i class="fas fa-plus me-2"></i>Ajouter un professionnel
+                        </a>
+                    </div>
+                    
+                    <!-- Stats Cards -->
+                    <div class="row g-4 mb-4">
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stats-card">
+                                <div class="d-flex align-items-center">
+                                    <div class="stats-icon bg-primary me-3">
+                                        <i class="fas fa-user-md"></i>
+                                    </div>
+                                    <div>
+                                        <p class="stats-number">{{ total_products }}</p>
+                                        <p class="stats-label">Professionnels</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stats-card">
+                                <div class="d-flex align-items-center">
+                                    <div class="stats-icon bg-success me-3">
+                                        <i class="fas fa-users"></i>
+                                    </div>
+                                    <div>
+                                        <p class="stats-number">{{ total_users }}</p>
+                                        <p class="stats-label">Utilisateurs</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stats-card">
+                                <div class="d-flex align-items-center">
+                                    <div class="stats-icon bg-warning me-3">
+                                        <i class="fas fa-calendar-check"></i>
+                                    </div>
+                                    <div>
+                                        <p class="stats-number">{{ total_orders }}</p>
+                                        <p class="stats-label">Rendez-vous</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-lg-3 col-md-6">
+                            <div class="stats-card">
+                                <div class="d-flex align-items-center">
+                                    <div class="stats-icon bg-info me-3">
+                                        <i class="fas fa-users"></i>
+                                    </div>
+                                    <div>
+                                        <p class="stats-number">{{ total_users }}</p>
+                                        <p class="stats-label">Patients</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Activity -->
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <div class="recent-activity">
+                                <h5 class="mb-3">
+                                    <i class="fas fa-clock me-2"></i>Activité Récente
+                                </h5>
+                                
+                                {% if orders %}
+                                    {% for order in orders[:5] %}
+                                    <div class="activity-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>Rendez-vous #{{ order.id }}</strong>
+                                                <br>
+                                                <small class="text-muted">{{ order.created_at.strftime('%d/%m/%Y à %H:%M') }}</small>
+                                            </div>
+                                            <div class="text-end">
+                                                <span class="badge bg-primary">{{ order.status }}</span>
+                                                <br>
+                                                <small class="text-muted">Patient ID: {{ order.user_id }}</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <p class="text-muted">Aucun rendez-vous récent</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="col-lg-4">
+                            <div class="recent-activity">
+                                <h5 class="mb-3">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>Alertes
+                                </h5>
+                                
+                                {% set unavailable_professionals = products|selectattr('stock', '==', 0)|list %}
+                                {% if unavailable_professionals %}
+                                    <div class="alert alert-warning">
+                                        <i class="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>{{ unavailable_professionals|length }} professionnel(s)</strong> indisponible(s)
+                                    </div>
+                                    
+                                    {% for product in unavailable_professionals[:3] %}
+                                    <div class="activity-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ product.name }}</strong>
+                                                <br>
+                                                <small class="text-muted">{{ product.category }}</small>
+                                            </div>
+                                            <span class="badge bg-danger">Indisponible</span>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                    <div class="alert alert-success">
+                                        <i class="fas fa-check-circle me-2"></i>
+                                        Tous les professionnels sont disponibles
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 

@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block title %}Administration - Lumia{% endblock %}
+
+{% block content %}
+<!-- Admin Header -->
+<section class="py-4" style="background: linear-gradient(135deg, var(--primary-color), var(--accent-color));">
+    <div class="container">
+        <div class="row align-items-center">
+            <div class="col-lg-8">
+                <h1 class="text-white mb-2">Panneau d'Administration</h1>
+                <p class="text-white-50 mb-0">Gérez vos produits, utilisateurs et commandes</p>
+            </div>
+            <div class="col-lg-4 text-lg-end">
+                <a href="{{ url_for('admin_add_product') }}" class="btn btn-light">
+                    <i class="fas fa-plus me-2"></i>Ajouter un produit
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Stats Cards -->
+<section class="py-4 bg-light">
+    <div class="container">
+        <div class="row g-4">
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-box fa-2x text-primary"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h4 class="mb-0">{{ products|length }}</h4>
+                                <p class="text-muted mb-0">Produits</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-users fa-2x text-success"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h4 class="mb-0">{{ users|length }}</h4>
+                                <p class="text-muted mb-0">Utilisateurs</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-shopping-cart fa-2x text-warning"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h4 class="mb-0">{{ orders|length }}</h4>
+                                <p class="text-muted mb-0">Commandes</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-3 col-md-6">
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex align-items-center">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-euro-sign fa-2x text-info"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                <h4 class="mb-0">{{ "%.2f"|format(orders|sum(attribute='total_amount')) }}</h4>
+                                <p class="text-muted mb-0">Chiffre d'affaires</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Admin Tabs -->
+<section class="py-5">
+    <div class="container">
+        <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="products-tab" data-bs-toggle="tab" data-bs-target="#products" type="button" role="tab">
+                    <i class="fas fa-box me-2"></i>Produits
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab">
+                    <i class="fas fa-users me-2"></i>Utilisateurs
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="orders-tab" data-bs-toggle="tab" data-bs-target="#orders" type="button" role="tab">
+                    <i class="fas fa-shopping-cart me-2"></i>Commandes
+                </button>
+            </li>
+        </ul>
+        
+        <div class="tab-content" id="adminTabsContent">
+            <!-- Products Tab -->
+            <div class="tab-pane fade show active" id="products" role="tabpanel">
+                <div class="card border-0 shadow-sm mt-4">
+                    <div class="card-header bg-white">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">Gestion des Produits</h5>
+                            <a href="{{ url_for('admin_add_product') }}" class="btn btn-primary btn-sm">
+                                <i class="fas fa-plus me-2"></i>Nouveau produit
+                            </a>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Image</th>
+                                        <th>Nom</th>
+                                        <th>Catégorie</th>
+                                        <th>Prix</th>
+                                        <th>Stock</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for product in products %}
+                                    <tr>
+                                        <td>
+                                            <img src="{{ product.image_url }}" alt="{{ product.name }}" style="width: 50px; height: 50px; object-fit: cover;" class="rounded">
+                                        </td>
+                                        <td>
+                                            <strong>{{ product.name }}</strong>
+                                            <br><small class="text-muted">{{ product.description[:50] }}...</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-primary">{{ product.category|title }}</span>
+                                        </td>
+                                        <td>
+                                            <strong>{{ "%.2f"|format(product.price) }} €</strong>
+                                        </td>
+                                        <td>
+                                            {% if product.stock > 10 %}
+                                                <span class="badge bg-success">{{ product.stock }}</span>
+                                            {% elif product.stock > 0 %}
+                                                <span class="badge bg-warning">{{ product.stock }}</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">0</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small>{{ product.created_at.strftime('%d/%m/%Y') }}</small>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <a href="{{ url_for('product_detail', product_id=product.id) }}" class="btn btn-outline-primary">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                                <button class="btn btn-outline-warning">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button class="btn btn-outline-danger">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Users Tab -->
+            <div class="tab-pane fade" id="users" role="tabpanel">
+                <div class="card border-0 shadow-sm mt-4">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Gestion des Utilisateurs</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Utilisateur</th>
+                                        <th>Email</th>
+                                        <th>Rôle</th>
+                                        <th>Date d'inscription</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for user in users %}
+                                    <tr>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                                                    <i class="fas fa-user"></i>
+                                                </div>
+                                                <div>
+                                                    <strong>{{ user.username }}</strong>
+                                                    {% if user.is_admin %}
+                                                        <br><small class="text-primary">Administrateur</small>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>{{ user.email }}</td>
+                                        <td>
+                                            {% if user.is_admin %}
+                                                <span class="badge bg-danger">Admin</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Utilisateur</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small>{{ user.created_at.strftime('%d/%m/%Y') }}</small>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                                <button class="btn btn-outline-warning">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                {% if not user.is_admin %}
+                                                <button class="btn btn-outline-danger">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Orders Tab -->
+            <div class="tab-pane fade" id="orders" role="tabpanel">
+                <div class="card border-0 shadow-sm mt-4">
+                    <div class="card-header bg-white">
+                        <h5 class="mb-0">Gestion des Commandes</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>N° Commande</th>
+                                        <th>Client</th>
+                                        <th>Montant</th>
+                                        <th>Statut</th>
+                                        <th>Date</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for order in orders %}
+                                    <tr>
+                                        <td>
+                                            <strong>#{{ order.id }}</strong>
+                                        </td>
+                                        <td>
+                                            {% for user in users if user.id == order.user_id %}
+                                                {{ user.username }}
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            <strong>{{ "%.2f"|format(order.total_amount) }} €</strong>
+                                        </td>
+                                        <td>
+                                            {% if order.status == 'pending' %}
+                                                <span class="badge bg-warning">En attente</span>
+                                            {% elif order.status == 'processing' %}
+                                                <span class="badge bg-info">En cours</span>
+                                            {% elif order.status == 'shipped' %}
+                                                <span class="badge bg-primary">Expédié</span>
+                                            {% elif order.status == 'delivered' %}
+                                                <span class="badge bg-success">Livré</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ order.status }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <small>{{ order.created_at.strftime('%d/%m/%Y') }}</small>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <button class="btn btn-outline-primary">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                                <button class="btn btn-outline-warning">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Animation au scroll
+document.addEventListener('DOMContentLoaded', function() {
+    const cards = document.querySelectorAll('.card');
+    
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    });
+    
+    cards.forEach(card => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        card.style.transition = 'all 0.6s ease';
+        observer.observe(card);
+    });
+});
+
+// Confirmation de suppression
+document.querySelectorAll('.btn-outline-danger').forEach(button => {
+    button.addEventListener('click', function() {
+        if (confirm('Êtes-vous sûr de vouloir supprimer cet élément ?')) {
+            // Ici vous pourriez implémenter la logique de suppression
+            alert('Élément supprimé avec succès !');
+        }
+    });
+});
+</script>
+{% endblock %} 

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Connexion - Lumia{% endblock %}
+
+{% block content %}
+<section class="py-5" style="background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); min-height: 100vh; display: flex; align-items: center;">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-5 col-md-7">
+                <div class="card shadow-lg border-0">
+                    <div class="card-body p-5">
+                        <div class="text-center mb-4">
+                            <i class="fas fa-mobile-alt fa-3x text-primary mb-3"></i>
+                            <h2 class="fw-bold">Connexion</h2>
+                            <p class="text-muted">Connectez-vous à votre compte Lumia</p>
+                        </div>
+                        
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label for="username" class="form-label">
+                                    <i class="fas fa-user me-2"></i>Nom d'utilisateur
+                                </label>
+                                <input type="text" class="form-control" id="username" name="username" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="password" class="form-label">
+                                    <i class="fas fa-lock me-2"></i>Mot de passe
+                                </label>
+                                <input type="password" class="form-control" id="password" name="password" required>
+                            </div>
+                            
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="remember">
+                                <label class="form-check-label" for="remember">
+                                    Se souvenir de moi
+                                </label>
+                            </div>
+                            
+                            <div class="d-grid mb-3">
+                                <button type="submit" class="btn btn-primary btn-lg">
+                                    <i class="fas fa-sign-in-alt me-2"></i>Se connecter
+                                </button>
+                            </div>
+                        </form>
+                        
+                        <div class="text-center">
+                            <a href="#" class="text-decoration-none">Mot de passe oublié ?</a>
+                        </div>
+                        
+                        <hr class="my-4">
+                        
+                        <div class="text-center">
+                            <p class="text-muted mb-3">Pas encore de compte ?</p>
+                            <a href="{{ url_for('register') }}" class="btn btn-outline-primary">
+                                <i class="fas fa-user-plus me-2"></i>Créer un compte
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %} 

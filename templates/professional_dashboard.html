@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Professionnel - Lumia</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6f42c1;
+            --secondary-color: #8e44ad;
+            --accent-color: #9b59b6;
+            --light-purple: #f8f5ff;
+            --dark-purple: #4a148c;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--light-purple);
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            box-shadow: 0 2px 10px rgba(111, 66, 193, 0.3);
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.8rem;
+            color: white !important;
+        }
+        
+        .dashboard-container {
+            padding: 40px 0;
+        }
+        
+        .welcome-card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(111, 66, 193, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        .welcome-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--dark-purple);
+            margin-bottom: 10px;
+        }
+        
+        .welcome-subtitle {
+            color: #6c757d;
+            font-size: 1.1rem;
+        }
+        
+        .stats-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(111, 66, 193, 0.1);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        
+        .stats-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .stats-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 15px;
+            color: white;
+            font-size: 1.5rem;
+        }
+        
+        .stats-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 5px;
+        }
+        
+        .stats-label {
+            color: #6c757d;
+            font-weight: 500;
+        }
+        
+        .action-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 25px rgba(111, 66, 193, 0.1);
+            text-align: center;
+            transition: all 0.3s ease;
+            height: 100%;
+        }
+        
+        .action-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(111, 66, 193, 0.2);
+        }
+        
+        .action-icon {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 20px;
+            color: white;
+            font-size: 1.8rem;
+        }
+        
+        .btn-primary-custom {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            border: none;
+            border-radius: 10px;
+            padding: 12px 25px;
+            font-weight: 600;
+            color: white;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(111, 66, 193, 0.4);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-brain me-2"></i>Lumia
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">
+                    <i class="fas fa-user-md me-2"></i>{{ current_user.username }}
+                </span>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-2"></i>Déconnexion
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="dashboard-container">
+        <div class="container">
+            <div class="welcome-card">
+                <h1 class="welcome-title">
+                    <i class="fas fa-user-md me-2"></i>Bienvenue dans votre espace professionnel
+                </h1>
+                <p class="welcome-subtitle">
+                    Gérez vos rendez-vous, vos patients et votre profil en toute simplicité
+                </p>
+            </div>
+            
+            {% if professional %}
+                {% if professional.status == 'en_attente' %}
+                    <div class="alert alert-warning" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Votre profil est en attente de validation</strong><br>
+                        Un administrateur doit valider votre profil avant que vous puissiez recevoir des rendez-vous.
+                    </div>
+                {% elif professional.status == 'rejete' %}
+                    <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <strong>Votre profil a été rejeté</strong><br>
+                        Contactez l'administration pour plus d'informations.
+                    </div>
+                {% else %}
+                    <div class="alert alert-success" role="alert">
+                        <i class="fas fa-check-circle me-2"></i>
+                        <strong>Votre profil est validé</strong><br>
+                        Vous pouvez maintenant recevoir des demandes de rendez-vous.
+                    </div>
+                {% endif %}
+            {% endif %}
+            
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="stats-card">
+                        <div class="stats-icon">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div class="stats-number">{{ appointments|length }}</div>
+                        <div class="stats-label">Total RDV</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stats-card">
+                        <div class="stats-icon">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stats-number">
+                            {{ appointments|selectattr('status', 'equalto', 'en_attente')|list|length }}
+                        </div>
+                        <div class="stats-label">En attente</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stats-card">
+                        <div class="stats-icon">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <div class="stats-number">
+                            {{ appointments|selectattr('status', 'equalto', 'confirme')|list|length }}
+                        </div>
+                        <div class="stats-label">Confirmés</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="stats-card">
+                        <div class="stats-icon">
+                            <i class="fas fa-calendar-alt"></i>
+                        </div>
+                        <div class="stats-number">
+                            {{ professional.availabilities|length if professional else 0 }}
+                        </div>
+                        <div class="stats-label">Jours disponibles</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-lg-3 mb-4">
+                    <div class="action-card">
+                        <div class="action-icon">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <h4 class="mb-3">Mes Rendez-vous</h4>
+                        <p class="text-muted mb-4">Consultez et gérez vos demandes de rendez-vous</p>
+                        <a href="{{ url_for('professional_appointments') }}" class="btn-primary-custom">
+                            <i class="fas fa-calendar me-2"></i>Voir mes RDV
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="col-lg-3 mb-4">
+                    <div class="action-card">
+                        <div class="action-icon">
+                            <i class="fas fa-calendar-alt"></i>
+                        </div>
+                        <h4 class="mb-3">Mes Disponibilités</h4>
+                        <p class="text-muted mb-4">Définissez vos horaires de disponibilité</p>
+                        <a href="{{ url_for('professional_availability') }}" class="btn-primary-custom">
+                            <i class="fas fa-clock me-2"></i>Gérer disponibilités
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="col-lg-3 mb-4">
+                    <div class="action-card">
+                        <div class="action-icon">
+                            <i class="fas fa-calendar-times"></i>
+                        </div>
+                        <h4 class="mb-3">Créneaux Indisponibles</h4>
+                        <p class="text-muted mb-4">Bloquez des dates/heures spécifiques</p>
+                        <a href="{{ url_for('professional_unavailable_slots') }}" class="btn-primary-custom">
+                            <i class="fas fa-ban me-2"></i>Gérer indisponibilités
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="col-lg-3 mb-4">
+                    <div class="action-card">
+                        <div class="action-icon">
+                            <i class="fas fa-user-edit"></i>
+                        </div>
+                        <h4 class="mb-3">Mon Profil</h4>
+                        <p class="text-muted mb-4">Modifiez vos informations professionnelles</p>
+                        <a href="#" class="btn-primary-custom">
+                            <i class="fas fa-edit me-2"></i>Modifier profil
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            {% if appointments %}
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5><i class="fas fa-list"></i> Rendez-vous récents</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Patient</th>
+                                            <th>Date & Heure</th>
+                                            <th>Type</th>
+                                            <th>Statut</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for appointment in appointments[:5] %}
+                                        <tr>
+                                            <td>{{ appointment.patient.username }}</td>
+                                            <td>{{ appointment.appointment_date.strftime('%d/%m/%Y à %H:%M') }}</td>
+                                            <td>
+                                                <span class="badge bg-info">
+                                                    {% if appointment.consultation_type == 'cabinet' %}Cabinet
+                                                    {% elif appointment.consultation_type == 'domicile' %}Domicile
+                                                    {% elif appointment.consultation_type == 'video' %}Vidéo
+                                                    {% endif %}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% if appointment.status == 'en_attente' %}
+                                                    <span class="badge bg-warning">En attente</span>
+                                                {% elif appointment.status == 'confirme' %}
+                                                    <span class="badge bg-success">Confirmé</span>
+                                                {% elif appointment.status == 'annule' %}
+                                                    <span class="badge bg-danger">Annulé</span>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {% if appointments|length > 5 %}
+                                <div class="text-center mt-3">
+                                    <a href="{{ url_for('professional_appointments') }}" class="btn btn-outline-primary">
+                                        Voir tous les rendez-vous
+                                    </a>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 

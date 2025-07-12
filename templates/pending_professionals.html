@@ -1,0 +1,171 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Professionnels en attente - Administration Lumia{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0 text-gray-800">
+            <i class="fas fa-user-clock"></i> Professionnels en attente de validation
+        </h1>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+        </a>
+    </div>
+
+    {% if professionals %}
+        <div class="row">
+            {% for professional in professionals %}
+            <div class="col-lg-6 col-xl-4 mb-4">
+                <div class="card border-left-warning shadow h-100 py-2">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="d-flex align-items-center mb-2">
+                                    <img src="{{ professional.image_url or 'https://via.placeholder.com/50x50/8B5CF6/FFFFFF?text=Pro' }}" 
+                                         alt="{{ professional.name }}" 
+                                         class="rounded-circle me-3" 
+                                         style="width: 50px; height: 50px; object-fit: cover;">
+                                    <div>
+                                        <h6 class="font-weight-bold text-primary mb-0">{{ professional.name }}</h6>
+                                        <small class="text-muted">{{ professional.specialty }}</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <p class="text-sm text-gray-600 mb-1">
+                                        <i class="fas fa-map-marker-alt me-1"></i> {{ professional.location }}
+                                    </p>
+                                    <p class="text-sm text-gray-600 mb-1">
+                                        <i class="fas fa-phone me-1"></i> {{ professional.phone }}
+                                    </p>
+                                    <p class="text-sm text-gray-600 mb-1">
+                                        <i class="fas fa-clock me-1"></i> {{ professional.experience_years }} ans d'expérience
+                                    </p>
+                                    <p class="text-sm text-gray-600 mb-1">
+                                        <i class="fas fa-money-bill me-1"></i> {{ professional.consultation_fee }} MAD
+                                    </p>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <small class="text-muted">Description:</small>
+                                    <p class="text-sm text-gray-700">{{ professional.description[:100] }}{% if professional.description|length > 100 %}...{% endif %}</p>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <small class="text-muted">Créé le:</small>
+                                    <p class="text-sm text-gray-700">{{ professional.created_at.strftime('%d/%m/%Y à %H:%M') }}</p>
+                                </div>
+                                
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-success btn-sm" 
+                                            onclick="validateProfessional({{ professional.id }})">
+                                        <i class="fas fa-check"></i> Valider
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" 
+                                            onclick="rejectProfessional({{ professional.id }})">
+                                        <i class="fas fa-times"></i> Rejeter
+                                    </button>
+                                    <button class="btn btn-info btn-sm" 
+                                            onclick="viewProfessionalDetails({{ professional.id }})">
+                                        <i class="fas fa-eye"></i> Détails
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+            <h4 class="text-success">Aucun professionnel en attente</h4>
+            <p class="text-muted">Tous les professionnels ont été traités.</p>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Modal pour les détails -->
+<div class="modal fade" id="professionalDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Détails du professionnel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="professionalDetailsContent">
+                <!-- Le contenu sera chargé dynamiquement -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function validateProfessional(professionalId) {
+    if (confirm('Êtes-vous sûr de vouloir valider ce professionnel ?')) {
+        fetch(`/professionals/${professionalId}/validate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Professionnel validé avec succès!');
+                location.reload();
+            } else {
+                alert('Erreur: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Erreur lors de la validation');
+        });
+    }
+}
+
+function rejectProfessional(professionalId) {
+    if (confirm('Êtes-vous sûr de vouloir rejeter ce professionnel ?')) {
+        fetch(`/professionals/${professionalId}/reject`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Professionnel rejeté');
+                location.reload();
+            } else {
+                alert('Erreur: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Erreur lors du rejet');
+        });
+    }
+}
+
+function viewProfessionalDetails(professionalId) {
+    // Charger les détails du professionnel dans le modal
+    fetch(`/professionals/${professionalId}`)
+        .then(response => response.text())
+        .then(html => {
+            document.getElementById('professionalDetailsContent').innerHTML = html;
+            new bootstrap.Modal(document.getElementById('professionalDetailsModal')).show();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Erreur lors du chargement des détails');
+        });
+}
+</script>
+{% endblock %} 

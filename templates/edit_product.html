@@ -1,0 +1,95 @@
+{% extends "admin_base.html" %}
+
+{% block title %}Modifier un professionnel - Admin Lumia{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">
+                        <i class="fas fa-user-edit me-2"></i>Modifier le professionnel
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="name" class="form-label">
+                                    <i class="fas fa-user me-2"></i>Nom du professionnel *
+                                </label>
+                                <input type="text" class="form-control" id="name" name="name" value="{{ professional.name }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="category" class="form-label">
+                                    <i class="fas fa-folder me-2"></i>Spécialité *
+                                </label>
+                                <select class="form-select" id="specialty" name="specialty" required>
+                                    <option value="">Choisir une spécialité</option>
+                                    <option value="Psychologue Clinicien" {% if professional.specialty == 'Psychologue Clinicien' %}selected{% endif %}>Psychologue Clinicien</option>
+                                    <option value="Psychologue pour Enfants" {% if professional.specialty == 'Psychologue pour Enfants' %}selected{% endif %}>Psychologue pour Enfants</option>
+                                    <option value="Thérapeute Familial" {% if professional.specialty == 'Thérapeute Familial' %}selected{% endif %}>Thérapeute Familial</option>
+                                    <option value="Thérapeute de Couple" {% if professional.specialty == 'Thérapeute de Couple' %}selected{% endif %}>Thérapeute de Couple</option>
+                                    <option value="Coach en Développement Personnel" {% if professional.specialty == 'Coach en Développement Personnel' %}selected{% endif %}>Coach en Développement Personnel</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="consultation_fee" class="form-label">
+                                    <i class="fas fa-euro-sign me-2"></i>Prix de consultation (MAD) *
+                                </label>
+                                <input type="number" class="form-control" id="consultation_fee" name="consultation_fee" step="0.01" min="0" value="{{ professional.consultation_fee }}" required>
+                            </div>
+                            
+                            <div class="col-md-6 mb-3">
+                                <label for="status" class="form-label">
+                                    <i class="fas fa-check-circle me-2"></i>Statut *
+                                </label>
+                                <select class="form-select" id="status" name="status" required>
+                                    <option value="valide" {% if professional.status == 'valide' %}selected{% endif %}>Validé</option>
+                                    <option value="en_attente" {% if professional.status == 'en_attente' %}selected{% endif %}>En attente</option>
+                                    <option value="rejete" {% if professional.status == 'rejete' %}selected{% endif %}>Rejeté</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="description" class="form-label">
+                                <i class="fas fa-align-left me-2"></i>Description et spécialités *
+                            </label>
+                            <textarea class="form-control" id="description" name="description" rows="5" required>{{ professional.description }}</textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="image_url" class="form-label">
+                                <i class="fas fa-image me-2"></i>URL de la photo *
+                            </label>
+                            <input type="url" class="form-control" id="image_url" name="image_url" value="{{ professional.image_url }}" required>
+                            <div class="form-text">Entrez l'URL d'une photo professionnelle (Unsplash recommandé)</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <p class="text-muted">
+                                <strong>Date de création:</strong> {{ professional.created_at.strftime('%d/%m/%Y à %H:%M') }}
+                            </p>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('admin_products') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left me-2"></i>Retour
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i>Enregistrer les modifications
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

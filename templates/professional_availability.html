@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Mes Disponibilités - Lumia{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-calendar-alt"></i> Gérer mes disponibilités</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Jour</th>
+                                        <th>Disponible</th>
+                                        <th>Heure de début</th>
+                                        <th>Heure de fin</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% set days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'] %}
+                                    {% for day_num in range(7) %}
+                                    <tr>
+                                        <td><strong>{{ days[day_num] }}</strong></td>
+                                        <td>
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" 
+                                                       name="available_{{ day_num }}" id="available_{{ day_num }}"
+                                                       {% if availabilities.get(day_num) %}checked{% endif %}>
+                                                <label class="form-check-label" for="available_{{ day_num }}">
+                                                    Disponible
+                                                </label>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <input type="time" class="form-control" 
+                                                   name="start_time_{{ day_num }}" 
+                                                   value="{{ availabilities.get(day_num).start_time if availabilities.get(day_num) else '09:00' }}">
+                                        </td>
+                                        <td>
+                                            <input type="time" class="form-control" 
+                                                   name="end_time_{{ day_num }}" 
+                                                   value="{{ availabilities.get(day_num).end_time if availabilities.get(day_num) else '17:00' }}">
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Sauvegarder les disponibilités
+                            </button>
+                            <a href="{{ url_for('professional_dashboard') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Validation JavaScript pour s'assurer que l'heure de fin est après l'heure de début
+document.addEventListener('DOMContentLoaded', function() {
+    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+    const startTimes = document.querySelectorAll('input[name^="start_time"]');
+    const endTimes = document.querySelectorAll('input[name^="end_time"]');
+    
+    checkboxes.forEach((checkbox, index) => {
+        checkbox.addEventListener('change', function() {
+            const startTime = startTimes[index];
+            const endTime = endTimes[index];
+            
+            if (this.checked) {
+                startTime.required = true;
+                endTime.required = true;
+            } else {
+                startTime.required = false;
+                endTime.required = false;
+            }
+        });
+    });
+    
+    // Validation lors de la soumission
+    document.querySelector('form').addEventListener('submit', function(e) {
+        let isValid = true;
+        
+        checkboxes.forEach((checkbox, index) => {
+            if (checkbox.checked) {
+                const startTime = startTimes[index].value;
+                const endTime = endTimes[index].value;
+                
+                if (startTime >= endTime) {
+                    alert('L\'heure de fin doit être après l\'heure de début pour ' + 
+                          ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'][index]);
+                    isValid = false;
+                }
+            }
+        });
+        
+        if (!isValid) {
+            e.preventDefault();
+        }
+    });
+});
+</script>
+{% endblock %} 

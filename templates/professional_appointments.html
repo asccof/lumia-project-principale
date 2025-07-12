@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+
+{% block title %}Mes Rendez-vous - Lumia{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-calendar-check"></i> Mes Rendez-vous</h4>
+                </div>
+                <div class="card-body">
+                    {% if appointments %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Patient</th>
+                                        <th>Date & Heure</th>
+                                        <th>Type de consultation</th>
+                                        <th>Statut</th>
+                                        <th>Notes</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for appointment in appointments %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ appointment.patient.username }}</strong><br>
+                                            <small class="text-muted">{{ appointment.patient.email }}</small>
+                                        </td>
+                                        <td>
+                                            <strong>{{ appointment.appointment_date.strftime('%d/%m/%Y') }}</strong><br>
+                                            <small class="text-muted">{{ appointment.appointment_date.strftime('%H:%M') }}</small>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-info">
+                                                {% if appointment.consultation_type == 'cabinet' %}
+                                                    <i class="fas fa-building"></i> Cabinet
+                                                {% elif appointment.consultation_type == 'domicile' %}
+                                                    <i class="fas fa-home"></i> Domicile
+                                                {% elif appointment.consultation_type == 'video' %}
+                                                    <i class="fas fa-video"></i> Vidéo
+                                                {% endif %}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            {% if appointment.status == 'en_attente' %}
+                                                <span class="badge bg-warning">
+                                                    <i class="fas fa-clock"></i> En attente
+                                                </span>
+                                            {% elif appointment.status == 'confirme' %}
+                                                <span class="badge bg-success">
+                                                    <i class="fas fa-check"></i> Confirmé
+                                                </span>
+                                            {% elif appointment.status == 'annule' %}
+                                                <span class="badge bg-danger">
+                                                    <i class="fas fa-times"></i> Annulé
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if appointment.notes %}
+                                                <button type="button" class="btn btn-sm btn-outline-info" 
+                                                        data-bs-toggle="modal" 
+                                                        data-bs-target="#notesModal{{ appointment.id }}">
+                                                    <i class="fas fa-eye"></i> Voir notes
+                                                </button>
+                                            {% else %}
+                                                <span class="text-muted">Aucune note</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if appointment.status == 'en_attente' %}
+                                                <form method="POST" action="{{ url_for('professional_appointment_action', appointment_id=appointment.id, action='accept') }}" 
+                                                      style="display: inline;">
+                                                    <button type="submit" class="btn btn-sm btn-success" 
+                                                            onclick="return confirm('Confirmer ce rendez-vous ?')">
+                                                        <i class="fas fa-check"></i> Accepter
+                                                    </button>
+                                                </form>
+                                                <form method="POST" action="{{ url_for('professional_appointment_action', appointment_id=appointment.id, action='reject') }}" 
+                                                      style="display: inline;">
+                                                    <button type="submit" class="btn btn-sm btn-danger" 
+                                                            onclick="return confirm('Refuser ce rendez-vous ?')">
+                                                        <i class="fas fa-times"></i> Refuser
+                                                    </button>
+                                                </form>
+                                            {% elif appointment.status == 'confirme' %}
+                                                <span class="text-success">
+                                                    <i class="fas fa-check-circle"></i> Rendez-vous confirmé
+                                                </span>
+                                            {% elif appointment.status == 'annule' %}
+                                                <span class="text-danger">
+                                                    <i class="fas fa-times-circle"></i> Rendez-vous refusé
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    
+                                    <!-- Modal pour les notes -->
+                                    {% if appointment.notes %}
+                                    <div class="modal fade" id="notesModal{{ appointment.id }}" tabindex="-1">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <div class="modal-header">
+                                                    <h5 class="modal-title">Notes du patient</h5>
+                                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                </div>
+                                                <div class="modal-body">
+                                                    <p><strong>Patient:</strong> {{ appointment.patient.username }}</p>
+                                                    <p><strong>Date:</strong> {{ appointment.appointment_date.strftime('%d/%m/%Y à %H:%M') }}</p>
+                                                    <hr>
+                                                    <p><strong>Notes:</strong></p>
+                                                    <div class="alert alert-info">
+                                                        {{ appointment.notes }}
+                                                    </div>
+                                                </div>
+                                                <div class="modal-footer">
+                                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <i class="fas fa-calendar-times fa-3x text-muted mb-3"></i>
+                            <h5>Aucun rendez-vous pour le moment</h5>
+                            <p class="text-muted">Les demandes de rendez-vous apparaîtront ici une fois que les patients en auront fait.</p>
+                        </div>
+                    {% endif %}
+                    
+                    <div class="mt-3">
+                        <a href="{{ url_for('professional_dashboard') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+                        </a>
+                        <a href="{{ url_for('professional_availability') }}" class="btn btn-primary">
+                            <i class="fas fa-calendar-alt"></i> Gérer mes disponibilités
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
