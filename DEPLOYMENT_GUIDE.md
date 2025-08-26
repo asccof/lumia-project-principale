@@ -51,7 +51,7 @@ git push -u origin main
 
 ### 3.2 Configuration du build
 - **Build Command** : `pip install -r requirements.txt`
-- **Start Command** : `gunicorn app:app`
+- **Start Command** : `gunicorn app:mounted_admin`
 
 ### 3.3 Variables d'environnement
 Render configurera automatiquement :
@@ -95,7 +95,7 @@ Une fois déployé, vous devrez initialiser la base de données :
 
 ### 6.2 Identifiants par défaut
 - **Admin** : `admin` / `admin123`
-- **Email** : `admin@lumia.com`
+- **Email** : `admin@tighri.com`
 
 ## 📊 Étape 7 : Monitoring et Maintenance
 

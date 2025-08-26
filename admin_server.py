@@ -7,7 +7,8 @@ import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'admin_cle_secrete_ici'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///lumia.db'
+app.config['SESSION_COOKIE_NAME'] = 'tighri_admin_session'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tighri.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -482,7 +483,7 @@ if __name__ == '__main__':
         if not User.query.first():
             admin = User(
                 username='admin',
-                email='admin@lumia.com',
+                email='admin@tighri.com',
                 password_hash=generate_password_hash('admin123'),
                 is_admin=True,
                 user_type='professional'
@@ -490,6 +491,12 @@ if __name__ == '__main__':
             db.session.add(admin)
             db.session.commit()
     
-    print("🚀 Serveur d'administration Tighri démarré sur http://localhost:8080")
-    print("📧 Connexion admin: admin / admin123")
+    # Configuration du statut du serveur admin
+    app.config['ADMIN_STATUS'] = {
+        'server_started': True,
+        'admin_credentials': 'admin / admin123',
+        'database_ready': True,
+        'startup_time': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    }
+    
     app.run(debug=True, port=8080) 

@@ -4,6 +4,8 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from admin_server import app as admin_app
 
 app = Flask(__name__)
 
@@ -13,7 +15,7 @@ if os.environ.get('DATABASE_URL'):
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace('postgres://', 'postgresql://')
 else:
     # Développement - SQLite
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///lumia.db'
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tighri.db'
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'votre_cle_secrete_ici')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -523,10 +525,24 @@ def book_appointment(professional_id):
         consultation_type = request.form['consultation_type']
         notes = request.form.get('notes', '')
         
+        # Validation de la date (pas de rendez-vous dans le passé)
+        from datetime import datetime, date
+        try:
+            appointment_date_obj = datetime.strptime(appointment_date, '%Y-%m-%d').date()
+            if appointment_date_obj < date.today():
+                flash('Impossible de réserver un rendez-vous dans le passé.')
+                return redirect(url_for('book_appointment', professional_id=professional_id))
+        except ValueError:
+            flash('Format de date invalide.')
+            return redirect(url_for('book_appointment', professional_id=professional_id))
+        
         # Combiner date et heure
-        from datetime import datetime
         datetime_str = f"{appointment_date} {appointment_time}"
-        appointment_datetime = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+        try:
+            appointment_datetime = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+        except ValueError:
+            flash('Format de date/heure invalide.')
+            return redirect(url_for('book_appointment', professional_id=professional_id))
         
         # Vérifier les disponibilités du professionnel
         day_of_week = appointment_datetime.weekday()
@@ -559,6 +575,17 @@ def book_appointment(professional_id):
             flash('Ce créneau est déjà réservé.')
             return redirect(url_for('book_appointment', professional_id=professional_id))
         
+        # Vérifier les créneaux indisponibles
+        unavailable_slots = UnavailableSlot.query.filter_by(
+            professional_id=professional_id,
+            date=appointment_date_obj
+        ).all()
+        
+        for slot in unavailable_slots:
+            if (slot.start_time <= appointment_time <= slot.end_time):
+                flash('Ce créneau est marqué comme indisponible par le professionnel.')
+                return redirect(url_for('book_appointment', professional_id=professional_id))
+        
         # Créer le rendez-vous
         appointment = Appointment(
             patient_id=current_user.id,
@@ -581,7 +608,24 @@ def book_appointment(professional_id):
         is_available=True
     ).all()
     
-    return render_template('book_appointment.html', professional=professional, availabilities=availabilities)
+    # Récupérer les créneaux indisponibles pour les 30 prochains jours
+    from datetime import date, timedelta
+    today = date.today()
+    future_dates = [today + timedelta(days=i) for i in range(30)]
+    
+    unavailable_dates = []
+    for future_date in future_dates:
+        unavailable_slots = UnavailableSlot.query.filter_by(
+            professional_id=professional_id,
+            date=future_date
+        ).all()
+        if unavailable_slots:
+            unavailable_dates.append(future_date.isoformat())
+    
+    return render_template('book_appointment.html', 
+                         professional=professional, 
+                         availabilities=availabilities,
+                         unavailable_dates=unavailable_dates)
 
 @app.route('/my_appointments')
 @login_required
@@ -595,6 +639,29 @@ def my_appointments():
     
     return render_template('my_appointments.html', appointments=appointments)
 
+@app.route('/site-status')
+def site_status():
+    """Page de statut du site pour afficher les informations de validation"""
+    status = app.config.get('SITE_STATUS', {})
+    
+    # Récupérer des statistiques en temps réel
+    real_time_stats = {
+        'total_professionals': Professional.query.count(),
+        'total_users': User.query.count(),
+        'total_appointments': Appointment.query.count(),
+        'database_file': 'tighri.db',
+        'server_port': 5000,
+        'admin_port': 8080
+    }
+    
+    return render_template('site_status.html', status=status, stats=real_time_stats)
+
+# Expose admin as a mounted app under /admin for production single-process deployments
+# Note: In local dev you can still run admin_server.py separately on port 8080
+mounted_admin = DispatcherMiddleware(app.wsgi_app, {
+    '/admin': admin_app.wsgi_app
+})
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
@@ -603,7 +670,7 @@ if __name__ == '__main__':
         if not User.query.first():
             admin = User(
                 username='admin',
-                email='admin@lumia.com',
+                email='admin@tighri.com',
                 password_hash=generate_password_hash('admin123'),
                 is_admin=True,
                 user_type='professional'
@@ -691,6 +758,19 @@ if __name__ == '__main__':
                 db.session.add(prof)
             db.session.commit()
 
-    print("🚀 Serveur principal Tighri démarré sur http://localhost:5000")
-    print("📧 Connexion admin: admin / admin123")
-    app.run(debug=True, port=5000) 
+    # Messages de statut stockés pour affichage dans le site
+    app.config['SITE_STATUS'] = {
+        'server_started': True,
+        'admin_credentials': 'admin / admin123',
+        'database_ready': True,
+        'startup_time': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    }
+    
+    # Configuration de l'admin intégré avec DispatcherMiddleware
+    mounted_admin = DispatcherMiddleware(app.wsgi_app, {
+        '/admin': admin_app.wsgi_app
+    })
+    
+    # Run with the dispatcher to serve / and /admin from a single process
+    from werkzeug.serving import run_simple
+    run_simple('0.0.0.0', 5000, mounted_admin, use_debugger=True, use_reloader=False) 
