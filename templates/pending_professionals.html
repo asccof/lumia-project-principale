@@ -107,7 +107,7 @@
 
 <script>
 function validateProfessional(professionalId) {
-    if (confirm('Êtes-vous sûr de vouloir valider ce professionnel ?')) {
+    showSiteConfirm('Êtes-vous sûr de vouloir valider ce professionnel ?', () => {
         fetch(`/professionals/${professionalId}/validate`, {
             method: 'POST',
             headers: {
@@ -117,21 +117,21 @@ function validateProfessional(professionalId) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('Professionnel validé avec succès!');
+                showSiteNotification('Professionnel validé avec succès!', 'success');
                 location.reload();
             } else {
-                alert('Erreur: ' + data.message);
+                showSiteNotification('Erreur: ' + data.message, 'danger');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Erreur lors de la validation');
+            showSiteNotification('Erreur lors de la validation', 'danger');
         });
-    }
+    });
 }
 
 function rejectProfessional(professionalId) {
-    if (confirm('Êtes-vous sûr de vouloir rejeter ce professionnel ?')) {
+    showSiteConfirm('Êtes-vous sûr de vouloir rejeter ce professionnel ?', () => {
         fetch(`/professionals/${professionalId}/reject`, {
             method: 'POST',
             headers: {
@@ -141,17 +141,17 @@ function rejectProfessional(professionalId) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('Professionnel rejeté');
+                showSiteNotification('Professionnel rejeté', 'success');
                 location.reload();
             } else {
-                alert('Erreur: ' + data.message);
+                showSiteNotification('Erreur: ' + data.message, 'danger');
             }
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Erreur lors du rejet');
+            showSiteNotification('Erreur lors du rejet', 'danger');
         });
-    }
+    });
 }
 
 function viewProfessionalDetails(professionalId) {
@@ -164,7 +164,7 @@ function viewProfessionalDetails(professionalId) {
         })
         .catch(error => {
             console.error('Error:', error);
-            alert('Erreur lors du chargement des détails');
+            showSiteNotification('Erreur lors du chargement des détails', 'danger');
         });
 }
 </script>

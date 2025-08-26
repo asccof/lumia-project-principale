@@ -236,6 +236,11 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('contact') }}">Contact</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('site_status') }}">
+                            <i class="fas fa-server me-1"></i>Statut
+                        </a>
+                    </li>
                 </ul>
                 
                 <ul class="navbar-nav">
@@ -360,6 +365,75 @@
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Modale de confirmation (globale) -->
+    <div class="modal fade" id="confirmModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-question-circle me-2"></i>Confirmation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="confirmModalMessage">
+                    Êtes-vous sûr ?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="button" class="btn btn-primary" id="confirmModalOk">Confirmer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Fonction utilitaire pour afficher une confirmation dans le site (sans alert/confirm natifs)
+    window.showSiteConfirm = function(message, onConfirm) {
+        document.getElementById('confirmModalMessage').textContent = message || 'Êtes-vous sûr ?';
+        const modalEl = document.getElementById('confirmModal');
+        const modal = new bootstrap.Modal(modalEl);
+        const okBtn = document.getElementById('confirmModalOk');
+
+        // Nettoyer les anciens listeners
+        const newOkBtn = okBtn.cloneNode(true);
+        okBtn.parentNode.replaceChild(newOkBtn, okBtn);
+
+        newOkBtn.addEventListener('click', function() {
+            modal.hide();
+            if (typeof onConfirm === 'function') {
+                onConfirm();
+            }
+        });
+
+        modal.show();
+    }
+
+    // Fonction utilitaire pour afficher des notifications dans le site (sans alert natifs)
+    window.showSiteNotification = function(message, type = 'info') {
+        // Créer la notification
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // Ajouter au body
+        document.body.appendChild(notification);
+        
+        // Auto-supprimer après 5 secondes
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 5000);
+        
+        // Permettre la fermeture manuelle
+        notification.querySelector('.btn-close').addEventListener('click', () => {
+            notification.remove();
+        });
+    }
+    </script>
     
     {% block extra_js %}{% endblock %}
 </body>
