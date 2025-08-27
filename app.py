@@ -40,7 +40,7 @@ def _normalize_pg_uri(uri: str) -> str:
     return uri
 
 # --- SQLAlchemy: créer l'objet puis l'attacher après config ---
-db = SQLAlchemy()
+from models import db, User
 
 # ⚠️ FORCER Postgres : AUCUN fallback SQLite
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
