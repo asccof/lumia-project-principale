@@ -1,17 +1,15 @@
-# ---------- IMPORTS ----------
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from werkzeug.security import check_password_hash, generate_password_hash
 import os
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-# ---------- APP & CONFIG ----------
+# --- Flask app ADMIN (séparée de l'app principale) ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'admin_cle_secrete_ici')
 app.config['SESSION_COOKIE_NAME'] = 'tighri_admin_session'
 
-# --- Normalisation Postgres -> psycopg3 + sslmode=require ---
+# --- Normalisation DB URI (même base Postgres que l'app principale) ---
 def _normalize_pg_uri(uri: str) -> str:
     if not uri:
         return uri
@@ -30,33 +28,30 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-# --- Récupérer l’URI depuis Render et la normaliser ---
 db_uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
 if not db_uri:
     raise RuntimeError("DATABASE_URL manquant pour admin_server")
 db_uri = _normalize_pg_uri(db_uri)
 
-# --- Importer les mêmes modèles que l'app principale ---
+# --- Réutiliser LA MÊME instance SQLAlchemy et les mêmes modèles ---
 from models import db, User, Professional, Appointment
 
-# --- Attacher la DB à cette app admin (pas de nouveau SQLAlchemy ici) ---
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db.init_app(app)
+db.init_app(app)  # ⚠️ pas de SQLAlchemy(app) ici
 
-# ---------- LOGIN MANAGER ----------
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'admin_login'
 
 @login_manager.user_loader
-def load_user(user_id):
+def load_user(user_id: str):
     try:
-        return db.session.get(User, int(user_id))  # SQLAlchemy 2.x
+        return User.query.get(int(user_id))
     except Exception:
         return None
 
-# ---------- /login ----------
+# ---------------- ROUTE LOGIN ADMIN ----------------
 @app.route('/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
@@ -64,12 +59,11 @@ def admin_login():
         password = request.form.get('password', '')
 
         user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password_hash, password) and user.is_admin:
+        if user and user.is_admin and check_password_hash(user.password_hash, password):
             login_user(user)
-            next_url = request.args.get('next') or url_for('admin_dashboard')
-            return redirect(next_url)
+            return redirect(url_for('admin_dashboard'))
         else:
-            flash('Identifiants incorrects ou accès non autorisé')
+            flash('Identifiants incorrects ou accès non autorisé', 'error')
 
     return render_template('admin_login.html')
 
