@@ -7,4 +7,4 @@ python-dotenv==1.0.0
 email-validator==2.0.0
 Pillow>=11.3.0,<12
 gunicorn==21.2.0
-psycopg2-binary==2.9.9   # ✅ ajoute ceci
+psycopg[binary]==3.2.9
