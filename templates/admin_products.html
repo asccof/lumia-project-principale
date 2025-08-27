@@ -219,76 +219,86 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        function deleteProfessional(professionalId) {
-            if (confirm('Êtes-vous sûr de vouloir supprimer ce professionnel ?')) {
-                fetch(`/products/${professionalId}/delete`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        location.reload();
-                    } else {
-                        alert('Erreur lors de la suppression: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Erreur lors de la suppression');
-                });
-            }
-        }
+    function deleteProfessional(professionalId) {
+        if (!confirm('Êtes-vous sûr de vouloir supprimer ce professionnel ?')) return;
 
-        function validateProfessional(professionalId) {
-            if (confirm('Êtes-vous sûr de vouloir valider ce professionnel ?')) {
-                fetch(`/professionals/${professionalId}/validate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Professionnel validé avec succès!');
-                        location.reload();
-                    } else {
-                        alert('Erreur: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Erreur lors de la validation');
-                });
-            }
-        }
+        const url = "{{ url_for('admin_delete_product', product_id=0) }}".replace('0', professionalId);
 
-        function rejectProfessional(professionalId) {
-            if (confirm('Êtes-vous sûr de vouloir rejeter ce professionnel ?')) {
-                fetch(`/professionals/${professionalId}/reject`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Professionnel rejeté');
-                        location.reload();
-                    } else {
-                        alert('Erreur: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Erreur lors du rejet');
-                });
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(async (res) => {
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
+        })
+        .then((data) => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Erreur lors de la suppression: ' + (data.message || ''));
             }
-        }
-    </script>
+        })
+        .catch((err) => {
+            console.error(err);
+            alert('Erreur lors de la suppression');
+        });
+    }
+
+    function validateProfessional(professionalId) {
+        if (!confirm('Êtes-vous sûr de vouloir valider ce professionnel ?')) return;
+
+        const url = "{{ url_for('validate_professional', professional_id=0) }}".replace('0', professionalId);
+
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(async (res) => {
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
+        })
+        .then((data) => {
+            if (data.success) {
+                alert('Professionnel validé avec succès!');
+                location.reload();
+            } else {
+                alert('Erreur: ' + (data.message || ''));
+            }
+        })
+        .catch((err) => {
+            console.error(err);
+            alert('Erreur lors de la validation');
+        });
+    }
+
+    function rejectProfessional(professionalId) {
+        if (!confirm('Êtes-vous sûr de vouloir rejeter ce professionnel ?')) return;
+
+        const url = "{{ url_for('reject_professional', professional_id=0) }}".replace('0', professionalId);
+
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(async (res) => {
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
+        })
+        .then((data) => {
+            if (data.success) {
+                alert('Professionnel rejeté');
+                location.reload();
+            } else {
+                alert('Erreur: ' + (data.message || ''));
+            }
+        })
+        .catch((err) => {
+            console.error(err);
+            alert('Erreur lors du rejet');
+        });
+    }
+</script>
+
 </body>
 </html> 
