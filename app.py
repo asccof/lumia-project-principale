@@ -43,25 +43,44 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-# 1) URI principale
-db_url = os.getenv("DATABASE_URL", "")
-if not db_url:
-    db_url = "sqlite:///local.db"  # fallback dev
-db_url = _normalize_pg_uri(db_url)
-app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+import os
+from flask_sqlalchemy import SQLAlchemy
 
-# 2) BINDS éventuels
+# Crée l'objet db SANS l'attacher encore à app
+db = SQLAlchemy()
+
+# --- Config DB : FORCER Postgres, pas de fallback ---
+uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
+if not uri:
+    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
+
+# Compat psycopg3 (SQLAlchemy 2.x)
+if uri.startswith("postgres://"):
+    uri = uri.replace("postgres://", "postgresql+psycopg://", 1)
+elif uri.startswith("postgresql://"):
+    uri = uri.replace("postgresql://", "postgresql+psycopg://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = uri
+
+# BINDS éventuels (si tu en utilises)
 binds = app.config.get("SQLALCHEMY_BINDS", {})
 if isinstance(binds, dict) and binds:
-    app.config["SQLALCHEMY_BINDS"] = {name: _normalize_pg_uri(uri) for name, uri in binds.items()}
+    fixed_binds = {}
+    for name, u in binds.items():
+        if u.startswith("postgres://"):
+            u = u.replace("postgres://", "postgresql+psycopg://", 1)
+        elif u.startswith("postgresql://"):
+            u = u.replace("postgresql://", "postgresql+psycopg://", 1)
+        fixed_binds[name] = u
+    app.config["SQLALCHEMY_BINDS"] = fixed_binds
 
-# 3) Options SQLAlchemy
+# Options SQLAlchemy
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
-# === END PATCH psycopg3 ===
 
+# Attache db à l'app ICI
+db.init_app(app)
 
-db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
