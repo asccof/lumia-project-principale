@@ -27,7 +27,9 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+# ----------------------------
 # Modèles de base de données
+# ----------------------------
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -91,8 +93,9 @@ class Appointment(db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
-
-# Routes principales
+# ----------------------------
+# Routes principales (publiques)
+# ----------------------------
 @app.route('/')
 def index():
     featured_professionals = Professional.query.limit(6).all()
@@ -102,10 +105,10 @@ def index():
 def professionals():
     specialty = request.args.get('specialty', 'all')
     search_query = request.args.get('q', '')
-    
+
     # Base query - seulement les professionnels validés
     base_query = Professional.query.filter_by(status='valide')
-    
+
     if search_query:
         # Recherche par nom, spécialité, ville ou description
         professionals = base_query.filter(
@@ -120,8 +123,13 @@ def professionals():
         professionals = base_query.filter_by(specialty=specialty).all()
     else:
         professionals = base_query.all()
-    
-    return render_template('professionals.html', professionals=professionals, specialty=specialty, search_query=search_query)
+
+    return render_template(
+        'professionals.html',
+        professionals=professionals,
+        specialty=specialty,
+        search_query=search_query
+    )
 
 @app.route('/professional/<int:professional_id>')
 def professional_detail(professional_id):
@@ -136,60 +144,69 @@ def about():
 def contact():
     return render_template('contact.html')
 
+
+# ----------------------------
 # Routes d'authentification
+# ----------------------------
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == 'POST']:
+    if request.method == 'POST':
         username = request.form['username']
-        email = request.form['email']
+        email    = request.form['email']
         password = request.form['password']
-        
+
         if User.query.filter_by(username=username).first():
             flash('Nom d\'utilisateur déjà pris')
             return redirect(url_for('register'))
-        
+
         if User.query.filter_by(email=email).first():
             flash('Email déjà enregistré')
             return redirect(url_for('register'))
-        
-        user = User(username=username, email=email, password_hash=generate_password_hash(password), user_type='patient')
+
+        user = User(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password),
+            user_type='patient'
+        )
         db.session.add(user)
         db.session.commit()
-        
+
         flash('Compte patient créé avec succès!')
         return redirect(url_for('login'))
-    
+
     return render_template('register.html')
+
 
 @app.route('/professional_register', methods=['GET', 'POST'])
 def professional_register():
-    if request.method == 'POST']:
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
-        specialty = request.form.get('specialty', '')
-        city = request.form.get('city', '')
-        experience = request.form.get('experience', 0)
+    if request.method == 'POST':
+        username    = request.form['username']
+        email       = request.form['email']
+        password    = request.form['password']
+        specialty   = request.form.get('specialty', '')
+        city        = request.form.get('city', '')
+        experience  = request.form.get('experience', 0)
         description = request.form.get('description', '')
-        
+
         if User.query.filter_by(username=username).first():
             flash('Nom d\'utilisateur déjà pris')
             return redirect(url_for('professional_register'))
-        
+
         if User.query.filter_by(email=email).first():
             flash('Email déjà enregistré')
             return redirect(url_for('professional_register'))
-        
+
         # Créer l'utilisateur
         user = User(
-            username=username, 
-            email=email, 
-            password_hash=generate_password_hash(password), 
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password),
             user_type='professional'
         )
         db.session.add(user)
         db.session.commit()
-        
+
         # Créer le profil professionnel
         consultation_fee = float(request.form.get('consultation_fee', 0))
         professional = Professional(
@@ -203,19 +220,20 @@ def professional_register():
         )
         db.session.add(professional)
         db.session.commit()
-        
+
         flash('Compte professionnel créé avec succès! Un administrateur validera votre profil.')
         return redirect(url_for('login'))
-    
+
     return render_template('professional_register.html')
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST']:
+    if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-        user = User.query.filter_by(username=username).first()
-        
+        user     = User.query.filter_by(username=username).first()
+
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
             if user.user_type == 'professional':
@@ -226,32 +244,42 @@ def login():
                 return redirect(url_for('index'))
         else:
             flash('Nom d\'utilisateur ou mot de passe incorrect')
-    
+
     return render_template('login.html')
+
 
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('index'))
-
+# ----------------------------
+# Espace professionnel
+# ----------------------------
 @app.route('/professional_dashboard')
 @login_required
 def professional_dashboard():
     if current_user.user_type != 'professional':
         flash('Accès non autorisé')
         return redirect(url_for('index'))
-    
+
     # Récupérer le profil professionnel
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
-    
+
     # Récupérer les rendez-vous du professionnel
-    appointments = Appointment.query.filter_by(professional_id=professional.id).order_by(Appointment.appointment_date.desc()).all()
-    
-    return render_template('professional_dashboard.html', professional=professional, appointments=appointments)
+    appointments = Appointment.query.filter_by(
+        professional_id=professional.id
+    ).order_by(Appointment.appointment_date.desc()).all()
+
+    return render_template(
+        'professional_dashboard.html',
+        professional=professional,
+        appointments=appointments
+    )
+
 
 @app.route('/professional/availability', methods=['GET', 'POST'])
 @login_required
@@ -259,22 +287,24 @@ def professional_availability():
     if current_user.user_type != 'professional':
         flash('Accès non autorisé')
         return redirect(url_for('index'))
-    
+
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
-    
-    if request.method == 'POST']:
+
+    if request.method == 'POST':
         # Supprimer les anciennes disponibilités
-        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
-        
+        ProfessionalAvailability.query.filter_by(
+            professional_id=professional.id
+        ).delete()
+
         # Ajouter les nouvelles disponibilités
         for day in range(7):  # 0-6 pour les jours de la semaine
-            start_time = request.form.get(f'start_time_{day}')
-            end_time = request.form.get(f'end_time_{day}')
+            start_time   = request.form.get(f'start_time_{day}')
+            end_time     = request.form.get(f'end_time_{day}')
             is_available = request.form.get(f'available_{day}') == 'on'
-            
+
             if is_available and start_time and end_time:
                 availability = ProfessionalAvailability(
                     professional_id=professional.id,
@@ -284,16 +314,21 @@ def professional_availability():
                     is_available=True
                 )
                 db.session.add(availability)
-        
+
         db.session.commit()
         flash('Disponibilités mises à jour avec succès!')
         return redirect(url_for('professional_availability'))
-    
+
     # Récupérer les disponibilités actuelles
-    availabilities = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
+    availabilities   = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
     availability_dict = {av.day_of_week: av for av in availabilities}
-    
-    return render_template('professional_availability.html', professional=professional, availabilities=availability_dict)
+
+    return render_template(
+        'professional_availability.html',
+        professional=professional,
+        availabilities=availability_dict
+    )
+
 
 @app.route('/professional/unavailable-slots', methods=['GET', 'POST'])
 @login_required
@@ -301,25 +336,25 @@ def professional_unavailable_slots():
     if current_user.user_type != 'professional':
         flash('Accès non autorisé')
         return redirect(url_for('index'))
-    
+
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
-    
-    if request.method == 'POST']:
-        date = request.form['date']
+
+    if request.method == 'POST':
+        date       = request.form['date']
         start_time = request.form['start_time']
-        end_time = request.form['end_time']
-        reason = request.form.get('reason', '')
-        
+        end_time   = request.form['end_time']
+        reason     = request.form.get('reason', '')
+
         # Vérifier que la date n'est pas dans le passé
-        from datetime import datetime, date as date_type
-        slot_date = datetime.strptime(date, '%Y-%m-%d').date()
+        from datetime import datetime as dt, date as date_type
+        slot_date = dt.strptime(date, '%Y-%m-%d').date()
         if slot_date < date_type.today():
             flash('Vous ne pouvez pas bloquer une date dans le passé')
             return redirect(url_for('professional_unavailable_slots'))
-        
+
         # Créer le créneau indisponible
         unavailable_slot = UnavailableSlot(
             professional_id=professional.id,
@@ -330,14 +365,21 @@ def professional_unavailable_slots():
         )
         db.session.add(unavailable_slot)
         db.session.commit()
-        
+
         flash('Créneau indisponible ajouté avec succès!')
         return redirect(url_for('professional_unavailable_slots'))
-    
+
     # Récupérer les créneaux indisponibles
-    unavailable_slots = UnavailableSlot.query.filter_by(professional_id=professional.id).order_by(UnavailableSlot.date.desc()).all()
-    
-    return render_template('professional_unavailable_slots.html', professional=professional, unavailable_slots=unavailable_slots)
+    unavailable_slots = UnavailableSlot.query.filter_by(
+        professional_id=professional.id
+    ).order_by(UnavailableSlot.date.desc()).all()
+
+    return render_template(
+        'professional_unavailable_slots.html',
+        professional=professional,
+        unavailable_slots=unavailable_slots
+    )
+
 
 @app.route('/professional/unavailable-slots/<int:slot_id>/delete', methods=['POST'])
 @login_required
@@ -345,23 +387,24 @@ def delete_unavailable_slot(slot_id):
     if current_user.user_type != 'professional':
         flash('Accès non autorisé')
         return redirect(url_for('index'))
-    
+
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
-    
+
     slot = UnavailableSlot.query.get_or_404(slot_id)
-    
+
     # Vérifier que le créneau appartient à ce professionnel
     if slot.professional_id != professional.id:
         flash('Accès non autorisé')
         return redirect(url_for('professional_unavailable_slots'))
-    
+
     db.session.delete(slot)
     db.session.commit()
     flash('Créneau indisponible supprimé!')
     return redirect(url_for('professional_unavailable_slots'))
+
 
 @app.route('/professional/appointments')
 @login_required
@@ -369,14 +412,18 @@ def professional_appointments():
     if current_user.user_type != 'professional':
         flash('Accès non autorisé')
         return redirect(url_for('index'))
-    
+
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
-    
-    appointments = Appointment.query.filter_by(professional_id=professional.id).order_by(Appointment.appointment_date.desc()).all()
+
+    appointments = Appointment.query.filter_by(
+        professional_id=professional.id
+    ).order_by(Appointment.appointment_date.desc()).all()
+
     return render_template('professional_appointments.html', professional=professional, appointments=appointments)
+
 
 @app.route('/professional/appointment/<int:appointment_id>/<action>', methods=['POST'])
 @login_required
@@ -384,33 +431,33 @@ def professional_appointment_action(appointment_id, action):
     if current_user.user_type != 'professional':
         flash('Accès non autorisé')
         return redirect(url_for('index'))
-    
+
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
-    
+
     appointment = Appointment.query.get_or_404(appointment_id)
-    
+
     # Vérifier que le rendez-vous appartient à ce professionnel
     if appointment.professional_id != professional.id:
         flash('Accès non autorisé')
         return redirect(url_for('professional_appointments'))
-    
+
     if action == 'accept':
         appointment.status = 'confirme'
         flash('Rendez-vous accepté!')
     elif action == 'reject':
         appointment.status = 'annule'
         flash('Rendez-vous refusé!')
-    
+
     db.session.commit()
     return redirect(url_for('professional_appointments'))
 
-# Note: L'administration a été déplacée vers un serveur séparé sur le port 8080
-# Accédez à l'administration via: http://localhost:8080
 
-# API Routes
+# ----------------------------
+# API Publique
+# ----------------------------
 @app.route('/api/professionals')
 def api_professionals():
     professionals = Professional.query.all()
@@ -424,38 +471,39 @@ def api_professionals():
         'availability': p.availability
     } for p in professionals])
 
+
 @app.route('/api/professional/<int:professional_id>/available-slots')
 def api_available_slots(professional_id):
     """API pour récupérer les créneaux disponibles d'un professionnel"""
-    from datetime import datetime, date, timedelta
-    
+    from datetime import datetime as dt, date, timedelta
+
     professional = Professional.query.get_or_404(professional_id)
-    
+
     # Vérifier que le professionnel est validé
     if professional.status != 'valide':
         return jsonify({'error': 'Professionnel non validé'}), 400
-    
+
     # Récupérer la date demandée (par défaut aujourd'hui)
     requested_date = request.args.get('date', date.today().isoformat())
     try:
-        target_date = datetime.strptime(requested_date, '%Y-%m-%d').date()
+        target_date = dt.strptime(requested_date, '%Y-%m-%d').date()
     except ValueError:
         return jsonify({'error': 'Format de date invalide'}), 400
-    
+
     # Récupérer les disponibilités hebdomadaires
-    day_of_week = target_date.weekday()
+    day_of_week   = target_date.weekday()
     availabilities = ProfessionalAvailability.query.filter_by(
         professional_id=professional_id,
         day_of_week=day_of_week,
         is_available=True
     ).all()
-    
+
     # Récupérer les créneaux indisponibles pour cette date
     unavailable_slots = UnavailableSlot.query.filter_by(
         professional_id=professional_id,
         date=target_date
     ).all()
-    
+
     # Récupérer les rendez-vous confirmés pour cette date
     confirmed_appointments = Appointment.query.filter_by(
         professional_id=professional_id,
@@ -463,89 +511,91 @@ def api_available_slots(professional_id):
     ).filter(
         db.func.date(Appointment.appointment_date) == target_date
     ).all()
-    
+
     # Générer les créneaux disponibles
     available_slots = []
-    
+
     for availability in availabilities:
-        start_time = datetime.strptime(availability.start_time, '%H:%M').time()
-        end_time = datetime.strptime(availability.end_time, '%H:%M').time()
-        
+        start_time = dt.strptime(availability.start_time, '%H:%M').time()
+        end_time   = dt.strptime(availability.end_time, '%H:%M').time()
+
         # Générer des créneaux de 30 minutes
         current_time = start_time
         while current_time < end_time:
             slot_start = current_time
-            slot_end = (datetime.combine(date.today(), current_time) + timedelta(minutes=30)).time()
-            
-            # Vérifier si ce créneau n'est pas indisponible
+            slot_end   = (dt.combine(date.today(), current_time) + timedelta(minutes=30)).time()
+
+            # Indisponibilités
             is_unavailable = False
             for unavailable in unavailable_slots:
-                unavailable_start = datetime.strptime(unavailable.start_time, '%H:%M').time()
-                unavailable_end = datetime.strptime(unavailable.end_time, '%H:%M').time()
-                
+                unavailable_start = dt.strptime(unavailable.start_time, '%H:%M').time()
+                unavailable_end   = dt.strptime(unavailable.end_time,   '%H:%M').time()
                 if (slot_start >= unavailable_start and slot_start < unavailable_end) or \
                    (slot_end > unavailable_start and slot_end <= unavailable_end):
                     is_unavailable = True
                     break
-            
-            # Vérifier si ce créneau n'est pas déjà réservé
+
+            # Déjà réservé ?
             is_booked = False
             for appointment in confirmed_appointments:
                 appointment_time = appointment.appointment_date.time()
                 if slot_start <= appointment_time < slot_end:
                     is_booked = True
                     break
-            
+
             if not is_unavailable and not is_booked:
                 available_slots.append({
                     'start_time': slot_start.strftime('%H:%M'),
                     'end_time': slot_end.strftime('%H:%M'),
                     'available': True
                 })
-            
+
             current_time = slot_end
-    
+
     return jsonify({
         'professional_id': professional_id,
         'date': target_date.isoformat(),
         'available_slots': available_slots
     })
-
+# ----------------------------
+# Réservation
+# ----------------------------
 @app.route('/book_appointment/<int:professional_id>', methods=['GET', 'POST'])
 @login_required
 def book_appointment(professional_id):
+    from datetime import datetime as dt, date, timedelta
+
     professional = Professional.query.get_or_404(professional_id)
-    
+
     # Vérifier que le professionnel est validé
     if professional.status != 'valide':
         flash('Ce professionnel n\'est pas encore validé par l\'administration.')
         return redirect(url_for('professionals'))
-    
-    if request.method == 'POST']:
+
+    if request.method == 'POST':
         appointment_date = request.form['appointment_date']
         appointment_time = request.form['appointment_time']
         consultation_type = request.form['consultation_type']
         notes = request.form.get('notes', '')
-        
+
         # Validation de la date (pas de rendez-vous dans le passé)
-        from datetime import datetime, date
         try:
-            appointment_date_obj = datetime.strptime(appointment_date, '%Y-%m-%d').date()
+            appointment_date_obj = dt.strptime(appointment_date, '%Y-%m-%d').date()
             if appointment_date_obj < date.today():
                 flash('Impossible de réserver un rendez-vous dans le passé.')
                 return redirect(url_for('book_appointment', professional_id=professional_id))
         except ValueError:
             flash('Format de date invalide.')
             return redirect(url_for('book_appointment', professional_id=professional_id))
-        
+
         # Combiner date et heure
         datetime_str = f"{appointment_date} {appointment_time}"
         try:
-            appointment_datetime = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
+            appointment_datetime = dt.strptime(datetime_str, '%Y-%m-%d %H:%M')
         except ValueError:
             flash('Format de date/heure invalide.')
             return redirect(url_for('book_appointment', professional_id=professional_id))
-        
+
         # Vérifier les disponibilités du professionnel
         day_of_week = appointment_datetime.weekday()
         availabilities = ProfessionalAvailability.query.filter_by(
@@ -553,41 +603,41 @@ def book_appointment(professional_id):
             day_of_week=day_of_week,
             is_available=True
         ).all()
-        
+
         # Vérifier si l'heure est dans les disponibilités
-        time_str = appointment_time
+        time_str     = appointment_time
         is_available = False
         for availability in availabilities:
             if availability.start_time <= time_str <= availability.end_time:
                 is_available = True
                 break
-        
+
         if not is_available:
             flash('Cette heure n\'est pas disponible pour ce professionnel.')
             return redirect(url_for('book_appointment', professional_id=professional_id))
-        
+
         # Vérifier s'il n'y a pas déjà un rendez-vous à cette heure
         existing_appointment = Appointment.query.filter_by(
             professional_id=professional_id,
             appointment_date=appointment_datetime,
             status='confirme'
         ).first()
-        
+
         if existing_appointment:
             flash('Ce créneau est déjà réservé.')
             return redirect(url_for('book_appointment', professional_id=professional_id))
-        
+
         # Vérifier les créneaux indisponibles
         unavailable_slots = UnavailableSlot.query.filter_by(
             professional_id=professional_id,
             date=appointment_date_obj
         ).all()
-        
+
         for slot in unavailable_slots:
             if (slot.start_time <= appointment_time <= slot.end_time):
                 flash('Ce créneau est marqué comme indisponible par le professionnel.')
                 return redirect(url_for('book_appointment', professional_id=professional_id))
-        
+
         # Créer le rendez-vous
         appointment = Appointment(
             patient_id=current_user.id,
@@ -597,55 +647,72 @@ def book_appointment(professional_id):
             status='en_attente',
             notes=notes
         )
-        
+
         db.session.add(appointment)
         db.session.commit()
-        
+
         flash('Rendez-vous réservé avec succès! Le professionnel vous confirmera bientôt.')
         return redirect(url_for('my_appointments'))
-    
+
     # Récupérer les disponibilités pour affichage
     availabilities = ProfessionalAvailability.query.filter_by(
         professional_id=professional_id,
         is_available=True
     ).all()
-    
+
     # Récupérer les créneaux indisponibles pour les 30 prochains jours
-    from datetime import date, timedelta
     today = date.today()
     future_dates = [today + timedelta(days=i) for i in range(30)]
-    
+
     unavailable_dates = []
     for future_date in future_dates:
-        unavailable_slots = UnavailableSlot.query.filter_by(
+        _unavailable = UnavailableSlot.query.filter_by(
             professional_id=professional_id,
             date=future_date
         ).all()
-        if unavailable_slots:
+        if _unavailable:
             unavailable_dates.append(future_date.isoformat())
-    
-    return render_template('book_appointment.html', 
-                         professional=professional, 
-                         availabilities=availabilities,
-                         unavailable_dates=unavailable_dates)
 
+    return render_template(
+        'book_appointment.html',
+        professional=professional,
+        availabilities=availabilities,
+        unavailable_dates=unavailable_dates
+    )
+
+
+# ----------------------------
+# Mes rendez-vous
+# ----------------------------
 @app.route('/my_appointments')
 @login_required
 def my_appointments():
     if current_user.user_type == 'professional':
         # Pour les professionnels, afficher leurs rendez-vous
-        appointments = Appointment.query.filter_by(professional_id=current_user.id).all()
+        professional = Professional.query.filter_by(name=current_user.username).first()
+        if professional:
+            appointments = Appointment.query.filter_by(
+                professional_id=professional.id
+            ).all()
+        else:
+            appointments = []
     else:
         # Pour les patients, afficher leurs rendez-vous
-        appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
-    
+        appointments = Appointment.query.filter_by(
+            patient_id=current_user.id
+        ).all()
+
     return render_template('my_appointments.html', appointments=appointments)
 
+
+# ----------------------------
+# Page de statut
+# ----------------------------
 @app.route('/site-status')
 def site_status():
     """Page de statut du site pour afficher les informations de validation"""
     status = app.config.get('SITE_STATUS', {})
-    
+
     # Récupérer des statistiques en temps réel
     real_time_stats = {
         'total_professionals': Professional.query.count(),
@@ -655,21 +722,28 @@ def site_status():
         'server_port': 5000,
         'admin_port': 8080
     }
-    
+
     return render_template('site_status.html', status=status, stats=real_time_stats)
 
-# Expose admin as a mounted app under /admin for production single-process deployments
-# Note: In local dev you can still run admin_server.py separately on port 8080
+
+# ----------------------------
+# Montage de l'admin sous /admin
+# ----------------------------
 mounted_admin = DispatcherMiddleware(app.wsgi_app, {
     '/admin': admin_app.wsgi_app
 })
+
 # IMPORTANT pour Gunicorn/Render: activer le dispatcher sur l'app WSGI
 app.wsgi_app = mounted_admin
 
+
+# ----------------------------
+# Bootstrap (local & Render)
+# ----------------------------
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-        
+
         # Créer un admin par défaut si aucun utilisateur n'existe
         if not User.query.first():
             admin = User(
@@ -681,7 +755,7 @@ if __name__ == '__main__':
             )
             db.session.add(admin)
             db.session.commit()
-        
+
         # Ajouter des professionnels d'exemple si la table est vide
         if not Professional.query.first():
             examples = [
@@ -762,19 +836,14 @@ if __name__ == '__main__':
                 db.session.add(prof)
             db.session.commit()
 
-    # Messages de statut stockés pour affichage dans le site
-    app.config['SITE_STATUS'] = {
-        'server_started': True,
-        'admin_credentials': 'admin / admin123',
-        'database_ready': True,
-        'startup_time': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    }
-    
-    # Configuration de l'admin intégré avec DispatcherMiddleware (pour exécution locale unique)
-    mounted_admin = DispatcherMiddleware(app.wsgi_app, {
-        '/admin': admin_app.wsgi_app
-    })
-    
-    # Run with the dispatcher to serve / and /admin from a single process (mode local)
+        # Messages de statut stockés pour affichage dans le site
+        app.config['SITE_STATUS'] = {
+            'server_started': True,
+            'admin_credentials': 'admin / admin123',
+            'database_ready': True,
+            'startup_time': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        }
+
+    # Exécution locale (un seul process) : servir / et /admin
     from werkzeug.serving import run_simple
     run_simple('0.0.0.0', 5000, mounted_admin, use_debugger=True, use_reloader=False)
