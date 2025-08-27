@@ -3,23 +3,19 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date, timedelta
-import os
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
-from admin_server import app as admin_app
 from sqlalchemy import or_, func
+import os
 
+# --- Crée l'app Flask ---
 app = Flask(__name__)
-import os
 
-uri = os.environ.get("DATABASE_URL")
-if uri and uri.startswith("postgres://"):
-    uri = uri.replace("postgres://", "postgresql+psycopg://", 1)
+# --- Secret & sessions ---
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = True  # Render est en HTTPS
 
-app.config["SQLALCHEMY_DATABASE_URI"] = uri
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-# === BEGIN PATCH psycopg3 (robuste: URI + BINDS) ===
-import os
+# --- Normalisation de l'URI Postgres -> psycopg3 ---
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 def _normalize_pg_uri(uri: str) -> str:
@@ -43,12 +39,63 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-import os
-from flask_sqlalchemy import SQLAlchemy
-
-# Crée l'objet db SANS l'attacher encore à app
+# --- SQLAlchemy: créer l'objet puis l'attacher après config ---
 db = SQLAlchemy()
 
+# ⚠️ FORCER Postgres : AUCUN fallback SQLite
+uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
+if not uri:
+    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render (Add from Service).")
+
+uri = _normalize_pg_uri(uri)
+app.config["SQLALCHEMY_DATABASE_URI"] = uri
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
+
+# Attacher l'instance SQLAlchemy à l'app
+db.init_app(app)
+
+# (Optionnel) Log “safe” de l’URI pour vérifier qu’on n’est PAS en sqlite
+safe = uri.split("@")[-1] if "@" in uri else uri
+app.logger.info(f"DB active: postgresql://***@{safe}")
+
+# --- Importe ton sous-serveur admin APRÈS config DB ---
+# Il doit utiliser le même modèle User/DB. S'il importe 'db', assure-toi que c'est 'from models import db'.
+from admin_server import app as admin_app
+
+# Monte /admin vers l'app admin
+app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {"/admin": admin_app})
+
+# --- (Optionnel mais recommandé) Créer les tables + seed un admin si absent ---
+# Assure-toi que dans models.py:  __tablename__ = "users"
+from models import User  # importe APRES avoir fait db.init_app(app)
+
+with app.app_context():
+    db.create_all()
+    # Seed admin depuis ENV, sinon valeurs par défaut
+    admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+    admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    u = User.query.filter_by(username=admin_username).first()
+    if not u:
+        u = User(
+            username=admin_username,
+            email=admin_email,
+            password_hash=generate_password_hash(admin_password),
+            is_admin=True,
+            user_type="professional",
+        )
+        db.session.add(u)
+        db.session.commit()
+        app.logger.info(f"Admin '{admin_username}' créé.")
+
+# --------------------------------------------------------------------
+# ↓ Tes routes “site public” continuent ici (si tu en as dans app.py) ↓
+# --------------------------------------------------------------------
+# Exemple:
+@app.get("/")
+def home():
+    return render_template("index.html")
 # --- Config DB : FORCER Postgres, pas de fallback ---
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
 if not uri:
