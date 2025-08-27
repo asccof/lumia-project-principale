@@ -119,15 +119,32 @@ def admin_add_product():
         return redirect(url_for('admin_login'))
 
     if request.method == 'POST':
-        name = request.form['name']
-        description = request.form['description']
-        consultation_fee = float(request.form['consultation_fee'])
-        specialty = request.form['specialty']
-        location = request.form['location']
-        experience_years = int(request.form['experience_years'])
-        image_url = request.form.get('image_url', '')
-        phone = request.form.get('phone', '+212 6 XX XX XX XX')
+        # Récupération "safe" des champs
+        name = request.form.get('name', '').strip()
+        description = request.form.get('description', '').strip()
+        fee_raw = (request.form.get('consultation_fee', '0') or '0').replace(',', '.')
+        specialty = request.form.get('specialty', '').strip()
+        location = request.form.get('location', '').strip()
+        exp_raw = request.form.get('experience_years', '0') or '0'
+        image_url = request.form.get('image_url', '').strip()
+        phone = request.form.get('phone', '+212 6 XX XX XX XX').strip()
 
+        # Validations minimales
+        if not name or not description or not specialty or not location:
+            flash("Veuillez remplir tous les champs obligatoires (nom, description, spécialité, ville).", "error")
+            return redirect(url_for('admin_add_product'))
+
+        try:
+            consultation_fee = float(fee_raw)
+        except ValueError:
+            consultation_fee = 0.0
+
+        try:
+            experience_years = int(exp_raw)
+        except ValueError:
+            experience_years = 0
+
+        # Création
         professional = Professional(
             name=name,
             description=description,
@@ -136,14 +153,17 @@ def admin_add_product():
             location=location,
             experience_years=experience_years,
             image_url=image_url,
-            phone=phone
+            phone=phone,
+            status='en_attente'
         )
         db.session.add(professional)
         db.session.commit()
+
         flash('Professionnel ajouté avec succès!')
         return redirect(url_for('admin_products'))
 
     return render_template('add_product.html')
+
 
 @app.route('/products/edit/<int:product_id>', methods=['GET', 'POST'])
 @login_required
