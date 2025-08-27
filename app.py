@@ -1,37 +1,27 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, date, timedelta
+from flask import Flask
+from flask_login import LoginManager
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
-from sqlalchemy import or_, func
 import os
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-# --- Crée l'app Flask ---
+# --- App principale ---
 app = Flask(__name__)
-
-# --- Secret & sessions ---
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = True  # Render est en HTTPS
 
 # --- Normalisation de l'URI Postgres -> psycopg3 ---
-from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
-
 def _normalize_pg_uri(uri: str) -> str:
     if not uri:
         return uri
-    # Uniformiser postgres:// -> postgresql://
     if uri.startswith("postgres://"):
         uri = "postgresql://" + uri[len("postgres://"):]
-    # Forcer psycopg3
     if uri.startswith("postgresql+psycopg2://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
     elif uri.startswith("postgresql+psycopg2cffi://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2cffi://"):]
     elif uri.startswith("postgresql://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
-    # Ajouter sslmode=require si absent
     parsed = urlparse(uri)
     q = parse_qs(parsed.query)
     if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
@@ -39,32 +29,25 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-# --- SQLAlchemy: créer l'objet puis l'attacher après config ---
-from models import db, User
+# --- Config DB (une seule instance SQLAlchemy : celle de models.py) ---
+from models import db, User, Professional, Appointment  # <-- IMPORTER l'instance existante
 
-# ⚠️ FORCER Postgres : AUCUN fallback SQLite
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
 if not uri:
-    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render (Add from Service).")
-
+    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
 uri = _normalize_pg_uri(uri)
+
 app.config["SQLALCHEMY_DATABASE_URI"] = uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 
-# Attacher l'instance SQLAlchemy à l'app
+# Attacher l'instance SQLAlchemy UNE FOIS à l'app principale
 db.init_app(app)
 
-# (Optionnel) Log “safe” de l’URI pour vérifier qu’on n’est PAS en sqlite
-safe = uri.split("@")[-1] if "@" in uri else uri
-app.logger.info(f"DB active: postgresql://***@{safe}")
-
-# --- Importe ton sous-serveur admin APRÈS config DB ---
-# Il doit utiliser le même modèle User/DB. S'il importe 'db', assure-toi que c'est 'from models import db'.
-from admin_server import app as admin_app
-
-# Monte /admin vers l'app admin
+# --- Monter le sous-serveur admin (sa propre Flask app) ---
+from admin_server import app as admin_app  # importe après config DB
 app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {"/admin": admin_app})
+
 
 # --- (Optionnel mais recommandé) Créer les tables + seed un admin si absent ---
 # Assure-toi que dans models.py:  __tablename__ = "users"
