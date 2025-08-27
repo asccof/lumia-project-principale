@@ -45,11 +45,33 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'admin_login'
 
+@login_manager.user_loader
+def load_user(user_id):
+    try:
+        # SQLAlchemy 2.x : récupération par clé primaire
+        return db.session.get(User, int(user_id))
+    except Exception:
+        return None
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+
+        user = User.query.filter_by(username=username).first()
+
         if user and check_password_hash(user.password_hash, password) and user.is_admin:
             login_user(user)
-            return redirect(url_for('admin_dashboard'))
+            next_url = request.args.get('next') or url_for('admin_dashboard')
+            return redirect(next_url)
         else:
             flash('Identifiants incorrects ou accès non autorisé')
+
+    return render_template('admin_login.html')
+
+
 
     return render_template('admin_login.html')
 
