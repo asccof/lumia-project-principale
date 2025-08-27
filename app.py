@@ -9,18 +9,25 @@ from admin_server import app as admin_app
 from sqlalchemy import or_, func
 
 app = Flask(__name__)
+# === BEGIN PATCH psycopg2 (si Python 3.12) ===
+import os
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-# Configuration pour production (Render.com)
-if os.environ.get('DATABASE_URL'):
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace(
-        'postgres://', 'postgresql+psycopg://'
-    )
-else:
-    # Développement - SQLite
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tighri.db'
+db_url = os.getenv("DATABASE_URL", "")
+if not db_url:
+    db_url = "sqlite:///local.db"
 
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'votre_cle_secrete_ici')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+parsed = urlparse(db_url)
+query = parse_qs(parsed.query)
+if "sslmode" not in query and parsed.scheme.startswith("postgres"):
+    query["sslmode"] = ["require"]
+new_query = urlencode({k: v[0] for k, v in query.items()})
+db_url = urlunparse(parsed._replace(query=new_query))
+
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
+# === END PATCH psycopg2 ===
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
