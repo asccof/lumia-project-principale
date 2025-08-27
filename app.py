@@ -9,6 +9,15 @@ from admin_server import app as admin_app
 from sqlalchemy import or_, func
 
 app = Flask(__name__)
+import os
+
+uri = os.environ.get("DATABASE_URL")
+if uri and uri.startswith("postgres://"):
+    uri = uri.replace("postgres://", "postgresql+psycopg://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = uri
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
 # === BEGIN PATCH psycopg3 (robuste: URI + BINDS) ===
 import os
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
