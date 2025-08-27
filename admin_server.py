@@ -321,7 +321,7 @@ def add_user():
         flash('Accès refusé')
         return redirect(url_for('admin_login'))
 
-    if request.method == 'POST']:
+    if request.method == 'POST':
         username = request.form['username']
         email = request.form['email']
         password = request.form['password']
