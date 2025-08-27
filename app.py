@@ -2,33 +2,38 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, date as date_type, timedelta
 import os
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from admin_server import app as admin_app
 
 app = Flask(__name__)
 
-# Configuration pour production (Render.com)
+# ----------------------------
+# Config base (Render / local)
+# ----------------------------
 if os.environ.get('DATABASE_URL'):
-    # Production - PostgreSQL (psycopg3)
+    # Render donne encore parfois postgres:// → on force postgresql+psycopg:// pour SQLAlchemy + psycopg3
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace(
         'postgres://', 'postgresql+psycopg://'
     )
 else:
-    # Développement - SQLite
+    # Dev local : SQLite
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tighri.db'
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'votre_cle_secrete_ici')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# ----------------------------
+# Extensions
+# ----------------------------
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 # ----------------------------
-# Modèles de base de données
+# Modèles
 # ----------------------------
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -38,9 +43,14 @@ class User(UserMixin, db.Model):
     user_type = db.Column(db.String(20), default='patient')  # 'patient' ou 'professional'
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_admin = db.Column(db.Boolean, default=False)
-    
+
     # Relations
-    appointments_as_patient = db.relationship('Appointment', foreign_keys='Appointment.patient_id', backref='patient', lazy=True)
+    appointments_as_patient = db.relationship(
+        'Appointment',
+        foreign_keys='Appointment.patient_id',
+        backref='patient',
+        lazy=True
+    )
 
 class Professional(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -56,7 +66,7 @@ class Professional(db.Model):
     experience_years = db.Column(db.Integer, default=0)
     status = db.Column(db.String(20), default='en_attente')  # en_attente, valide, rejete
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
+
     # Relations
     appointments = db.relationship('Appointment', backref='professional', lazy=True)
     availabilities = db.relationship('ProfessionalAvailability', backref='professional', lazy=True, cascade='all, delete-orphan')
@@ -65,19 +75,19 @@ class Professional(db.Model):
 class ProfessionalAvailability(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     professional_id = db.Column(db.Integer, db.ForeignKey('professional.id'), nullable=False)
-    day_of_week = db.Column(db.Integer, nullable=False)  # 0=Monday, 1=Tuesday, etc.
-    start_time = db.Column(db.String(5), nullable=False)  # Format HH:MM
-    end_time = db.Column(db.String(5), nullable=False)  # Format HH:MM
+    day_of_week = db.Column(db.Integer, nullable=False)  # 0=Mon ... 6=Sun
+    start_time = db.Column(db.String(5), nullable=False)  # HH:MM
+    end_time = db.Column(db.String(5), nullable=False)    # HH:MM
     is_available = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class UnavailableSlot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     professional_id = db.Column(db.Integer, db.ForeignKey('professional.id'), nullable=False)
-    date = db.Column(db.Date, nullable=False)  # Date spécifique
-    start_time = db.Column(db.String(5), nullable=False)  # Format HH:MM
-    end_time = db.Column(db.String(5), nullable=False)  # Format HH:MM
-    reason = db.Column(db.String(200))  # Raison (vacances, congé, etc.)
+    date = db.Column(db.Date, nullable=False)             # date spécifique
+    start_time = db.Column(db.String(5), nullable=False)  # HH:MM
+    end_time = db.Column(db.String(5), nullable=False)    # HH:MM
+    reason = db.Column(db.String(200))                    # Raison (vacances, congé, etc.)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Appointment(db.Model):
@@ -90,11 +100,15 @@ class Appointment(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# ----------------------------
+# Login manager
+# ----------------------------
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
 # ----------------------------
-# Routes principales (publiques)
+# Routes publiques
 # ----------------------------
 @app.route('/')
 def index():
@@ -106,11 +120,9 @@ def professionals():
     specialty = request.args.get('specialty', 'all')
     search_query = request.args.get('q', '')
 
-    # Base query - seulement les professionnels validés
     base_query = Professional.query.filter_by(status='valide')
 
     if search_query:
-        # Recherche par nom, spécialité, ville ou description
         professionals = base_query.filter(
             db.or_(
                 Professional.name.ilike(f'%{search_query}%'),
@@ -124,12 +136,7 @@ def professionals():
     else:
         professionals = base_query.all()
 
-    return render_template(
-        'professionals.html',
-        professionals=professionals,
-        specialty=specialty,
-        search_query=search_query
-    )
+    return render_template('professionals.html', professionals=professionals, specialty=specialty, search_query=search_query)
 
 @app.route('/professional/<int:professional_id>')
 def professional_detail(professional_id):
@@ -144,19 +151,18 @@ def about():
 def contact():
     return render_template('contact.html')
 
-
 # ----------------------------
-# Routes d'authentification
+# Authentification
 # ----------------------------
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
-        email    = request.form['email']
+        username = request.form['username'].strip()
+        email = request.form['email'].strip().lower()
         password = request.form['password']
 
         if User.query.filter_by(username=username).first():
-            flash('Nom d\'utilisateur déjà pris')
+            flash('Nom d’utilisateur déjà pris')
             return redirect(url_for('register'))
 
         if User.query.filter_by(email=email).first():
@@ -172,25 +178,24 @@ def register():
         db.session.add(user)
         db.session.commit()
 
-        flash('Compte patient créé avec succès!')
+        flash('Compte patient créé avec succès !')
         return redirect(url_for('login'))
 
     return render_template('register.html')
 
-
 @app.route('/professional_register', methods=['GET', 'POST'])
 def professional_register():
     if request.method == 'POST':
-        username    = request.form['username']
-        email       = request.form['email']
-        password    = request.form['password']
-        specialty   = request.form.get('specialty', '')
-        city        = request.form.get('city', '')
-        experience  = request.form.get('experience', 0)
-        description = request.form.get('description', '')
+        username = request.form['username'].strip()
+        email = request.form['email'].strip().lower()
+        password = request.form['password']
+        specialty = request.form.get('specialty', '').strip()
+        city = request.form.get('city', '').strip()
+        experience = int(request.form.get('experience', 0))
+        description = request.form.get('description', '').strip()
 
         if User.query.filter_by(username=username).first():
-            flash('Nom d\'utilisateur déjà pris')
+            flash('Nom d’utilisateur déjà pris')
             return redirect(url_for('professional_register'))
 
         if User.query.filter_by(email=email).first():
@@ -216,43 +221,42 @@ def professional_register():
             location=city,
             experience_years=experience,
             consultation_fee=consultation_fee,
-            status='en_attente'  # En attente de validation admin
+            status='en_attente'  # en attente de validation admin
         )
         db.session.add(professional)
         db.session.commit()
 
-        flash('Compte professionnel créé avec succès! Un administrateur validera votre profil.')
+        flash('Compte professionnel créé avec succès ! Un administrateur validera votre profil.')
         return redirect(url_for('login'))
 
     return render_template('professional_register.html')
 
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
+        username = request.form['username'].strip()
         password = request.form['password']
-        user     = User.query.filter_by(username=username).first()
+        user = User.query.filter_by(username=username).first()
 
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
             if user.user_type == 'professional':
-                flash('Bienvenue dans votre espace professionnel!')
+                flash('Bienvenue dans votre espace professionnel !')
                 return redirect(url_for('professional_dashboard'))
             else:
-                flash('Connexion réussie!')
+                flash('Connexion réussie !')
                 return redirect(url_for('index'))
         else:
-            flash('Nom d\'utilisateur ou mot de passe incorrect')
+            flash('Nom d’utilisateur ou mot de passe incorrect')
 
     return render_template('login.html')
-
 
 @app.route('/logout')
 @login_required
 def logout():
     logout_user()
     return redirect(url_for('index'))
+
 # ----------------------------
 # Espace professionnel
 # ----------------------------
@@ -263,23 +267,16 @@ def professional_dashboard():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    # Récupérer le profil professionnel
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
 
-    # Récupérer les rendez-vous du professionnel
     appointments = Appointment.query.filter_by(
         professional_id=professional.id
     ).order_by(Appointment.appointment_date.desc()).all()
 
-    return render_template(
-        'professional_dashboard.html',
-        professional=professional,
-        appointments=appointments
-    )
-
+    return render_template('professional_dashboard.html', professional=professional, appointments=appointments)
 
 @app.route('/professional/availability', methods=['GET', 'POST'])
 @login_required
@@ -294,15 +291,13 @@ def professional_availability():
         return redirect(url_for('index'))
 
     if request.method == 'POST':
-        # Supprimer les anciennes disponibilités
-        ProfessionalAvailability.query.filter_by(
-            professional_id=professional.id
-        ).delete()
+        # Supprimer anciennes disponibilités
+        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
 
-        # Ajouter les nouvelles disponibilités
-        for day in range(7):  # 0-6 pour les jours de la semaine
-            start_time   = request.form.get(f'start_time_{day}')
-            end_time     = request.form.get(f'end_time_{day}')
+        # Ajouter nouvelles disponibilités
+        for day in range(7):  # 0-6
+            start_time = request.form.get(f'start_time_{day}')
+            end_time = request.form.get(f'end_time_{day}')
             is_available = request.form.get(f'available_{day}') == 'on'
 
             if is_available and start_time and end_time:
@@ -316,19 +311,13 @@ def professional_availability():
                 db.session.add(availability)
 
         db.session.commit()
-        flash('Disponibilités mises à jour avec succès!')
+        flash('Disponibilités mises à jour avec succès !')
         return redirect(url_for('professional_availability'))
 
-    # Récupérer les disponibilités actuelles
-    availabilities   = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
+    availabilities = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
     availability_dict = {av.day_of_week: av for av in availabilities}
 
-    return render_template(
-        'professional_availability.html',
-        professional=professional,
-        availabilities=availability_dict
-    )
-
+    return render_template('professional_availability.html', professional=professional, availabilities=availability_dict)
 
 @app.route('/professional/unavailable-slots', methods=['GET', 'POST'])
 @login_required
@@ -343,19 +332,17 @@ def professional_unavailable_slots():
         return redirect(url_for('index'))
 
     if request.method == 'POST':
-        date       = request.form['date']
+        form_date = request.form['date']
         start_time = request.form['start_time']
-        end_time   = request.form['end_time']
-        reason     = request.form.get('reason', '')
+        end_time = request.form['end_time']
+        reason = request.form.get('reason', '')
 
-        # Vérifier que la date n'est pas dans le passé
-        from datetime import datetime as dt, date as date_type
-        slot_date = dt.strptime(date, '%Y-%m-%d').date()
+        # Date non passée
+        slot_date = datetime.strptime(form_date, '%Y-%m-%d').date()
         if slot_date < date_type.today():
             flash('Vous ne pouvez pas bloquer une date dans le passé')
             return redirect(url_for('professional_unavailable_slots'))
 
-        # Créer le créneau indisponible
         unavailable_slot = UnavailableSlot(
             professional_id=professional.id,
             date=slot_date,
@@ -366,20 +353,14 @@ def professional_unavailable_slots():
         db.session.add(unavailable_slot)
         db.session.commit()
 
-        flash('Créneau indisponible ajouté avec succès!')
+        flash('Créneau indisponible ajouté avec succès !')
         return redirect(url_for('professional_unavailable_slots'))
 
-    # Récupérer les créneaux indisponibles
     unavailable_slots = UnavailableSlot.query.filter_by(
         professional_id=professional.id
     ).order_by(UnavailableSlot.date.desc()).all()
 
-    return render_template(
-        'professional_unavailable_slots.html',
-        professional=professional,
-        unavailable_slots=unavailable_slots
-    )
-
+    return render_template('professional_unavailable_slots.html', professional=professional, unavailable_slots=unavailable_slots)
 
 @app.route('/professional/unavailable-slots/<int:slot_id>/delete', methods=['POST'])
 @login_required
@@ -395,16 +376,14 @@ def delete_unavailable_slot(slot_id):
 
     slot = UnavailableSlot.query.get_or_404(slot_id)
 
-    # Vérifier que le créneau appartient à ce professionnel
     if slot.professional_id != professional.id:
         flash('Accès non autorisé')
         return redirect(url_for('professional_unavailable_slots'))
 
     db.session.delete(slot)
     db.session.commit()
-    flash('Créneau indisponible supprimé!')
+    flash('Créneau indisponible supprimé !')
     return redirect(url_for('professional_unavailable_slots'))
-
 
 @app.route('/professional/appointments')
 @login_required
@@ -424,7 +403,6 @@ def professional_appointments():
 
     return render_template('professional_appointments.html', professional=professional, appointments=appointments)
 
-
 @app.route('/professional/appointment/<int:appointment_id>/<action>', methods=['POST'])
 @login_required
 def professional_appointment_action(appointment_id, action):
@@ -439,24 +417,22 @@ def professional_appointment_action(appointment_id, action):
 
     appointment = Appointment.query.get_or_404(appointment_id)
 
-    # Vérifier que le rendez-vous appartient à ce professionnel
     if appointment.professional_id != professional.id:
         flash('Accès non autorisé')
         return redirect(url_for('professional_appointments'))
 
     if action == 'accept':
         appointment.status = 'confirme'
-        flash('Rendez-vous accepté!')
+        flash('Rendez-vous accepté !')
     elif action == 'reject':
         appointment.status = 'annule'
-        flash('Rendez-vous refusé!')
+        flash('Rendez-vous refusé !')
 
     db.session.commit()
     return redirect(url_for('professional_appointments'))
 
-
 # ----------------------------
-# API Publique
+# API publiques
 # ----------------------------
 @app.route('/api/professionals')
 def api_professionals():
@@ -471,40 +447,32 @@ def api_professionals():
         'availability': p.availability
     } for p in professionals])
 
-
 @app.route('/api/professional/<int:professional_id>/available-slots')
 def api_available_slots(professional_id):
-    """API pour récupérer les créneaux disponibles d'un professionnel"""
-    from datetime import datetime as dt, date, timedelta
-
+    """Créneaux disponibles (générés par pas de 30 minutes) pour une date donnée."""
     professional = Professional.query.get_or_404(professional_id)
 
-    # Vérifier que le professionnel est validé
     if professional.status != 'valide':
         return jsonify({'error': 'Professionnel non validé'}), 400
 
-    # Récupérer la date demandée (par défaut aujourd'hui)
-    requested_date = request.args.get('date', date.today().isoformat())
+    requested_date = request.args.get('date', date_type.today().isoformat())
     try:
-        target_date = dt.strptime(requested_date, '%Y-%m-%d').date()
+        target_date = datetime.strptime(requested_date, '%Y-%m-%d').date()
     except ValueError:
         return jsonify({'error': 'Format de date invalide'}), 400
 
-    # Récupérer les disponibilités hebdomadaires
-    day_of_week   = target_date.weekday()
+    day_of_week = target_date.weekday()
     availabilities = ProfessionalAvailability.query.filter_by(
         professional_id=professional_id,
         day_of_week=day_of_week,
         is_available=True
     ).all()
 
-    # Récupérer les créneaux indisponibles pour cette date
-    unavailable_slots = UnavailableSlot.query.filter_by(
+    day_unavailable = UnavailableSlot.query.filter_by(
         professional_id=professional_id,
         date=target_date
     ).all()
 
-    # Récupérer les rendez-vous confirmés pour cette date
     confirmed_appointments = Appointment.query.filter_by(
         professional_id=professional_id,
         status='confirme'
@@ -512,34 +480,31 @@ def api_available_slots(professional_id):
         db.func.date(Appointment.appointment_date) == target_date
     ).all()
 
-    # Générer les créneaux disponibles
     available_slots = []
 
     for availability in availabilities:
-        start_time = dt.strptime(availability.start_time, '%H:%M').time()
-        end_time   = dt.strptime(availability.end_time, '%H:%M').time()
+        start_time = datetime.strptime(availability.start_time, '%H:%M').time()
+        end_time = datetime.strptime(availability.end_time, '%H:%M').time()
 
-        # Générer des créneaux de 30 minutes
         current_time = start_time
         while current_time < end_time:
             slot_start = current_time
-            slot_end   = (dt.combine(date.today(), current_time) + timedelta(minutes=30)).time()
+            slot_end = (datetime.combine(target_date, current_time) + timedelta(minutes=30)).time()
 
-            # Indisponibilités
+            # indisponibilités
             is_unavailable = False
-            for unavailable in unavailable_slots:
-                unavailable_start = dt.strptime(unavailable.start_time, '%H:%M').time()
-                unavailable_end   = dt.strptime(unavailable.end_time,   '%H:%M').time()
-                if (slot_start >= unavailable_start and slot_start < unavailable_end) or \
-                   (slot_end > unavailable_start and slot_end <= unavailable_end):
+            for un in day_unavailable:
+                un_start = datetime.strptime(un.start_time, '%H:%M').time()
+                un_end = datetime.strptime(un.end_time, '%H:%M').time()
+                if (slot_start >= un_start and slot_start < un_end) or (slot_end > un_start and slot_end <= un_end):
                     is_unavailable = True
                     break
 
-            # Déjà réservé ?
+            # rdv confirmés
             is_booked = False
-            for appointment in confirmed_appointments:
-                appointment_time = appointment.appointment_date.time()
-                if slot_start <= appointment_time < slot_end:
+            for ap in confirmed_appointments:
+                ap_time = ap.appointment_date.time()
+                if slot_start <= ap_time < slot_end:
                     is_booked = True
                     break
 
@@ -557,19 +522,17 @@ def api_available_slots(professional_id):
         'date': target_date.isoformat(),
         'available_slots': available_slots
     })
+
 # ----------------------------
-# Réservation
+# Réservations
 # ----------------------------
 @app.route('/book_appointment/<int:professional_id>', methods=['GET', 'POST'])
 @login_required
 def book_appointment(professional_id):
-    from datetime import datetime as dt, date, timedelta
-
     professional = Professional.query.get_or_404(professional_id)
 
-    # Vérifier que le professionnel est validé
     if professional.status != 'valide':
-        flash('Ce professionnel n\'est pas encore validé par l\'administration.')
+        flash("Ce professionnel n'est pas encore validé par l'administration.")
         return redirect(url_for('professionals'))
 
     if request.method == 'POST':
@@ -578,25 +541,25 @@ def book_appointment(professional_id):
         consultation_type = request.form['consultation_type']
         notes = request.form.get('notes', '')
 
-        # Validation de la date (pas de rendez-vous dans le passé)
+        # Date future
         try:
-            appointment_date_obj = dt.strptime(appointment_date, '%Y-%m-%d').date()
-            if appointment_date_obj < date.today():
+            appointment_date_obj = datetime.strptime(appointment_date, '%Y-%m-%d').date()
+            if appointment_date_obj < date_type.today():
                 flash('Impossible de réserver un rendez-vous dans le passé.')
                 return redirect(url_for('book_appointment', professional_id=professional_id))
         except ValueError:
             flash('Format de date invalide.')
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Combiner date et heure
+        # Combine date + heure
         datetime_str = f"{appointment_date} {appointment_time}"
         try:
-            appointment_datetime = dt.strptime(datetime_str, '%Y-%m-%d %H:%M')
+            appointment_datetime = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M')
         except ValueError:
             flash('Format de date/heure invalide.')
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Vérifier les disponibilités du professionnel
+        # Disponibilités ce jour
         day_of_week = appointment_datetime.weekday()
         availabilities = ProfessionalAvailability.query.filter_by(
             professional_id=professional_id,
@@ -604,42 +567,39 @@ def book_appointment(professional_id):
             is_available=True
         ).all()
 
-        # Vérifier si l'heure est dans les disponibilités
-        time_str     = appointment_time
+        # Heure dans plage ?
         is_available = False
         for availability in availabilities:
-            if availability.start_time <= time_str <= availability.end_time:
+            if availability.start_time <= appointment_time <= availability.end_time:
                 is_available = True
                 break
 
         if not is_available:
-            flash('Cette heure n\'est pas disponible pour ce professionnel.')
+            flash("Cette heure n'est pas disponible pour ce professionnel.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Vérifier s'il n'y a pas déjà un rendez-vous à cette heure
+        # Créneau déjà pris ?
         existing_appointment = Appointment.query.filter_by(
             professional_id=professional_id,
             appointment_date=appointment_datetime,
             status='confirme'
         ).first()
-
         if existing_appointment:
             flash('Ce créneau est déjà réservé.')
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Vérifier les créneaux indisponibles
-        unavailable_slots = UnavailableSlot.query.filter_by(
+        # Indisponibilités du jour
+        day_unavailable = UnavailableSlot.query.filter_by(
             professional_id=professional_id,
             date=appointment_date_obj
         ).all()
-
-        for slot in unavailable_slots:
-            if (slot.start_time <= appointment_time <= slot.end_time):
-                flash('Ce créneau est marqué comme indisponible par le professionnel.')
+        for slot in day_unavailable:
+            if slot.start_time <= appointment_time <= slot.end_time:
+                flash('Ce créneau est marqué indisponible par le professionnel.')
                 return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Créer le rendez-vous
-        appointment = Appointment(
+        # Création du rendez-vous (en attente)
+        appt = Appointment(
             patient_id=current_user.id,
             professional_id=professional_id,
             appointment_date=appointment_datetime,
@@ -647,31 +607,23 @@ def book_appointment(professional_id):
             status='en_attente',
             notes=notes
         )
-
-        db.session.add(appointment)
+        db.session.add(appt)
         db.session.commit()
 
-        flash('Rendez-vous réservé avec succès! Le professionnel vous confirmera bientôt.')
+        flash('Rendez-vous réservé avec succès ! Le professionnel vous confirmera bientôt.')
         return redirect(url_for('my_appointments'))
 
-    # Récupérer les disponibilités pour affichage
+    # Pour l’affichage (liste des dispos + dates bloquées)
     availabilities = ProfessionalAvailability.query.filter_by(
-        professional_id=professional_id,
-        is_available=True
+        professional_id=professional_id, is_available=True
     ).all()
 
-    # Récupérer les créneaux indisponibles pour les 30 prochains jours
-    today = date.today()
+    today = date_type.today()
     future_dates = [today + timedelta(days=i) for i in range(30)]
-
     unavailable_dates = []
-    for future_date in future_dates:
-        _unavailable = UnavailableSlot.query.filter_by(
-            professional_id=professional_id,
-            date=future_date
-        ).all()
-        if _unavailable:
-            unavailable_dates.append(future_date.isoformat())
+    for d in future_dates:
+        if UnavailableSlot.query.filter_by(professional_id=professional_id, date=d).first():
+            unavailable_dates.append(d.isoformat())
 
     return render_template(
         'book_appointment.html',
@@ -680,40 +632,27 @@ def book_appointment(professional_id):
         unavailable_dates=unavailable_dates
     )
 
-
-# ----------------------------
-# Mes rendez-vous
-# ----------------------------
 @app.route('/my_appointments')
 @login_required
 def my_appointments():
     if current_user.user_type == 'professional':
-        # Pour les professionnels, afficher leurs rendez-vous
-        professional = Professional.query.filter_by(name=current_user.username).first()
-        if professional:
-            appointments = Appointment.query.filter_by(
-                professional_id=professional.id
-            ).all()
+        # NOTE: on affiche les RDV où il est le professionnel
+        prof = Professional.query.filter_by(name=current_user.username).first()
+        if prof:
+            appointments = Appointment.query.filter_by(professional_id=prof.id).all()
         else:
             appointments = []
     else:
-        # Pour les patients, afficher leurs rendez-vous
-        appointments = Appointment.query.filter_by(
-            patient_id=current_user.id
-        ).all()
+        appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
 
     return render_template('my_appointments.html', appointments=appointments)
 
-
 # ----------------------------
-# Page de statut
+# Page statut
 # ----------------------------
 @app.route('/site-status')
 def site_status():
-    """Page de statut du site pour afficher les informations de validation"""
     status = app.config.get('SITE_STATUS', {})
-
-    # Récupérer des statistiques en temps réel
     real_time_stats = {
         'total_professionals': Professional.query.count(),
         'total_users': User.query.count(),
@@ -722,128 +661,135 @@ def site_status():
         'server_port': 5000,
         'admin_port': 8080
     }
-
     return render_template('site_status.html', status=status, stats=real_time_stats)
 
-
 # ----------------------------
-# Montage de l'admin sous /admin
+# Montage /admin (admin_server)
 # ----------------------------
 mounted_admin = DispatcherMiddleware(app.wsgi_app, {
     '/admin': admin_app.wsgi_app
 })
-
-# IMPORTANT pour Gunicorn/Render: activer le dispatcher sur l'app WSGI
+# IMPORTANT pour Gunicorn/Render : exposer le dispatcher comme wsgi_app
 app.wsgi_app = mounted_admin
 
+# ----------------------------
+# Bootstrap de la base + données de démo
+# ----------------------------
+def _bootstrap_data():
+    db.create_all()
+
+    if not User.query.first():
+        admin = User(
+            username='admin',
+            email='admin@tighri.com',
+            password_hash=generate_password_hash('admin123'),
+            is_admin=True,
+            user_type='professional'
+        )
+        db.session.add(admin)
+        db.session.commit()
+
+    if not Professional.query.first():
+        examples = [
+            Professional(
+                name='Driss Helali',
+                description="Psychologue clinicien, expert en TCC. 10 ans d'expérience à Casablanca.",
+                specialty='Psychologue Clinicien',
+                consultation_fee=400,
+                image_url='https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=300&h=300&fit=crop&crop=face',
+                location='Casablanca',
+                experience_years=10,
+                status='valide'
+            ),
+            Professional(
+                name='Nada Helali',
+                description="Psychologue pour enfants et adolescents. Consultations à domicile et en ligne.",
+                specialty='Psychologue pour Enfants',
+                consultation_fee=350,
+                image_url='https://images.unsplash.com/photo-1594824475545-9d0c7c4951c5?w=300&h=300&fit=crop&crop=face',
+                location='Rabat',
+                experience_years=7,
+                status='valide'
+            ),
+            Professional(
+                name='Hatim Heleli',
+                description="Thérapeute familial et conjugal. Vidéo et cabinet.",
+                specialty='Thérapeute Familial',
+                consultation_fee=450,
+                image_url='https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=300&h=300&fit=crop&crop=face',
+                location='Marrakech',
+                experience_years=12,
+                status='valide'
+            ),
+            Professional(
+                name='Hajar Heleli',
+                description="Spécialisée en EMDR et traumatismes.",
+                specialty='Psychologue Clinicien',
+                consultation_fee=500,
+                image_url='https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=300&h=300&fit=crop&crop=face',
+                location='Rabat',
+                experience_years=9,
+                status='valide'
+            ),
+            Professional(
+                name='Loubna Moubine',
+                description="Coach en développement personnel et gestion du stress.",
+                specialty='Coach en Développement Personnel',
+                consultation_fee=300,
+                image_url='https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=face',
+                location='Casablanca',
+                experience_years=6,
+                status='valide'
+            ),
+            Professional(
+                name='Yassine El Amrani',
+                description="Thérapeute de couple et sexologue.",
+                specialty='Thérapeute de Couple',
+                consultation_fee=450,
+                image_url='https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&h=300&fit=crop&crop=face',
+                location='Marrakech',
+                experience_years=11,
+                status='valide'
+            ),
+            Professional(
+                name='Imane Berrada',
+                description="Gestion des émotions et anxiété.",
+                specialty='Psychologue Clinicien',
+                consultation_fee=400,
+                image_url='https://images.unsplash.com/photo-1511367461989-f85a21fda167?w=300&h=300&fit=crop&crop=face',
+                location='Rabat',
+                experience_years=8,
+                status='valide'
+            ),
+            Professional(
+                name='Omar El Fassi',
+                description="Coach pro : reconversion et orientation.",
+                specialty='Coach en Développement Personnel',
+                consultation_fee=350,
+                image_url='https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=300&h=300&fit=crop&crop=face',
+                location='Fès',
+                experience_years=5,
+                status='valide'
+            )
+        ]
+        for prof in examples:
+            db.session.add(prof)
+        db.session.commit()
+
+    app.config['SITE_STATUS'] = {
+        'server_started': True,
+        'admin_credentials': 'admin / admin123',
+        'database_ready': True,
+        'startup_time': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    }
 
 # ----------------------------
-# Bootstrap (local & Render)
+# Entrée programme
 # ----------------------------
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
+        _bootstrap_data()
 
-        # Créer un admin par défaut si aucun utilisateur n'existe
-        if not User.query.first():
-            admin = User(
-                username='admin',
-                email='admin@tighri.com',
-                password_hash=generate_password_hash('admin123'),
-                is_admin=True,
-                user_type='professional'
-            )
-            db.session.add(admin)
-            db.session.commit()
-
-        # Ajouter des professionnels d'exemple si la table est vide
-        if not Professional.query.first():
-            examples = [
-                Professional(
-                    name='Driss Helali',
-                    description="Psychologue clinicien, expert en thérapie cognitive et comportementale. 10 ans d'expérience à Casablanca. Consultations en français et arabe.",
-                    specialty='Psychologue Clinicien',
-                    consultation_fee=400,
-                    image_url='https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=300&h=300&fit=crop&crop=face',
-                    location='Casablanca',
-                    experience_years=10
-                ),
-                Professional(
-                    name='Nada Helali',
-                    description="Psychologue pour enfants et adolescents. Approche bienveillante et adaptée aux jeunes. Consultations à domicile et en ligne.",
-                    specialty='Psychologue pour Enfants',
-                    consultation_fee=350,
-                    image_url='https://images.unsplash.com/photo-1594824475545-9d0c7c4951c5?w=300&h=300&fit=crop&crop=face',
-                    location='Rabat',
-                    experience_years=7
-                ),
-                Professional(
-                    name='Hatim Heleli',
-                    description="Thérapeute familial et conjugal. Spécialisé dans la résolution de conflits et la communication. Consultations en vidéo et cabinet.",
-                    specialty='Thérapeute Familial',
-                    consultation_fee=450,
-                    image_url='https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=300&h=300&fit=crop&crop=face',
-                    location='Marrakech',
-                    experience_years=12
-                ),
-                Professional(
-                    name='Hajar Heleli',
-                    description="Psychologue spécialisée en EMDR et thérapie des traumatismes. Cabinet à Rabat et consultations en ligne.",
-                    specialty='Psychologue Clinicien',
-                    consultation_fee=500,
-                    image_url='https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=300&h=300&fit=crop&crop=face',
-                    location='Rabat',
-                    experience_years=9
-                ),
-                Professional(
-                    name='Loubna Moubine',
-                    description="Coach en développement personnel et gestion du stress. Accompagnement en ligne et en présentiel.",
-                    specialty='Coach en Développement Personnel',
-                    consultation_fee=300,
-                    image_url='https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=300&fit=crop&crop=face',
-                    location='Casablanca',
-                    experience_years=6
-                ),
-                Professional(
-                    name='Yassine El Amrani',
-                    description="Thérapeute de couple et sexologue. Consultations en cabinet à Marrakech et en ligne.",
-                    specialty='Thérapeute de Couple',
-                    consultation_fee=450,
-                    image_url='https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&h=300&fit=crop&crop=face',
-                    location='Marrakech',
-                    experience_years=11
-                ),
-                Professional(
-                    name='Imane Berrada',
-                    description="Psychologue clinicienne, spécialisée en gestion des émotions et anxiété. Consultations à Rabat.",
-                    specialty='Psychologue Clinicien',
-                    consultation_fee=400,
-                    image_url='https://images.unsplash.com/photo-1511367461989-f85a21fda167?w=300&h=300&fit=crop&crop=face',
-                    location='Rabat',
-                    experience_years=8
-                ),
-                Professional(
-                    name='Omar El Fassi',
-                    description="Coach professionnel, accompagnement en reconversion et orientation. Disponible en ligne.",
-                    specialty='Coach en Développement Personnel',
-                    consultation_fee=350,
-                    image_url='https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=300&h=300&fit=crop&crop=face',
-                    location='Fès',
-                    experience_years=5
-                )
-            ]
-            for prof in examples:
-                db.session.add(prof)
-            db.session.commit()
-
-        # Messages de statut stockés pour affichage dans le site
-        app.config['SITE_STATUS'] = {
-            'server_started': True,
-            'admin_credentials': 'admin / admin123',
-            'database_ready': True,
-            'startup_time': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        }
-
-    # Exécution locale (un seul process) : servir / et /admin
+    # En local, on peut servir / et /admin via le même process
     from werkzeug.serving import run_simple
-    run_simple('0.0.0.0', 5000, mounted_admin, use_debugger=True, use_reloader=False)
+    run_simple('0.0.0.0', 5000, app, use_debugger=True, use_reloader=False)
