@@ -1,76 +1,60 @@
 #!/usr/bin/env python3
 """
-Script pour corriger le mot de passe de l'administrateur Tighri
+Script pour créer/corriger le compte administrateur Tighri.
+À lancer depuis Render > Shell :  python fix_admin.py
 """
 
 import os
 import sys
 from werkzeug.security import generate_password_hash
 
-# Ajouter le répertoire parent au path pour importer les modèles
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Aller au répertoire racine du projet (parent du fichier)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-from app import app, db, User
+# Importer app et models après avoir corrigé le PYTHONPATH
+from app import app
+from models import db, User
 
 def fix_admin_password():
-    """Corrige le mot de passe de l'administrateur"""
-    
     with app.app_context():
-        print("🔧 CORRECTION DU MOT DE PASSE ADMIN")
-        print("=" * 50)
-        
-        # Vérifier si l'admin existe
-        admin = User.query.filter_by(username='admin').first()
-        
+        # 1) S'assurer que les tables existent
+        db.create_all()
+
+        # 2) Récupérer les creds depuis les variables d'env (sinon défaut)
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+        admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
+        admin_plain  = os.environ.get("ADMIN_PASSWORD", "admin123")
+
+        admin = User.query.filter_by(username=admin_username).first()
         if admin:
-            print(f"✅ Administrateur trouvé: {admin.username}")
-            print(f"📧 Email: {admin.email}")
-            print(f"🔑 Ancien hash: {admin.password_hash[:50]}...")
-            
-            # Générer un nouveau hash pour 'admin123'
-            new_password = 'admin123'
-            new_hash = generate_password_hash(new_password)
-            
-            # Mettre à jour le mot de passe
-            admin.password_hash = new_hash
+            print(f"✅ Administrateur trouvé: {admin.username} ({admin.email})")
+            admin.password_hash = generate_password_hash(admin_plain)
             db.session.commit()
-            
-            print(f"🔑 Nouveau hash généré pour '{new_password}'")
-            print(f"✅ Mot de passe mis à jour avec succès!")
-            
+            print("🔑 Mot de passe mis à jour avec succès.")
         else:
-            print("❌ Aucun administrateur trouvé")
-            print("🔧 Création d'un nouvel administrateur...")
-            
-            # Créer un nouvel admin
+            print("ℹ️ Aucun administrateur avec ce username. Création…")
             admin = User(
-                username='admin',
-                email='admin@tighri.com',
-                password_hash=generate_password_hash('admin123'),
+                username=admin_username,
+                email=admin_email,
+                password_hash=generate_password_hash(admin_plain),
                 is_admin=True,
-                user_type='professional'
+                user_type="professional",
             )
-            
             db.session.add(admin)
             db.session.commit()
-            
-            print("✅ Nouvel administrateur créé!")
-        
-        print("\n📋 INFORMATIONS DE CONNEXION:")
-        print(f"   • Username: admin")
-        print(f"   • Mot de passe: admin123")
-        print(f"   • Email: admin@tighri.com")
-        print(f"   • Type: Administrateur")
-        
-        print("\n🚀 Tu peux maintenant te connecter avec:")
-        print("   • Username: admin")
-        print("   • Mot de passe: admin123")
-        
-        return True
+            print("✅ Administrateur créé.")
 
-if __name__ == '__main__':
+        print("\n📋 Identifiants (utilisés/attendus) :")
+        print(f"   • Username : {admin_username}")
+        print(f"   • Mot de passe : {admin_plain}")
+        print(f"   • Email : {admin_email}")
+
+if __name__ == "__main__":
     try:
         fix_admin_password()
     except Exception as e:
         print(f"❌ Erreur: {e}")
-        sys.exit(1) 
+        sys.exit(1)
