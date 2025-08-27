@@ -1,17 +1,15 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import os
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-# --- mini-app admin (montée sous /admin par app.py) ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'admin_cle_secrete_ici')
 app.config['SESSION_COOKIE_NAME'] = 'tighri_admin_session'
 
-# --------- FORCER POSTGRES (aucun fallback SQLite) ----------
+# --- Forcer Postgres (même base que l'app principale) ---
 def _normalize_pg_uri(uri: str) -> str:
     if not uri:
         return uri
@@ -30,34 +28,22 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
-if not uri:
+db_uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
+if not db_uri:
     raise RuntimeError("DATABASE_URL manquant pour admin_server")
-uri = _normalize_pg_uri(uri)
+db_uri = _normalize_pg_uri(db_uri)
 
-app.config['SQLALCHEMY_DATABASE_URI'] = uri
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-# -----------------------------------------------------------
-
+# 🔗 On partage les mêmes modèles/DB que l'app principale
 from models import db, User, Professional, Appointment
-# ...
+
+app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 db.init_app(app)
-)
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'admin_login'
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-
-# ---------------- ROUTES AUTH ----------------
-@app.route('/login', methods=['GET', 'POST'])
-def admin_login():
-    if request.method == 'POST':
-        username = request.form.get('username', '')
-        password = request.form.get('password', '')
-        user = User.query.filter_by(username=username).first()
 
         if user and check_password_hash(user.password_hash, password) and user.is_admin:
             login_user(user)
