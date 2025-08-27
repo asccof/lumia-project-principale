@@ -9,25 +9,48 @@ from admin_server import app as admin_app
 from sqlalchemy import or_, func
 
 app = Flask(__name__)
-# === BEGIN PATCH psycopg2 (si Python 3.12) ===
+# === BEGIN PATCH psycopg3 (robuste: URI + BINDS) ===
 import os
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
+def _normalize_pg_uri(uri: str) -> str:
+    if not uri:
+        return uri
+    # Uniformiser postgres:// -> postgresql://
+    if uri.startswith("postgres://"):
+        uri = "postgresql://" + uri[len("postgres://"):]
+    # Forcer psycopg3
+    if uri.startswith("postgresql+psycopg2://"):
+        uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
+    elif uri.startswith("postgresql+psycopg2cffi://"):
+        uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2cffi://"):]
+    elif uri.startswith("postgresql://"):
+        uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
+    # Ajouter sslmode=require si absent
+    parsed = urlparse(uri)
+    q = parse_qs(parsed.query)
+    if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
+        q["sslmode"] = ["require"]
+        uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
+    return uri
+
+# 1) URI principale
 db_url = os.getenv("DATABASE_URL", "")
 if not db_url:
-    db_url = "sqlite:///local.db"
-
-parsed = urlparse(db_url)
-query = parse_qs(parsed.query)
-if "sslmode" not in query and parsed.scheme.startswith("postgres"):
-    query["sslmode"] = ["require"]
-new_query = urlencode({k: v[0] for k, v in query.items()})
-db_url = urlunparse(parsed._replace(query=new_query))
-
+    db_url = "sqlite:///local.db"  # fallback dev
+db_url = _normalize_pg_uri(db_url)
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+
+# 2) BINDS éventuels
+binds = app.config.get("SQLALCHEMY_BINDS", {})
+if isinstance(binds, dict) and binds:
+    app.config["SQLALCHEMY_BINDS"] = {name: _normalize_pg_uri(uri) for name, uri in binds.items()}
+
+# 3) Options SQLAlchemy
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
-# === END PATCH psycopg2 ===
+# === END PATCH psycopg3 ===
+
 
 db = SQLAlchemy(app)
 login_manager = LoginManager()
