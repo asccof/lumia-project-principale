@@ -1,5 +1,6 @@
-from flask import Flask
+from flask import Flask, render_template
 from flask_login import LoginManager
+from werkzeug.security import generate_password_hash
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 import os
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
@@ -30,7 +31,7 @@ def _normalize_pg_uri(uri: str) -> str:
     return uri
 
 # --- Config DB (une seule instance SQLAlchemy : celle de models.py) ---
-from models import db, User, Professional, Appointment  # <-- IMPORTER l'instance existante
+from models import db, User, Professional, Appointment  # <-- réutilise l'instance existante
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
 if not uri:
@@ -44,18 +45,18 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 # Attacher l'instance SQLAlchemy UNE FOIS à l'app principale
 db.init_app(app)
 
+# Login manager (unique ici)
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
 # --- Monter le sous-serveur admin (sa propre Flask app) ---
 from admin_server import app as admin_app  # importe après config DB
 app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {"/admin": admin_app})
 
-
-# --- (Optionnel mais recommandé) Créer les tables + seed un admin si absent ---
-# Assure-toi que dans models.py:  __tablename__ = "users"
-from models import User  # importe APRES avoir fait db.init_app(app)
-
+# --- Créer les tables + seed un admin si absent ---
 with app.app_context():
     db.create_all()
-    # Seed admin depuis ENV, sinon valeurs par défaut
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -73,51 +74,12 @@ with app.app_context():
         app.logger.info(f"Admin '{admin_username}' créé.")
 
 # --------------------------------------------------------------------
-# ↓ Tes routes “site public” continuent ici (si tu en as dans app.py) ↓
+# ↓ Tes routes “site public” continuent ici ↓
 # --------------------------------------------------------------------
-# Exemple:
 @app.get("/")
 def home():
     return render_template("index.html")
-# --- Config DB : FORCER Postgres, pas de fallback ---
-uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
-if not uri:
-    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
 
-# Compat psycopg3 (SQLAlchemy 2.x)
-if uri.startswith("postgres://"):
-    uri = uri.replace("postgres://", "postgresql+psycopg://", 1)
-elif uri.startswith("postgresql://"):
-    uri = uri.replace("postgresql://", "postgresql+psycopg://", 1)
-
-app.config["SQLALCHEMY_DATABASE_URI"] = uri
-
-# BINDS éventuels (si tu en utilises)
-binds = app.config.get("SQLALCHEMY_BINDS", {})
-if isinstance(binds, dict) and binds:
-    fixed_binds = {}
-    for name, u in binds.items():
-        if u.startswith("postgres://"):
-            u = u.replace("postgres://", "postgresql+psycopg://", 1)
-        elif u.startswith("postgresql://"):
-            u = u.replace("postgresql://", "postgresql+psycopg://", 1)
-        fixed_binds[name] = u
-    app.config["SQLALCHEMY_BINDS"] = fixed_binds
-
-# Options SQLAlchemy
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
-
-# Attache db à l'app ICI
-db.init_app(app)
-
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
-
-# ======================
-# Modèles de base de données
-# ======================
 
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
