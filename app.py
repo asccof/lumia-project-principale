@@ -11,8 +11,10 @@ app = Flask(__name__)
 
 # Configuration pour production (Render.com)
 if os.environ.get('DATABASE_URL'):
-    # Production - PostgreSQL
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace('postgres://', 'postgresql://')
+    # Production - PostgreSQL (psycopg3)
+    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL').replace(
+        'postgres://', 'postgresql+psycopg://'
+    )
 else:
     # Développement - SQLite
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tighri.db'
@@ -137,7 +139,7 @@ def contact():
 # Routes d'authentification
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == 'POST':
+    if request.method == 'POST']:
         username = request.form['username']
         email = request.form['email']
         password = request.form['password']
@@ -161,7 +163,7 @@ def register():
 
 @app.route('/professional_register', methods=['GET', 'POST'])
 def professional_register():
-    if request.method == 'POST':
+    if request.method == 'POST']:
         username = request.form['username']
         email = request.form['email']
         password = request.form['password']
@@ -209,7 +211,7 @@ def professional_register():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
+    if request.method == 'POST']:
         username = request.form['username']
         password = request.form['password']
         user = User.query.filter_by(username=username).first()
@@ -263,7 +265,7 @@ def professional_availability():
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
     
-    if request.method == 'POST':
+    if request.method == 'POST']:
         # Supprimer les anciennes disponibilités
         ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
         
@@ -305,7 +307,7 @@ def professional_unavailable_slots():
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
     
-    if request.method == 'POST':
+    if request.method == 'POST']:
         date = request.form['date']
         start_time = request.form['start_time']
         end_time = request.form['end_time']
@@ -519,7 +521,7 @@ def book_appointment(professional_id):
         flash('Ce professionnel n\'est pas encore validé par l\'administration.')
         return redirect(url_for('professionals'))
     
-    if request.method == 'POST':
+    if request.method == 'POST']:
         appointment_date = request.form['appointment_date']
         appointment_time = request.form['appointment_time']
         consultation_type = request.form['consultation_type']
@@ -661,6 +663,8 @@ def site_status():
 mounted_admin = DispatcherMiddleware(app.wsgi_app, {
     '/admin': admin_app.wsgi_app
 })
+# IMPORTANT pour Gunicorn/Render: activer le dispatcher sur l'app WSGI
+app.wsgi_app = mounted_admin
 
 if __name__ == '__main__':
     with app.app_context():
@@ -766,11 +770,11 @@ if __name__ == '__main__':
         'startup_time': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     }
     
-    # Configuration de l'admin intégré avec DispatcherMiddleware
+    # Configuration de l'admin intégré avec DispatcherMiddleware (pour exécution locale unique)
     mounted_admin = DispatcherMiddleware(app.wsgi_app, {
         '/admin': admin_app.wsgi_app
     })
     
-    # Run with the dispatcher to serve / and /admin from a single process
+    # Run with the dispatcher to serve / and /admin from a single process (mode local)
     from werkzeug.serving import run_simple
-    run_simple('0.0.0.0', 5000, mounted_admin, use_debugger=True, use_reloader=False) 
+    run_simple('0.0.0.0', 5000, mounted_admin, use_debugger=True, use_reloader=False)
