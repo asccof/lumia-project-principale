@@ -119,50 +119,77 @@ def admin_add_product():
         return redirect(url_for('admin_login'))
 
     if request.method == 'POST':
-        # Récupération "safe" des champs
-        name = request.form.get('name', '').strip()
-        description = request.form.get('description', '').strip()
-        fee_raw = (request.form.get('consultation_fee', '0') or '0').replace(',', '.')
-        specialty = request.form.get('specialty', '').strip()
-        location = request.form.get('location', '').strip()
-        exp_raw = request.form.get('experience_years', '0') or '0'
-        image_url = request.form.get('image_url', '').strip()
-        phone = request.form.get('phone', '+212 6 XX XX XX XX').strip()
+        # Champs texte
+        name = (request.form.get('name') or '').strip()
+        description = (request.form.get('description') or '').strip()
+        specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
+        location = (request.form.get('location') or '').strip()
+        image_url = (request.form.get('image_url') or '').strip()
+        phone = (request.form.get('phone') or '+212 6 XX XX XX XX').strip()
 
-        # Validations minimales
-        if not name or not description or not specialty or not location:
-            flash("Veuillez remplir tous les champs obligatoires (nom, description, spécialité, ville).", "error")
-            return redirect(url_for('admin_add_product'))
-
+        # Tarif
+        fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '0').replace(',', '.')
         try:
             consultation_fee = float(fee_raw)
         except ValueError:
             consultation_fee = 0.0
 
+        # Expérience
+        exp_raw = request.form.get('experience_years') or '0'
         try:
             experience_years = int(exp_raw)
         except ValueError:
             experience_years = 0
+
+        # Disponibilité (availability direct, sinon stock 1/0)
+        availability = request.form.get('availability')
+        if availability is None:
+            stock = request.form.get('stock')
+            if stock in ('1', 'true', 'on', 'True'):
+                availability = 'disponible'
+            elif stock in ('0', 'false', 'off', 'False'):
+                availability = 'indisponible'
+            else:
+                availability = 'disponible'
+
+        # Types de consultation
+        types_list = request.form.getlist('consultation_types')
+        if not types_list:
+            types_list = []
+            if request.form.get('home_consultation'):
+                types_list.append('domicile')
+            if request.form.get('office_consultation'):
+                types_list.append('cabinet')
+            if request.form.get('online_consultation'):
+                types_list.append('en_ligne')
+        consultation_types = ','.join(types_list) if types_list else 'cabinet'
+
+        # Validations minimales
+        if not name or not description or not specialty:
+            flash("Nom, description et spécialité sont obligatoires.", "error")
+            return redirect(url_for('admin_add_product'))
 
         # Création
         professional = Professional(
             name=name,
             description=description,
             consultation_fee=consultation_fee,
-            specialty=specialty,
-            location=location,
-            experience_years=experience_years,
             image_url=image_url,
+            specialty=specialty,
+            availability=availability,
+            consultation_types=consultation_types,
+            location=location or 'Casablanca',
             phone=phone,
+            experience_years=experience_years,
             status='en_attente'
         )
         db.session.add(professional)
         db.session.commit()
-
         flash('Professionnel ajouté avec succès!')
         return redirect(url_for('admin_products'))
 
     return render_template('add_product.html')
+
 
 
 @app.route('/products/edit/<int:product_id>', methods=['GET', 'POST'])
