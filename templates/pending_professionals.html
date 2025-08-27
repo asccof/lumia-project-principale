@@ -106,66 +106,75 @@
 </div>
 
 <script>
-function validateProfessional(professionalId) {
-    showSiteConfirm('Êtes-vous sûr de vouloir valider ce professionnel ?', () => {
-        fetch(`/professionals/${professionalId}/validate`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showSiteNotification('Professionnel validé avec succès!', 'success');
-                location.reload();
-            } else {
-                showSiteNotification('Erreur: ' + data.message, 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showSiteNotification('Erreur lors de la validation', 'danger');
-        });
-    });
-}
+  // Détecte si l'app admin est montée sous /admin (prod) ou à la racine (dev local)
+  const ADMIN_BASE = window.location.pathname.startsWith('/admin') ? '/admin' : '';
 
-function rejectProfessional(professionalId) {
-    showSiteConfirm('Êtes-vous sûr de vouloir rejeter ce professionnel ?', () => {
-        fetch(`/professionals/${professionalId}/reject`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showSiteNotification('Professionnel rejeté', 'success');
-                location.reload();
-            } else {
-                showSiteNotification('Erreur: ' + data.message, 'danger');
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showSiteNotification('Erreur lors du rejet', 'danger');
-        });
-    });
-}
+  function postJSON(url) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    }).then(async (res) => {
+      const ct = res.headers.get('content-type') || '';
+      const payload = ct.includes('application/json')
+        ? await res.json()
+        : { success: false, message: await res.text() };
 
-function viewProfessionalDetails(professionalId) {
-    // Charger les détails du professionnel dans le modal
-    fetch(`/professionals/${professionalId}`)
-        .then(response => response.text())
-        .then(html => {
-            document.getElementById('professionalDetailsContent').innerHTML = html;
-            new bootstrap.Modal(document.getElementById('professionalDetailsModal')).show();
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showSiteNotification('Erreur lors du chargement des détails', 'danger');
-        });
-}
+      if (!res.ok) {
+        throw new Error(payload.message || `HTTP ${res.status}`);
+      }
+      return payload;
+    });
+  }
+
+  function validateProfessional(professionalId) {
+    if (!confirm('Êtes-vous sûr de vouloir valider ce professionnel ?')) return;
+
+    postJSON(`${ADMIN_BASE}/professionals/${professionalId}/validate`)
+      .then((data) => {
+        if (data.success) {
+          alert('Professionnel validé avec succès !');
+          location.reload();
+        } else {
+          alert('Erreur: ' + (data.message || 'Action refusée'));
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        alert('Erreur lors de la validation: ' + err.message);
+      });
+  }
+
+  function rejectProfessional(professionalId) {
+    if (!confirm('Êtes-vous sûr de vouloir rejeter ce professionnel ?')) return;
+
+    postJSON(`${ADMIN_BASE}/professionals/${professionalId}/reject`)
+      .then((data) => {
+        if (data.success) {
+          alert('Professionnel rejeté');
+          location.reload();
+        } else {
+          alert('Erreur: ' + (data.message || 'Action refusée'));
+        }
+      })
+      .catch((err) => {
+        console.error(err);
+        alert('Erreur lors du rejet: ' + err.message);
+      });
+  }
+
+  function viewProfessionalDetails(professionalId) {
+    fetch(`${ADMIN_BASE}/professionals/${professionalId}`)
+      .then((res) => res.text())
+      .then((html) => {
+        const el = document.getElementById('professionalDetailsContent');
+        el.innerHTML = html;
+        new bootstrap.Modal(document.getElementById('professionalDetailsModal')).show();
+      })
+      .catch((err) => {
+        console.error(err);
+        alert('Erreur lors du chargement des détails');
+      });
+  }
 </script>
+
 {% endblock %} 
