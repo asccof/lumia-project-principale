@@ -72,7 +72,7 @@ def admin_login():
             flash('Identifiants incorrects ou accès non autorisé')
 
     return render_template('admin_login.html')
-)
+
 
 @app.route('/logout')
 @login_required
@@ -143,7 +143,7 @@ def admin_add_product():
             experience_years=experience_years,
             image_url=image_url,
             phone=phone
-        )
+        
         db.session.add(professional)
         db.session.commit()
         flash('Professionnel ajouté avec succès!')
@@ -216,7 +216,7 @@ def add_professional():
             location=location,
             experience_years=experience_years,
             image_url=image_url
-        )
+        
         db.session.add(professional)
         db.session.commit()
         flash('Professionnel ajouté avec succès!')
