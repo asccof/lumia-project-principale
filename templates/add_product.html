@@ -4,216 +4,226 @@
 
 {% block content %}
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h4 class="card-title">
-                        <i class="fas fa-user-plus me-2"></i>Ajouter un professionnel
-                    </h4>
-                </div>
-                <div class="card-body">
-
-<!-- Add Product Form -->
-<section class="py-5">
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-lg-8">
-                <div class="card border-0 shadow-sm">
-                    <div class="card-body p-5">
-                        <form method="POST" enctype="multipart/form-data" id="addProductForm">
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="name" class="form-label">
-                                        <i class="fas fa-user me-2"></i>Nom du professionnel *
-                                    </label>
-                                    <input type="text" class="form-control" id="name" name="name" required>
-                                </div>
-                                
-                                <div class="col-md-6 mb-3">
-                                    <label for="category" class="form-label">
-                                        <i class="fas fa-folder me-2"></i>Spécialité *
-                                    </label>
-                                    <select class="form-select" id="category" name="category" required>
-                                        <option value="">Choisir une spécialité</option>
-                                        <option value="psychologues">Psychologue</option>
-                                        <option value="therapeutes">Thérapeute</option>
-                                        <option value="coaches">Coach</option>
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="price" class="form-label">
-                                        <i class="fas fa-euro-sign me-2"></i>Prix (MAD) *
-                                    </label>
-                                    <input type="number" class="form-control" id="price" name="price" step="0.01" min="0" value="0" required>
-                                </div>
-                                
-                                <div class="col-md-6 mb-3">
-                                    <label for="stock" class="form-label">
-                                        <i class="fas fa-check-circle me-2"></i>Disponibilité *
-                                    </label>
-                                    <select class="form-select" id="stock" name="stock" required>
-                                        <option value="1">Disponible</option>
-                                        <option value="0">Indisponible</option>
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="description" class="form-label">
-                                    <i class="fas fa-align-left me-2"></i>Description et spécialités *
-                                </label>
-                                <textarea class="form-control" id="description" name="description" rows="5" required placeholder="Décrivez les spécialités, l'expérience et les types de consultation proposés..."></textarea>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="image_url" class="form-label">
-                                    <i class="fas fa-image me-2"></i>URL de la photo *
-                                </label>
-                                <input type="url" class="form-control" id="image_url" name="image_url" required placeholder="https://images.unsplash.com/photo-...">
-                                <div class="form-text">Entrez l'URL d'une photo professionnelle (Unsplash recommandé)</div>
-                            </div>
-                            
-                            <!-- Image Preview -->
-                            <div class="mb-4">
-                                <label class="form-label">Aperçu de l'image</label>
-                                <div class="border rounded p-3 text-center" id="imagePreview">
-                                    <i class="fas fa-image fa-3x text-muted"></i>
-                                    <p class="text-muted mt-2">Aperçu de l'image</p>
-                                </div>
-                            </div>
-                            
-                            <!-- Types de consultation -->
-                            <div class="mb-4">
-                                <h5>Types de consultation proposés</h5>
-                                <div class="row">
-                                    <div class="col-md-4 mb-3">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="home_consultation" name="home_consultation" checked>
-                                            <label class="form-check-label" for="home_consultation">
-                                                <i class="fas fa-home me-2"></i>À domicile
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4 mb-3">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="office_consultation" name="office_consultation" checked>
-                                            <label class="form-check-label" for="office_consultation">
-                                                <i class="fas fa-building me-2"></i>En cabinet
-                                            </label>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4 mb-3">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="online_consultation" name="online_consultation" checked>
-                                            <label class="form-check-label" for="online_consultation">
-                                                <i class="fas fa-video me-2"></i>En ligne
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            
-
-                            
-                            <div class="d-flex gap-3">
-                                <button type="submit" class="btn btn-primary btn-lg">
-                                    <i class="fas fa-save me-2"></i>Enregistrer le professionnel
-                                </button>
-                                <a href="{{ url_for('admin_products') }}" class="btn btn-outline-secondary btn-lg">
-                                    <i class="fas fa-times me-2"></i>Annuler
-                                </a>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="card-title">
+            <i class="fas fa-user-plus me-2"></i>Ajouter un professionnel
+          </h4>
         </div>
+        <div class="card-body">
+
+<section class="py-3">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body p-4">
+            <!-- action explicite vers la route -->
+            <form method="POST" action="{{ url_for('admin_add_product') }}" id="addProductForm" accept-charset="utf-8">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="name" class="form-label">
+                    <i class="fas fa-user me-2"></i>Nom du professionnel *
+                  </label>
+                  <input type="text" class="form-control" id="name" name="name" required>
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <label for="specialty" class="form-label">
+                    <i class="fas fa-folder me-2"></i>Spécialité *
+                  </label>
+                  <!-- on envoie BOTH: specialty (préféré) ET on laisse "category" pour compat -->
+                  <select class="form-select" id="specialty" name="specialty" required>
+                    <option value="">Choisir une spécialité</option>
+                    <option value="Psychologue">Psychologue</option>
+                    <option value="Thérapeute">Thérapeute</option>
+                    <option value="Coach">Coach</option>
+                  </select>
+                  <input type="hidden" name="category" id="category">
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="consultation_fee" class="form-label">
+                    <i class="fas fa-money-bill me-2"></i>Prix (MAD) *
+                  </label>
+                  <!-- on envoie le champ attendu "consultation_fee" (et la route accepte aussi "price") -->
+                  <input type="number" class="form-control" id="consultation_fee" name="consultation_fee"
+                         step="0.01" min="0" value="0" required>
+                  <input type="hidden" name="price" id="price">
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <label for="availability" class="form-label">
+                    <i class="fas fa-check-circle me-2"></i>Disponibilité *
+                  </label>
+                  <!-- la route mappe "availability" sinon "stock" 1/0 -->
+                  <select class="form-select" id="availability" name="availability" required>
+                    <option value="disponible" selected>Disponible</option>
+                    <option value="indisponible">Indisponible</option>
+                  </select>
+                  <input type="hidden" name="stock" id="stock">
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="location" class="form-label">
+                    <i class="fas fa-map-marker-alt me-2"></i>Ville
+                  </label>
+                  <input type="text" class="form-control" id="location" name="location" placeholder="Casablanca">
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="phone" class="form-label">
+                    <i class="fas fa-phone me-2"></i>Téléphone
+                  </label>
+                  <input type="text" class="form-control" id="phone" name="phone" placeholder="+212 6 XX XX XX XX">
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="experience_years" class="form-label">
+                    <i class="fas fa-briefcase me-2"></i>Années d'expérience
+                  </label>
+                  <input type="number" class="form-control" id="experience_years" name="experience_years" min="0" value="0">
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="image_url" class="form-label">
+                    <i class="fas fa-image me-2"></i>URL de la photo *
+                  </label>
+                  <input type="url" class="form-control" id="image_url" name="image_url"
+                         required placeholder="https://images.unsplash.com/photo-...">
+                  <div class="form-text">Entrez l'URL d'une photo (Unsplash recommandé)</div>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label for="description" class="form-label">
+                  <i class="fas fa-align-left me-2"></i>Description et spécialités *
+                </label>
+                <textarea class="form-control" id="description" name="description" rows="5" required
+                          placeholder="Décrivez les spécialités, l'expérience et les types de consultation proposés..."></textarea>
+                <div class="form-text" id="descCounter">1000 caractères restants</div>
+              </div>
+
+              <!-- Aperçu image -->
+              <div class="mb-4">
+                <label class="form-label">Aperçu de l'image</label>
+                <div class="border rounded p-3 text-center" id="imagePreview">
+                  <i class="fas fa-image fa-3x text-muted"></i>
+                  <p class="text-muted mt-2">Aperçu de l'image</p>
+                </div>
+              </div>
+
+              <!-- Types de consultation (fallback géré côté Python si "consultation_types" absent) -->
+              <div class="mb-4">
+                <h5>Types de consultation proposés</h5>
+                <div class="row">
+                  <div class="col-md-4 mb-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="home_consultation" name="home_consultation" checked>
+                      <label class="form-check-label" for="home_consultation"><i class="fas fa-home me-2"></i>À domicile</label>
+                    </div>
+                  </div>
+                  <div class="col-md-4 mb-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="office_consultation" name="office_consultation" checked>
+                      <label class="form-check-label" for="office_consultation"><i class="fas fa-building me-2"></i>En cabinet</label>
+                    </div>
+                  </div>
+                  <div class="col-md-4 mb-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="online_consultation" name="online_consultation" checked>
+                      <label class="form-check-label" for="online_consultation"><i class="fas fa-video me-2"></i>En ligne</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex gap-3">
+                <button type="submit" class="btn btn-primary btn-lg">
+                  <i class="fas fa-save me-2"></i>Enregistrer le professionnel
+                </button>
+                <a href="{{ url_for('admin_products') }}" class="btn btn-outline-secondary btn-lg">
+                  <i class="fas fa-times me-2"></i>Annuler
+                </a>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
+</section>
+
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// Image preview
+// tenir "category", "price", "stock" synchronisés pour compat
+const specialtyEl = document.getElementById('specialty');
+const categoryEl  = document.getElementById('category');
+const feeEl       = document.getElementById('consultation_fee');
+const priceEl     = document.getElementById('price');
+const availEl     = document.getElementById('availability');
+const stockEl     = document.getElementById('stock');
+
+function syncCompat() {
+  categoryEl.value = specialtyEl.value || '';
+  priceEl.value = feeEl.value || '0';
+  stockEl.value = (availEl.value === 'disponible') ? '1' : '0';
+}
+[specialtyEl, feeEl, availEl].forEach(el => el.addEventListener('input', syncCompat));
+syncCompat();
+
+// Aperçu image
 document.getElementById('image_url').addEventListener('input', function() {
-    const url = this.value;
-    const preview = document.getElementById('imagePreview');
-    
-    if (url) {
-        preview.innerHTML = `
-            <img src="${url}" alt="Aperçu" class="img-fluid rounded" style="max-height: 200px;">
-            <p class="text-muted mt-2">Aperçu de l'image</p>
-        `;
-    } else {
-        preview.innerHTML = `
-            <i class="fas fa-image fa-3x text-muted"></i>
-            <p class="text-muted mt-2">Aperçu de l'image</p>
-        `;
-    }
+  const url = this.value;
+  const preview = document.getElementById('imagePreview');
+  if (url) {
+    preview.innerHTML = `
+      <img src="${url}" alt="Aperçu" class="img-fluid rounded" style="max-height: 200px;">
+      <p class="text-muted mt-2">Aperçu de l'image</p>
+    `;
+  } else {
+    preview.innerHTML = `
+      <i class="fas fa-image fa-3x text-muted"></i>
+      <p class="text-muted mt-2">Aperçu de l'image</p>
+    `;
+  }
 });
 
-// Auto-fill meta title and description
-document.getElementById('name').addEventListener('input', function() {
-    const name = this.value;
-    const metaTitle = document.getElementById('meta_title');
-    const metaDescription = document.getElementById('meta_description');
-    
-    if (!metaTitle.value) {
-        metaTitle.value = name + ' - Lumia';
-    }
-    
-    if (!metaDescription.value) {
-        metaDescription.value = 'Découvrez ' + name + ' - Qualité et innovation Lumia. Livraison gratuite et garantie 2 ans.';
-    }
+// Compteur description (évite de viser des IDs inexistants)
+const desc = document.getElementById('description');
+const counter = document.getElementById('descCounter');
+desc.addEventListener('input', function() {
+  const max = 1000;
+  const left = max - this.value.length;
+  counter.textContent = `${left} caractères restants`;
+  counter.style.color = left < 0 ? 'red' : '';
 });
 
-// Form validation
+// Validation légère coté client
 document.getElementById('addProductForm').addEventListener('submit', function(e) {
-    const price = parseFloat(document.getElementById('price').value);
-    const stock = parseInt(document.getElementById('stock').value);
-    
-    if (price < 0) {
-        e.preventDefault();
-        alert('Le prix ne peut pas être négatif !');
-        return false;
-    }
-    
-    if (stock < 0) {
-        e.preventDefault();
-        alert('Le stock ne peut pas être négatif !');
-        return false;
-    }
-    
-    // Show loading state
-    const submitBtn = this.querySelector('button[type="submit"]');
-    const originalText = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enregistrement...';
-    submitBtn.disabled = true;
-});
-
-// Character counter for description
-document.getElementById('description').addEventListener('input', function() {
-    const maxLength = 1000;
-    const currentLength = this.value.length;
-    const remaining = maxLength - currentLength;
-    
-    if (!this.nextElementSibling || !this.nextElementSibling.classList.contains('form-text')) {
-        const counter = document.createElement('div');
-        counter.className = 'form-text';
-        this.parentNode.appendChild(counter);
-    }
-    
-    this.nextElementSibling.textContent = `${remaining} caractères restants`;
-    
-    if (remaining < 0) {
-        this.nextElementSibling.style.color = 'red';
-    } else {
-        this.nextElementSibling.style.color = '';
-    }
+  const fee = parseFloat(feeEl.value || '0');
+  if (isNaN(fee) || fee < 0) {
+    e.preventDefault();
+    alert('Le prix doit être un nombre positif.');
+    return false;
+  }
+  // désactive le bouton pendant l’envoi
+  const submitBtn = this.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enregistrement...';
 });
 </script>
-{% endblock %} 
+{% endblock %}
