@@ -4,68 +4,87 @@
 
 {% block content %}
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h4 class="card-title">
-                        <i class="fas fa-user-edit me-2"></i>Modifier l'utilisateur
-                    </h4>
-                </div>
-                <div class="card-body">
-                    <form method="POST">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="username" class="form-label">Nom d'utilisateur *</label>
-                                    <input type="text" class="form-control" id="username" name="username" value="{{ user.username }}" required>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="email" class="form-label">Email *</label>
-                                    <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" required>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="password" class="form-label">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
-                                    <input type="password" class="form-control" id="password" name="password">
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <div class="form-check mt-4">
-                                        <input class="form-check-input" type="checkbox" id="is_admin" name="is_admin" {% if user.is_admin %}checked{% endif %}>
-                                        <label class="form-check-label" for="is_admin">
-                                            Administrateur
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <p class="text-muted">
-                                <strong>Date de création:</strong> {{ user.created_at.strftime('%d/%m/%Y à %H:%M') }}
-                            </p>
-                        </div>
-                        
-                        <div class="d-flex justify-content-between">
-                            <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">
-                                <i class="fas fa-arrow-left me-2"></i>Retour
-                            </a>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save me-2"></i>Enregistrer les modifications
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="card-title">
+            <i class="fas fa-user-edit me-2"></i>Modifier l'utilisateur
+          </h4>
         </div>
+        <div class="card-body">
+          <!-- Action explicite vers la route -->
+          <form method="POST" action="{{ url_for('edit_user', user_id=user.id) }}" accept-charset="utf-8">
+            <div class="row">
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label for="username" class="form-label">Nom d'utilisateur *</label>
+                  <input type="text" class="form-control" id="username" name="username"
+                         value="{{ user.username }}" required>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label for="email" class="form-label">Email *</label>
+                  <input type="email" class="form-control" id="email" name="email"
+                         value="{{ user.email }}" required>
+                </div>
+              </div>
+            </div>
+
+            <!-- Type d'utilisateur (optionnel mais utile, la route gère l'absence) -->
+            <div class="row">
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label for="user_type" class="form-label">Type d'utilisateur</label>
+                  <select id="user_type" name="user_type" class="form-select">
+                    <option value="patient" {{ 'selected' if user.user_type=='patient' else '' }}>Patient</option>
+                    <option value="professional" {{ 'selected' if user.user_type=='professional' else '' }}>Professionnel</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label for="password" class="form-label">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                  <!-- La route accepte "new_password" OU "password" -->
+                  <input type="password" class="form-control" id="password" name="password" autocomplete="new-password">
+                </div>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-6">
+                <div class="form-check mb-3">
+                  <input class="form-check-input" type="checkbox" id="is_admin" name="is_admin"
+                         {% if user.is_admin %}checked{% endif %}>
+                  <label class="form-check-label" for="is_admin">Administrateur</label>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <p class="text-muted mb-0">
+                  <strong>Date de création:</strong>
+                  {% if user.created_at %}
+                    {{ user.created_at.strftime('%d/%m/%Y à %H:%M') }}
+                  {% else %}
+                    -
+                  {% endif %}
+                </p>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between">
+              <a href="{{ url_for('admin_users') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left me-2"></i>Retour
+              </a>
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save me-2"></i>Enregistrer les modifications
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
+  </div>
 </div>
-{% endblock %} 
+{% endblock %}
