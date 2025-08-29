@@ -1,97 +1,49 @@
 {% extends "admin_base.html" %}
-
-{% block title %}Gestion des utilisateurs — Tighri{% endblock %}
-
+{% block title %}Gestion des utilisateurs - Admin Lumia{% endblock %}
 {% block content %}
 <div class="container-fluid">
-  <div class="row">
-    <div class="col-12">
-      <div class="card border-0 shadow-sm">
-        <div class="card-header d-flex justify-content-between align-items-center bg-white">
-          <h4 class="card-title mb-0">
-            <i class="fas fa-users me-2"></i>Gestion des utilisateurs
-          </h4>
-          <a href="{{ url_for('add_user') }}" class="btn btn-primary">
-            <i class="fas fa-user-plus me-2"></i>Ajouter un utilisateur
-          </a>
-        </div>
-
-        <div class="card-body">
-          {% set items = users|default([]) %}
-          {% if items %}
-            <div class="table-responsive">
-              <table class="table table-striped align-middle mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th>ID</th>
-                    <th>Nom d'utilisateur</th>
-                    <th>Email</th>
-                    <th>Rôle</th>
-                    <th>Date de création</th>
-                    <th class="text-end">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for user in items %}
-                  <tr>
-                    <td>{{ user.id }}</td>
-                    <td>
-                      <strong>{{ user.username or '—' }}</strong>
-                      {% if (user.username or '') == 'admin' %}
-                        <span class="badge bg-warning ms-2">Principal</span>
+  <div class="row"><div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="card-title"><i class="fas fa-users me-2"></i>Gestion des utilisateurs</h4>
+        <a href="{{ url_for('admin.add_user') }}" class="btn btn-primary"><i class="fas fa-user-plus me-2"></i>Ajouter un utilisateur</a>
+      </div>
+      <div class="card-body">
+        {% if users %}
+          <div class="table-responsive">
+            <table class="table table-striped">
+              <thead><tr><th>ID</th><th>Nom d'utilisateur</th><th>Email</th><th>Rôle</th><th>Date de création</th><th>Actions</th></tr></thead>
+              <tbody>
+                {% for user in users %}
+                <tr>
+                  <td>{{ user.id }}</td>
+                  <td><strong>{{ user.username }}</strong>{% if user.username == 'admin' %}<span class="badge bg-warning ms-2">Principal</span>{% endif %}</td>
+                  <td>{{ user.email }}</td>
+                  <td>{% if user.is_admin %}<span class="badge bg-danger">Administrateur</span>{% else %}<span class="badge bg-secondary">Utilisateur</span>{% endif %}</td>
+                  <td>{{ user.created_at.strftime('%d/%m/%Y à %H:%M') }}</td>
+                  <td>
+                    <div class="btn-group" role="group">
+                      <a href="{{ url_for('admin.edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary"><i class="fas fa-edit"></i></a>
+                      {% if user.username != 'admin' %}
+                      <a href="{{ url_for('admin.delete_user', user_id=user.id) }}" class="btn btn-sm btn-outline-danger" onclick="return confirm('Supprimer cet utilisateur ?')"><i class="fas fa-trash"></i></a>
                       {% endif %}
-                    </td>
-                    <td>{{ user.email or '—' }}</td>
-                    <td>
-                      {% if user.is_admin %}
-                        <span class="badge bg-danger">Administrateur</span>
-                      {% else %}
-                        <span class="badge bg-secondary">Utilisateur</span>
-                      {% endif %}
-                    </td>
-                    <td>
-                      {{ user.created_at.strftime('%d/%m/%Y à %H:%M') if user.created_at else '—' }}
-                    </td>
-                    <td class="text-end">
-                      <div class="btn-group" role="group">
-                        <a href="{{ url_for('edit_user', user_id=user.id) }}"
-                           class="btn btn-sm btn-outline-primary" title="Modifier">
-                          <i class="fas fa-edit"></i>
-                        </a>
-
-                        {% if (user.username or '') != 'admin' %}
-                          <form method="post"
-                                action="{{ url_for('delete_user', user_id=user.id) }}"
-                                onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?');"
-                                style="display:inline-block;">
-                            {% if csrf_token is defined %}
-                              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            {% endif %}
-                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Supprimer">
-                              <i class="fas fa-trash"></i>
-                            </button>
-                          </form>
-                        {% endif %}
-                      </div>
-                    </td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <div class="text-center py-5">
-              <i class="fas fa-users fa-4x text-muted mb-3"></i>
-              <h5 class="mb-1">Aucun utilisateur trouvé</h5>
-              <p class="text-muted">Aucun utilisateur n'est encore enregistré dans le système.</p>
-              <a href="{{ url_for('add_user') }}" class="btn btn-primary">
-                <i class="fas fa-user-plus me-2"></i>Ajouter le premier utilisateur
-              </a>
-            </div>
-          {% endif %}
-        </div>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="text-center py-5">
+            <i class="fas fa-users fa-4x text-muted mb-3"></i>
+            <h5>Aucun utilisateur trouvé</h5>
+            <p class="text-muted">Aucun utilisateur n'est encore enregistré dans le système.</p>
+            <a href="{{ url_for('admin.add_user') }}" class="btn btn-primary"><i class="fas fa-user-plus me-2"></i>Ajouter le premier utilisateur</a>
+          </div>
+        {% endif %}
       </div>
     </div>
-  </div>
+  </div></div>
 </div>
 {% endblock %}
