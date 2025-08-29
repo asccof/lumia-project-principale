@@ -317,7 +317,8 @@ def professional_dashboard():
                            professional=professional,
                            appointments=appointments)
 
-# --------- NOUVELLE ROUTE : édition du profil côté PRO ---------
+# --- Modifier mon profil (accepte /professional/edit-profile et /professional/profile) ---
+@app.route('/professional/edit-profile', methods=['GET', 'POST'])
 @app.route('/professional/profile', methods=['GET', 'POST'])
 @login_required
 def professional_edit_profile():
@@ -325,69 +326,47 @@ def professional_edit_profile():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    pro = _get_current_professional()
+    # On retrouve le Professional lié au user courant (via le name == username)
+    pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro:
-        # Crée un profil minimal si absent
-        pro = Professional(name=current_user.username, status='en_attente')
-        if hasattr(Professional, "user_id"):
-            try:
-                pro.user_id = current_user.id
-            except Exception:
-                pass
-        db.session.add(pro)
-        db.session.commit()
+        flash('Profil professionnel non trouvé')
+        return redirect(url_for('index'))
 
     if request.method == 'POST':
-        # Champs texte
-        pro.name = (request.form.get('name') or pro.name or '').strip()
-        pro.specialty = (request.form.get('specialty') or request.form.get('category') or pro.specialty or '').strip()
-        pro.description = (request.form.get('description') or pro.description or '').strip()
-        pro.location = (request.form.get('location') or pro.location or '').strip()
-        pro.phone = (request.form.get('phone') or pro.phone or '').strip()
-        pro.image_url = (request.form.get('image_url') or pro.image_url or '').strip()
+        pro.name = (request.form.get('name') or pro.name).strip()
+        pro.description = (request.form.get('description') or pro.description).strip()
+        pro.specialty = (request.form.get('specialty') or pro.specialty).strip()
+        pro.location = (request.form.get('location') or pro.location).strip()
+        pro.phone = (request.form.get('phone') or pro.phone).strip()
 
-        # Tarif (price ou consultation_fee)
-        fee_raw = (request.form.get('price') or request.form.get('consultation_fee') or '').replace(',', '.').strip()
+        fee_raw = (request.form.get('consultation_fee') or '').replace(',', '.').strip()
         if fee_raw:
             try:
                 pro.consultation_fee = float(fee_raw)
             except ValueError:
-                flash("Le tarif est invalide.", "error")
+                flash("Tarif invalide", "error")
                 return redirect(url_for('professional_edit_profile'))
 
-        # Expérience
         exp_raw = (request.form.get('experience_years') or '').strip()
         if exp_raw:
             try:
                 pro.experience_years = int(exp_raw)
             except ValueError:
-                flash("L'expérience doit être un nombre.", "error")
+                flash("Années d’expérience invalides", "error")
                 return redirect(url_for('professional_edit_profile'))
 
-        # Disponibilité (ou via 'stock' 1/0)
-        availability = request.form.get('availability')
-        if availability is None:
-            stock = (request.form.get('stock') or '').strip().lower()
-            availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
-        pro.availability = availability
+        pro.image_url = (request.form.get('image_url') or pro.image_url).strip()
 
-        # Types de consultation (liste ou 3 checkboxes)
         types_list = request.form.getlist('consultation_types')
-        if not types_list:
-            t = []
-            if request.form.get('home_consultation'): t.append('domicile')
-            if request.form.get('office_consultation'): t.append('cabinet')
-            if request.form.get('online_consultation'): t.append('en_ligne')
-            types_list = t
         if types_list:
-            pro.consultation_types = ",".join(types_list)
+            pro.consultation_types = ','.join(types_list)
 
         db.session.commit()
-        flash("Profil mis à jour avec succès.")
+        flash('Profil mis à jour avec succès!')
         return redirect(url_for('professional_dashboard'))
 
     return render_template('professional_edit_profile.html', professional=pro)
-# ---------------------------------------------------------------
+
 
 @app.route('/professional/availability', methods=['GET', 'POST'])
 @login_required
