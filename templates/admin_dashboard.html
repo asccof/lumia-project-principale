@@ -1,138 +1,86 @@
 {% extends "admin_base.html" %}
-
 {% block title %}Tableau de bord — Tighri{% endblock %}
-
 {% block content %}
 <div class="container-fluid">
-
-  <!-- En-tête -->
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
       <h1 class="h3 mb-0">Tableau de Bord</h1>
       <p class="text-muted mb-0">Vue d'ensemble de la plateforme Tighri</p>
     </div>
-    <a href="{{ url_for('admin_add_product') }}" class="btn btn-primary">
+    <a href="{{ url_for('admin.admin_add_product') }}" class="btn btn-primary">
       <i class="fas fa-plus me-2"></i>Ajouter un professionnel
     </a>
   </div>
 
-  <!-- Cartes Stats -->
   <div class="row g-4 mb-4">
     <div class="col-lg-3 col-md-6">
-      <div class="card border-0 shadow-sm">
-        <div class="card-body d-flex align-items-center">
-          <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3" style="width:60px;height:60px;">
-            <i class="fas fa-user-md"></i>
-          </div>
-          <div>
-            <p class="fs-2 fw-bold mb-0">{{ (total_products|default(0)) }}</p>
-            <p class="text-muted mb-0">Professionnels</p>
-          </div>
-        </div>
-      </div>
+      <div class="card border-0 shadow-sm"><div class="card-body d-flex align-items-center">
+        <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3" style="width:60px;height:60px;"><i class="fas fa-user-md"></i></div>
+        <div><p class="fs-2 fw-bold mb-0">{{ (total_products|default(0)) }}</p><p class="text-muted mb-0">Professionnels</p></div>
+      </div></div>
     </div>
-
     <div class="col-lg-3 col-md-6">
-      <div class="card border-0 shadow-sm">
-        <div class="card-body d-flex align-items-center">
-          <div class="rounded-circle bg-success text-white d-flex align-items-center justify-content-center me-3" style="width:60px;height:60px;">
-            <i class="fas fa-users"></i>
-          </div>
-          <div>
-            <p class="fs-2 fw-bold mb-0">{{ (total_users|default(0)) }}</p>
-            <p class="text-muted mb-0">Utilisateurs</p>
-          </div>
-        </div>
-      </div>
+      <div class="card border-0 shadow-sm"><div class="card-body d-flex align-items-center">
+        <div class="rounded-circle bg-success text-white d-flex align-items-center justify-content-center me-3" style="width:60px;height:60px;"><i class="fas fa-users"></i></div>
+        <div><p class="fs-2 fw-bold mb-0">{{ (total_users|default(0)) }}</p><p class="text-muted mb-0">Utilisateurs</p></div>
+      </div></div>
     </div>
-
     <div class="col-lg-3 col-md-6">
-      <div class="card border-0 shadow-sm">
-        <div class="card-body d-flex align-items-center">
-          <div class="rounded-circle bg-warning text-dark d-flex align-items-center justify-content-center me-3" style="width:60px;height:60px;">
-            <i class="fas fa-calendar-check"></i>
-          </div>
-          <div>
-            <p class="fs-2 fw-bold mb-0">{{ (total_orders|default(0)) }}</p>
-            <p class="text-muted mb-0">Rendez-vous</p>
-          </div>
-        </div>
-      </div>
+      <div class="card border-0 shadow-sm"><div class="card-body d-flex align-items-center">
+        <div class="rounded-circle bg-warning text-dark d-flex align-items-center justify-content-center me-3" style="width:60px;height:60px;"><i class="fas fa-calendar-check"></i></div>
+        <div><p class="fs-2 fw-bold mb-0">{{ (total_orders|default(0)) }}</p><p class="text-muted mb-0">Rendez-vous</p></div>
+      </div></div>
     </div>
-
     <div class="col-lg-3 col-md-6">
-      <div class="card border-0 shadow-sm">
-        <div class="card-body d-flex align-items-center">
-          <div class="rounded-circle bg-info text-white d-flex align-items-center justify-content-center me-3" style="width:60px;height:60px;">
-            <i class="fas fa-user"></i>
-          </div>
-          <div>
-            {% set patients_count = (total_patients|default(None)) if total_patients is defined else (total_users|default(0)) %}
-            <p class="fs-2 fw-bold mb-0">{{ patients_count }}</p>
-            <p class="text-muted mb-0">Patients</p>
-          </div>
+      <div class="card border-0 shadow-sm"><div class="card-body d-flex align-items-center">
+        <div class="rounded-circle bg-info text-white d-flex align-items-center justify-content-center me-3" style="width:60px;height:60px;"><i class="fas fa-user"></i></div>
+        <div>
+          {% set patients_count = (total_patients|default(None)) if total_patients is defined else (total_users|default(0)) %}
+          <p class="fs-2 fw-bold mb-0">{{ patients_count }}</p><p class="text-muted mb-0">Patients</p>
         </div>
-      </div>
+      </div></div>
     </div>
   </div>
 
-  {# ====================== À FAIRE AUJOURD'HUI ====================== #}
   {% set _pros = (professionals|default([])) + (products|default([])) %}
   {% set pending_pros = _pros|selectattr('status','equalto','en_attente')|list %}
   <div class="row g-4 mb-4">
     <div class="col-lg-4 col-md-6">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body d-flex align-items-center">
-          <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-3" style="width:56px;height:56px;">
-            <i class="fas fa-sun"></i>
-          </div>
-          <div class="flex-grow-1">
-            <p class="mb-1 text-muted">Rendez-vous aujourd'hui</p>
-            <h3 class="mb-2" id="today-count">—</h3>
-            <a href="{{ url_for('admin_orders') }}" class="btn btn-sm btn-outline-secondary">
-              <i class="fas fa-calendar-day me-1"></i>Voir l'agenda du jour
-            </a>
-          </div>
+      <div class="card border-0 shadow-sm h-100"><div class="card-body d-flex align-items-center">
+        <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-3" style="width:56px;height:56px;"><i class="fas fa-sun"></i></div>
+        <div class="flex-grow-1">
+          <p class="mb-1 text-muted">Rendez-vous aujourd'hui</p>
+          <h3 class="mb-2" id="today-count">—</h3>
+          <a href="{{ url_for('admin.admin_orders') }}" class="btn btn-sm btn-outline-secondary"><i class="fas fa-calendar-day me-1"></i>Voir l'agenda du jour</a>
         </div>
-      </div>
+      </div></div>
     </div>
 
     <div class="col-lg-4 col-md-6">
-      <div class="card border-0 shadow-sm h-100">
-        <div class="card-body d-flex align-items-center">
-          <div class="rounded-circle bg-warning text-dark d-flex align-items-center justify-content-center me-3" style="width:56px;height:56px;">
-            <i class="fas fa-user-clock"></i>
-          </div>
-          <div class="flex-grow-1">
-            <p class="mb-1 text-muted">Pros en attente de validation</p>
-            <h3 class="mb-2">{{ pending_pros|length }}</h3>
-            <a href="{{ url_for('pending_professionals') }}" class="btn btn-sm btn-outline-warning">
-              <i class="fas fa-check me-1"></i>Valider maintenant
-            </a>
-          </div>
+      <div class="card border-0 shadow-sm h-100"><div class="card-body d-flex align-items-center">
+        <div class="rounded-circle bg-warning text-dark d-flex align-items-center justify-content-center me-3" style="width:56px;height:56px;"><i class="fas fa-user-clock"></i></div>
+        <div class="flex-grow-1">
+          <p class="mb-1 text-muted">Pros en attente de validation</p>
+          <h3 class="mb-2">{{ pending_pros|length }}</h3>
+          <a href="{{ url_for('admin.pending_professionals') }}" class="btn btn-sm btn-outline-warning"><i class="fas fa-check me-1"></i>Valider maintenant</a>
         </div>
-      </div>
+      </div></div>
     </div>
 
     <div class="col-lg-4 col-md-12">
       <div class="card border-0 shadow-sm h-100">
         <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>Rendez-vous — 7 derniers jours</h6>
-          </div>
+          <div class="d-flex justify-content-between align-items-center mb-2"><h6 class="mb-0"><i class="fas fa-chart-line me-2"></i>Rendez-vous — 7 derniers jours</h6></div>
           <canvas id="rdv7d" height="120"></canvas>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Activité récente + Alertes -->
   <div class="row">
     <div class="col-lg-8">
       <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white">
-          <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Activité récente</h5>
-        </div>
+        <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-clock me-2"></i>Activité récente</h5></div>
         <div class="card-body">
           {% set _orders = orders|default([]) %}
           {% if _orders %}
@@ -141,32 +89,18 @@
               <div class="d-flex justify-content-between align-items-center">
                 <div>
                   <strong>Rendez-vous #{{ order.id }}</strong><br>
-                  <small class="text-muted">
-                    {% set dt = order.appointment_date or order.created_at %}
-                    {{ dt.strftime('%d/%m/%Y à %H:%M') if dt else '—' }}
-                  </small>
+                  <small class="text-muted">{% set dt = order.appointment_date or order.created_at %}{{ dt.strftime('%d/%m/%Y à %H:%M') if dt else '—' }}</small>
                 </div>
                 <div class="text-end">
                   {% set st = (order.status or '') %}
-                  {% if st in ['confirme','delivered'] %}
-                    <span class="badge bg-success">Confirmé</span>
-                  {% elif st in ['en_attente','pending'] %}
-                    <span class="badge bg-warning text-dark">En attente</span>
-                  {% elif st in ['annule','cancelled'] %}
-                    <span class="badge bg-danger">Annulé</span>
-                  {% elif st == 'processing' %}
-                    <span class="badge bg-info">En cours</span>
-                  {% elif st == 'shipped' %}
-                    <span class="badge bg-primary">Expédié</span>
-                  {% else %}
-                    <span class="badge bg-secondary">{{ st or '—' }}</span>
-                  {% endif %}
+                  {% if st in ['confirme','delivered'] %}<span class="badge bg-success">Confirmé</span>
+                  {% elif st in ['en_attente','pending'] %}<span class="badge bg-warning text-dark">En attente</span>
+                  {% elif st in ['annule','cancelled'] %}<span class="badge bg-danger">Annulé</span>
+                  {% elif st == 'processing' %}<span class="badge bg-info">En cours</span>
+                  {% elif st == 'shipped' %}<span class="badge bg-primary">Expédié</span>
+                  {% else %}<span class="badge bg-secondary">{{ st or '—' }}</span>{% endif %}
                   <br>
-                  {% if order.user_id %}
-                    <small class="text-muted">Patient ID : {{ order.user_id }}</small>
-                  {% else %}
-                    <small class="text-muted">Patient : —</small>
-                  {% endif %}
+                  {% if order.user_id %}<small class="text-muted">Patient ID : {{ order.user_id }}</small>{% else %}<small class="text-muted">Patient : —</small>{% endif %}
                 </div>
               </div>
             </div>
@@ -180,9 +114,7 @@
 
     <div class="col-lg-4 mt-4 mt-lg-0">
       <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white">
-          <h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alertes</h5>
-        </div>
+        <div class="card-header bg-white"><h5 class="mb-0"><i class="fas fa-exclamation-triangle me-2"></i>Alertes</h5></div>
         <div class="card-body">
           {% set _products = products|default([]) %}
           {% set _professionals = professionals|default([]) %}
@@ -191,117 +123,44 @@
           {% else %}
             {% set unavailable_list = _professionals|selectattr('availability','ne','disponible')|list %}
           {% endif %}
-
           {% if unavailable_list %}
-            <div class="alert alert-warning d-flex align-items-center">
-              <i class="fas fa-exclamation-triangle me-2"></i>
-              <div><strong>{{ unavailable_list|length }}</strong> professionnel(s) indisponible(s)</div>
-            </div>
+            <div class="alert alert-warning d-flex align-items-center"><i class="fas fa-exclamation-triangle me-2"></i><div><strong>{{ unavailable_list|length }}</strong> professionnel(s) indisponible(s)</div></div>
             {% for pro in unavailable_list[:3] %}
             <div class="py-3 border-bottom">
               <div class="d-flex justify-content-between align-items-center">
-                <div>
-                  <strong>{{ pro.name or '—' }}</strong><br>
-                  <small class="text-muted">{{ pro.category or pro.specialty or '—' }}</small>
-                </div>
+                <div><strong>{{ pro.name or '—' }}</strong><br><small class="text-muted">{{ pro.category or pro.specialty or '—' }}</small></div>
                 <span class="badge bg-danger">Indisponible</span>
               </div>
             </div>
             {% endfor %}
           {% else %}
-            <div class="alert alert-success d-flex align-items-center mb-0">
-              <i class="fas fa-check-circle me-2"></i>
-              <div>Tous les professionnels sont disponibles</div>
-            </div>
+            <div class="alert alert-success d-flex align-items-center mb-0"><i class="fas fa-check-circle me-2"></i><div>Tous les professionnels sont disponibles</div></div>
           {% endif %}
         </div>
       </div>
     </div>
   </div>
 
-  {# ========= Données JSON générées côté template pour JS (aucune adaptation backend requise) ========= #}
   <script id="orders-data" type="application/json">[
   {% set _orders_js = orders|default([]) %}
   {% for o in _orders_js %}
     {% set dt = o.appointment_date or o.created_at %}
-    {
-      "id": {{ o.id }},
-      "date": "{{ dt.strftime('%Y-%m-%d') if dt else '' }}",
-      "status": "{{ o.status or '' }}"
-    }{% if not loop.last %},{% endif %}
+    {"id": {{ o.id }},"date":"{{ dt.strftime('%Y-%m-%d') if dt else '' }}","status":"{{ o.status or '' }}"}{% if not loop.last %},{% endif %}
   {% endfor %}
   ]</script>
-
 </div>
 {% endblock %}
-
 {% block extra_js %}
-<!-- Chart.js CDN (léger et auto-hébergeable si besoin) -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-(function() {
-  // Parse des données des rendez-vous
-  const raw = document.getElementById('orders-data');
-  let appts = [];
-  try { appts = JSON.parse(raw?.textContent || '[]'); } catch(e) { appts = []; }
-
-  // Utilitaire: format YYYY-MM-DD pour Date locale
-  function fmt(d) {
-    const y = d.getFullYear();
-    const m = String(d.getMonth()+1).padStart(2,'0');
-    const day = String(d.getDate()).padStart(2,'0');
-    return `${y}-${m}-${day}`;
-  }
-
-  // Aujourd'hui
-  const today = new Date();
-  const todayKey = fmt(today);
-  const todayCount = appts.filter(a => a.date === todayKey).length;
-  const todayEl = document.getElementById('today-count');
-  if (todayEl) todayEl.textContent = String(todayCount);
-
-  // Fenêtre des 7 derniers jours (incl. aujourd'hui)
-  const labels = [];
-  const counts = [];
-  const buckets = {};
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date(today); d.setDate(today.getDate() - i);
-    const key = fmt(d);
-    labels.push(key);
-    buckets[key] = 0;
-  }
-  appts.forEach(a => { if (a.date && (a.date in buckets)) buckets[a.date]++; });
-  labels.forEach(k => counts.push(buckets[k]));
-
-  // Graph
-  const ctx = document.getElementById('rdv7d');
-  if (ctx && window.Chart) {
-    new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: labels.map(k => {
-          // Affichage DD/MM
-          const [Y,M,D] = k.split('-');
-          return `${D}/${M}`;
-        }),
-        datasets: [{
-          label: 'Rendez-vous',
-          data: counts,
-          tension: 0.3,
-          fill: false,
-          pointRadius: 4
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { display: false } },
-          y: { beginAtZero: true, ticks: { precision: 0 } }
-        }
-      }
-    });
-  }
+(function(){
+  const raw = document.getElementById('orders-data'); let appts=[]; try{appts=JSON.parse(raw?.textContent||'[]')}catch(e){}
+  function fmt(d){const y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),da=String(d.getDate()).padStart(2,'0');return `${y}-${m}-${da}`}
+  const today=new Date(),todayKey=fmt(today),todayCount=appts.filter(a=>a.date===todayKey).length;
+  const todayEl=document.getElementById('today-count'); if(todayEl) todayEl.textContent=String(todayCount);
+  const labels=[],buckets={},counts=[]; for(let i=6;i>=0;i--){const d=new Date(today);d.setDate(today.getDate()-i);const k=fmt(d);labels.push(k);buckets[k]=0}
+  appts.forEach(a=>{if(a.date && (a.date in buckets)) buckets[a.date]++}); labels.forEach(k=>counts.push(buckets[k]));
+  const ctx=document.getElementById('rdv7d'); if(ctx && window.Chart){new Chart(ctx,{type:'line',data:{labels:labels.map(k=>{const [Y,M,D]=k.split('-');return `${D}/${M}`}),datasets:[{label:'Rendez-vous',data:counts,tension:.3,fill:false,pointRadius:4}]},options:{plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0}}}}})}
 })();
 </script>
 {% endblock %}
