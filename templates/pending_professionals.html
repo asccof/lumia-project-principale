@@ -1,79 +1,40 @@
 {% extends "admin_base.html" %}
-
-{% block title %}Professionnels en attente — Tighri{% endblock %}
-
+{% block title %}Professionnels en attente - Administration Lumia{% endblock %}
 {% block content %}
 <div class="container-fluid">
   <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">
-      <i class="fas fa-user-clock me-2"></i>Professionnels en attente de validation
-    </h1>
-    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">
-      <i class="fas fa-arrow-left me-2"></i>Retour au tableau de bord
-    </a>
+    <h1 class="h3 mb-0 text-gray-800"><i class="fas fa-user-clock"></i> Professionnels en attente de validation</h1>
+    <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Retour au tableau de bord</a>
   </div>
 
-  {% set items = professionals|default([]) %}
-  {% if items %}
+  {% if professionals %}
     <div class="row">
-      {% for professional in items %}
+      {% for professional in professionals %}
       <div class="col-lg-6 col-xl-4 mb-4">
-        <div class="card shadow h-100">
+        <div class="card border-left-warning shadow h-100 py-2">
           <div class="card-body">
-            <div class="d-flex align-items-center mb-3">
-              {% set avatar = professional.photo_url or professional.image_url or '' %}
-              {% if avatar %}
-                <img src="{{ avatar }}" alt="{{ professional.name or '—' }}"
-                     class="rounded-circle me-3"
-                     style="width:50px;height:50px;object-fit:cover;">
-              {% else %}
-                <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center me-3"
-                     style="width:50px;height:50px;">
-                  <i class="fas fa-user text-white"></i>
-                </div>
-              {% endif %}
-              <div>
-                <h6 class="fw-bold text-primary mb-0">{{ professional.name or '—' }}</h6>
-                <small class="text-muted">{{ professional.specialty or '—' }}</small>
-              </div>
+            <div class="d-flex align-items-center mb-2">
+              <img src="{{ professional.image_url or 'https://via.placeholder.com/50x50/8B5CF6/FFFFFF?text=Pro' }}" alt="{{ professional.name }}" class="rounded-circle me-3" style="width:50px;height:50px;object-fit:cover;">
+              <div><h6 class="fw-bold text-primary mb-0">{{ professional.name }}</h6><small class="text-muted">{{ professional.specialty }}</small></div>
             </div>
-
             <div class="mb-3">
-              <p class="mb-1 text-muted"><i class="fas fa-map-marker-alt me-2"></i>{{ professional.location or '—' }}</p>
-              <p class="mb-1 text-muted"><i class="fas fa-phone me-2"></i>{{ professional.phone or '—' }}</p>
-              <p class="mb-1 text-muted">
-                <i class="fas fa-clock me-2"></i>{{ professional.experience_years or 0 }} ans d'expérience
-              </p>
-              <p class="mb-1 text-muted"><i class="fas fa-money-bill me-2"></i>{{ professional.consultation_fee or 0 }} MAD</p>
+              <p class="mb-1 text-muted"><i class="fas fa-map-marker-alt me-1"></i>{{ professional.location }}</p>
+              <p class="mb-1 text-muted"><i class="fas fa-phone me-1"></i>{{ professional.phone }}</p>
+              <p class="mb-1 text-muted"><i class="fas fa-clock me-1"></i>{{ professional.experience_years }} ans d'expérience</p>
+              <p class="mb-1 text-muted"><i class="fas fa-money-bill me-1"></i>{{ professional.consultation_fee }} MAD</p>
             </div>
-
             <div class="mb-3">
-              <small class="text-muted d-block">Description :</small>
-              {% set desc = professional.description or '' %}
-              <p class="mb-0">{{ desc[:100] }}{% if desc|length > 100 %}…{% endif %}</p>
+              <small class="text-muted">Description:</small>
+              <p class="mb-0">{{ professional.description[:100] }}{% if professional.description|length > 100 %}...{% endif %}</p>
             </div>
-
             <div class="mb-3">
-              <small class="text-muted d-block">Créé le :</small>
-              <p class="mb-0">
-                {{ professional.created_at.strftime('%d/%m/%Y à %H:%M') if professional.created_at else '—' }}
-              </p>
+              <small class="text-muted">Créé le:</small>
+              <p class="mb-0">{{ professional.created_at.strftime('%d/%m/%Y à %H:%M') }}</p>
             </div>
-
             <div class="d-flex gap-2">
-              {% if professional.status in ['en_attente', 'pending', None] %}
-                <button class="btn btn-success btn-sm" onclick="validateProfessional({{ professional.id }})">
-                  <i class="fas fa-check me-1"></i>Valider
-                </button>
-                <button class="btn btn-danger btn-sm" onclick="rejectProfessional({{ professional.id }})">
-                  <i class="fas fa-times me-1"></i>Rejeter
-                </button>
-              {% else %}
-                <span class="text-muted">Déjà traité</span>
-              {% endif %}
-              <a class="btn btn-info btn-sm" href="{{ url_for('view_professional', professional_id=professional.id) }}">
-                <i class="fas fa-eye me-1"></i>Détails
-              </a>
+              <button class="btn btn-success btn-sm" onclick="validateProfessional({{ professional.id }})"><i class="fas fa-check"></i> Valider</button>
+              <button class="btn btn-danger btn-sm" onclick="rejectProfessional({{ professional.id }})"><i class="fas fa-times"></i> Rejeter</button>
+              <a class="btn btn-info btn-sm" href="{{ url_for('admin.view_professional', professional_id=professional.id) }}"><i class="fas fa-eye"></i> Détails</a>
             </div>
           </div>
         </div>
@@ -84,77 +45,25 @@
     <div class="text-center py-5">
       <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
       <h4 class="text-success">Aucun professionnel en attente</h4>
-      <p class="text-muted mb-0">Tous les professionnels ont été traités.</p>
+      <p class="text-muted">Tous les professionnels ont été traités.</p>
     </div>
   {% endif %}
 </div>
-
-<!-- Modal (optionnel si tu veux charger les détails en AJAX) -->
-<div class="modal fade" id="professionalDetailsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg"><div class="modal-content">
-    <div class="modal-header">
-      <h5 class="modal-title">Détails du professionnel</h5>
-      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
-    </div>
-    <div class="modal-body" id="professionalDetailsContent"></div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
-    </div>
-  </div></div>
-</div>
 {% endblock %}
-
 {% block extra_js %}
 <script>
-  // URLs serveur générées côté Jinja (remplacement d’ID)
-  const CSRF_TOKEN = `{{ csrf_token() if csrf_token is defined else '' }}`;
-  const URL_VALIDATE_TPL = "{{ url_for('validate_professional', professional_id=0) }}";
-  const URL_REJECT_TPL   = "{{ url_for('reject_professional', professional_id=0) }}";
-  const URL_VIEW_TPL     = "{{ url_for('view_professional', professional_id=0) }}";
-
-  function headersJSON() {
-    const h = { 'Content-Type': 'application/json' };
-    if (CSRF_TOKEN) h['X-CSRFToken'] = CSRF_TOKEN;
-    return h;
+  function postJSON(url){ return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'}}).then(async r=>{const ct=r.headers.get('content-type')||'';const p=ct.includes('application/json')?await r.json():{success:false,message:await r.text()};if(!r.ok) throw new Error(p.message||`HTTP ${r.status}`);return p;}); }
+  function validateProfessional(id){
+    if(!confirm('Valider ce professionnel ?')) return;
+    postJSON("{{ url_for('admin.validate_professional', professional_id=0) }}".replace('0',id))
+      .then(d=>{ if(d.success){ alert('Professionnel validé !'); location.reload(); } else { alert('Erreur: '+(d.message||'')); }})
+      .catch(e=>{ console.error(e); alert('Erreur lors de la validation: '+e.message);});
   }
-
-  function postJSON(url, body = {}) {
-    return fetch(url, { method: 'POST', headers: headersJSON(), body: JSON.stringify(body) })
-      .then(async res => {
-        const ct = res.headers.get('content-type') || '';
-        const payload = ct.includes('application/json') ? await res.json()
-                         : { success: res.ok, message: await res.text() };
-        if (!res.ok) throw new Error(payload.message || `HTTP ${res.status}`);
-        return payload;
-      });
-  }
-
-  function validateProfessional(id) {
-    if (!confirm('Êtes-vous sûr de vouloir valider ce professionnel ?')) return;
-    const url = URL_VALIDATE_TPL.replace('0', id);
-    postJSON(url)
-      .then(d => { alert('Professionnel validé avec succès !'); location.reload(); })
-      .catch(err => { console.error(err); alert('Erreur lors de la validation : ' + err.message); });
-  }
-
-  function rejectProfessional(id) {
-    if (!confirm('Êtes-vous sûr de vouloir rejeter ce professionnel ?')) return;
-    const url = URL_REJECT_TPL.replace('0', id);
-    postJSON(url)
-      .then(d => { alert('Professionnel rejeté'); location.reload(); })
-      .catch(err => { console.error(err); alert('Erreur lors du rejet : ' + err.message); });
-  }
-
-  // Chargement modal en AJAX (si tu préfères inline, le lien Détails pointe déjà vers la page dédiée)
-  function viewProfessionalDetails(id) {
-    const url = URL_VIEW_TPL.replace('0', id);
-    fetch(url).then(r => r.text()).then(html => {
-      document.getElementById('professionalDetailsContent').innerHTML = html;
-      new bootstrap.Modal(document.getElementById('professionalDetailsModal')).show();
-    }).catch(err => {
-      console.error(err);
-      alert('Erreur lors du chargement des détails');
-    });
+  function rejectProfessional(id){
+    if(!confirm('Rejeter ce professionnel ?')) return;
+    postJSON("{{ url_for('admin.reject_professional', professional_id=0) }}".replace('0',id))
+      .then(d=>{ if(d.success){ alert('Professionnel rejeté'); location.reload(); } else { alert('Erreur: '+(d.message||'')); }})
+      .catch(e=>{ console.error(e); alert('Erreur lors du rejet: '+e.message);});
   }
 </script>
 {% endblock %}
