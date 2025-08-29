@@ -730,4 +730,5 @@ def site_status():
     }
     return render_template('site_status.html', status=status, stats=stats)
 
+
 # Pas de bloc __main__ pour Render (gunicorn utilise app:app)
