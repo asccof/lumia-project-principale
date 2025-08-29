@@ -4,92 +4,290 @@
 
 {% block content %}
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h4 class="card-title">
-                        <i class="fas fa-user-edit me-2"></i>Modifier le professionnel
-                    </h4>
-                </div>
-                <div class="card-body">
-                    <form method="POST">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="name" class="form-label">
-                                    <i class="fas fa-user me-2"></i>Nom du professionnel *
-                                </label>
-                                <input type="text" class="form-control" id="name" name="name" value="{{ professional.name }}" required>
-                            </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label for="category" class="form-label">
-                                    <i class="fas fa-folder me-2"></i>Spécialité *
-                                </label>
-                                <select class="form-select" id="specialty" name="specialty" required>
-                                    <option value="">Choisir une spécialité</option>
-                                    <option value="Psychologue Clinicien" {% if professional.specialty == 'Psychologue Clinicien' %}selected{% endif %}>Psychologue Clinicien</option>
-                                    <option value="Psychologue pour Enfants" {% if professional.specialty == 'Psychologue pour Enfants' %}selected{% endif %}>Psychologue pour Enfants</option>
-                                    <option value="Thérapeute Familial" {% if professional.specialty == 'Thérapeute Familial' %}selected{% endif %}>Thérapeute Familial</option>
-                                    <option value="Thérapeute de Couple" {% if professional.specialty == 'Thérapeute de Couple' %}selected{% endif %}>Thérapeute de Couple</option>
-                                    <option value="Coach en Développement Personnel" {% if professional.specialty == 'Coach en Développement Personnel' %}selected{% endif %}>Coach en Développement Personnel</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="consultation_fee" class="form-label">
-                                    <i class="fas fa-euro-sign me-2"></i>Prix de consultation (MAD) *
-                                </label>
-                                <input type="number" class="form-control" id="consultation_fee" name="consultation_fee" step="0.01" min="0" value="{{ professional.consultation_fee }}" required>
-                            </div>
-                            
-                            <div class="col-md-6 mb-3">
-                                <label for="status" class="form-label">
-                                    <i class="fas fa-check-circle me-2"></i>Statut *
-                                </label>
-                                <select class="form-select" id="status" name="status" required>
-                                    <option value="valide" {% if professional.status == 'valide' %}selected{% endif %}>Validé</option>
-                                    <option value="en_attente" {% if professional.status == 'en_attente' %}selected{% endif %}>En attente</option>
-                                    <option value="rejete" {% if professional.status == 'rejete' %}selected{% endif %}>Rejeté</option>
-                                </select>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="description" class="form-label">
-                                <i class="fas fa-align-left me-2"></i>Description et spécialités *
-                            </label>
-                            <textarea class="form-control" id="description" name="description" rows="5" required>{{ professional.description }}</textarea>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="image_url" class="form-label">
-                                <i class="fas fa-image me-2"></i>URL de la photo *
-                            </label>
-                            <input type="url" class="form-control" id="image_url" name="image_url" value="{{ professional.image_url }}" required>
-                            <div class="form-text">Entrez l'URL d'une photo professionnelle (Unsplash recommandé)</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <p class="text-muted">
-                                <strong>Date de création:</strong> {{ professional.created_at.strftime('%d/%m/%Y à %H:%M') }}
-                            </p>
-                        </div>
-                        
-                        <div class="d-flex justify-content-between">
-                            <a href="{{ url_for('admin_products') }}" class="btn btn-secondary">
-                                <i class="fas fa-arrow-left me-2"></i>Retour
-                            </a>
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save me-2"></i>Enregistrer les modifications
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+  <div class="row">
+    <div class="col-12">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="card-title">
+            <i class="fas fa-user-edit me-2"></i>Modifier un professionnel
+          </h4>
         </div>
+        <div class="card-body">
+
+<section class="py-3">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body p-4">
+            <form method="POST" action="{{ url_for('admin_edit_product', product_id=professional.id) }}" id="editProductForm" accept-charset="utf-8">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="name" class="form-label">
+                    <i class="fas fa-user me-2"></i>Nom du professionnel *
+                  </label>
+                  <input type="text" class="form-control" id="name" name="name" value="{{ professional.name or '' }}" required>
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <label for="specialty" class="form-label">
+                    <i class="fas fa-folder me-2"></i>Spécialité *
+                  </label>
+                  <select class="form-select" id="specialty" name="specialty" required>
+                    {% set sp = professional.specialty or '' %}
+                    <option value="">Choisir une spécialité</option>
+                    <option value="Psychologue" {{ 'selected' if sp=='Psychologue' else '' }}>Psychologue</option>
+                    <option value="Thérapeute" {{ 'selected' if sp=='Thérapeute' else '' }}>Thérapeute</option>
+                    <option value="Coach" {{ 'selected' if sp=='Coach' else '' }}>Coach</option>
+                    {% if sp not in ['Psychologue','Thérapeute','Coach',''] %}
+                      <option value="{{ sp }}" selected>{{ sp }}</option>
+                    {% endif %}
+                  </select>
+                  <input type="hidden" name="category" id="category" value="{{ sp }}">
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="consultation_fee" class="form-label">
+                    <i class="fas fa-money-bill me-2"></i>Prix (MAD) *
+                  </label>
+                  <input type="number" class="form-control" id="consultation_fee" name="consultation_fee"
+                         step="0.01" min="0" value="{{ professional.consultation_fee or 0 }}" required>
+                  <input type="hidden" name="price" id="price" value="{{ professional.consultation_fee or 0 }}">
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <label for="availability" class="form-label">
+                    <i class="fas fa-check-circle me-2"></i>Disponibilité *
+                  </label>
+                  {% set av = professional.availability or 'disponible' %}
+                  <select class="form-select" id="availability" name="availability" required>
+                    <option value="disponible" {{ 'selected' if av=='disponible' else '' }}>Disponible</option>
+                    <option value="indisponible" {{ 'selected' if av=='indisponible' else '' }}>Indisponible</option>
+                  </select>
+                  <input type="hidden" name="stock" id="stock" value="{{ '1' if av=='disponible' else '0' }}">
+                </div>
+              </div>
+
+              <!-- Adresse & Localisation -->
+              <div class="row">
+                <div class="col-md-12 mb-3">
+                  <label for="address_line" class="form-label">
+                    <i class="fas fa-map-marker-alt me-2"></i>Adresse complète
+                  </label>
+                  <input type="text" class="form-control" id="address_line" name="address_line"
+                         value="{{ professional.address_line or '' }}"
+                         placeholder="Ex: 12 Rue Mohammed V, Quartier Gauthier">
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <label for="location" class="form-label">
+                    <i class="fas fa-city me-2"></i>Ville
+                  </label>
+                  <input type="text" class="form-control" id="location" name="location"
+                         value="{{ professional.location or '' }}" placeholder="Casablanca">
+                </div>
+
+                <div class="col-md-3 mb-3">
+                  <label for="latitude" class="form-label">
+                    <i class="fas fa-location-arrow me-2"></i>Latitude
+                  </label>
+                  <input type="number" step="any" class="form-control" id="latitude" name="latitude"
+                         value="{{ professional.latitude if professional.latitude is not none else '' }}" placeholder="33.5731">
+                </div>
+
+                <div class="col-md-3 mb-3">
+                  <label for="longitude" class="form-label">
+                    <i class="fas fa-location-arrow me-2"></i>Longitude
+                  </label>
+                  <input type="number" step="any" class="form-control" id="longitude" name="longitude"
+                         value="{{ professional.longitude if professional.longitude is not none else '' }}" placeholder="-7.5898">
+                </div>
+
+                <div class="col-12 mb-2">
+                  {% if professional.latitude is not none and professional.longitude is not none %}
+                    <a id="gmapsLink" href="https://www.google.com/maps?q={{ professional.latitude }},{{ professional.longitude }}"
+                       target="_blank" class="small text-decoration-underline">
+                      Ouvrir sur Google Maps
+                    </a>
+                  {% else %}
+                    <a id="gmapsLink" href="#" target="_blank" class="small text-decoration-underline d-none">
+                      Ouvrir sur Google Maps
+                    </a>
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="phone" class="form-label">
+                    <i class="fas fa-phone me-2"></i>Téléphone
+                  </label>
+                  <input type="text" class="form-control" id="phone" name="phone"
+                         value="{{ professional.phone or '' }}" placeholder="+212 6 XX XX XX XX">
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <label for="experience_years" class="form-label">
+                    <i class="fas fa-briefcase me-2"></i>Années d'expérience
+                  </label>
+                  <input type="number" class="form-control" id="experience_years" name="experience_years"
+                         min="0" value="{{ professional.experience_years or 0 }}">
+                </div>
+              </div>
+
+              <div class="row">
+                <div class="col-md-12 mb-3">
+                  <label for="image_url" class="form-label">
+                    <i class="fas fa-image me-2"></i>URL de la photo *
+                  </label>
+                  <input type="url" class="form-control" id="image_url" name="image_url"
+                         required value="{{ professional.image_url or '' }}"
+                         placeholder="https://images.unsplash.com/photo-...">
+                  <div class="form-text">Entrez l'URL d'une photo (Unsplash recommandé)</div>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label for="description" class="form-label">
+                  <i class="fas fa-align-left me-2"></i>Description et spécialités *
+                </label>
+                <textarea class="form-control" id="description" name="description" rows="5" required
+                          placeholder="Décrivez les spécialités, l'expérience et les types de consultation proposés...">{{ professional.description or '' }}</textarea>
+                <div class="form-text" id="descCounter">1000 caractères restants</div>
+              </div>
+
+              <!-- Types de consultation -->
+              {% set types = (professional.consultation_types or '') %}
+              <div class="mb-4">
+                <h5>Types de consultation proposés</h5>
+                <div class="row">
+                  <div class="col-md-4 mb-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="home_consultation" name="home_consultation"
+                             {% if 'domicile' in types %}checked{% endif %}>
+                      <label class="form-check-label" for="home_consultation"><i class="fas fa-home me-2"></i>À domicile</label>
+                    </div>
+                  </div>
+                  <div class="col-md-4 mb-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="office_consultation" name="office_consultation"
+                             {% if 'cabinet' in types %}checked{% endif %}>
+                      <label class="form-check-label" for="office_consultation"><i class="fas fa-building me-2"></i>En cabinet</label>
+                    </div>
+                  </div>
+                  <div class="col-md-4 mb-2">
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="online_consultation" name="online_consultation"
+                             {% if 'en_ligne' in types or 'video' in types %}checked{% endif %}>
+                      <label class="form-check-label" for="online_consultation"><i class="fas fa-video me-2"></i>En ligne</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-flex gap-3">
+                <button type="submit" class="btn btn-primary btn-lg">
+                  <i class="fas fa-save me-2"></i>Enregistrer les modifications
+                </button>
+                <a href="{{ url_for('admin_products') }}" class="btn btn-outline-secondary btn-lg">
+                  <i class="fas fa-times me-2"></i>Annuler
+                </a>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
+</section>
+
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-{% endblock %} 
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Compat "category", "price", "stock"
+const specialtyEl = document.getElementById('specialty');
+const categoryEl  = document.getElementById('category');
+const feeEl       = document.getElementById('consultation_fee');
+const priceEl     = document.getElementById('price');
+const availEl     = document.getElementById('availability');
+const stockEl     = document.getElementById('stock');
+
+function syncCompat() {
+  categoryEl.value = specialtyEl.value || '';
+  priceEl.value = feeEl.value || '0';
+  stockEl.value = (availEl.value === 'disponible') ? '1' : '0';
+}
+[specialtyEl, feeEl, availEl].forEach(el => el.addEventListener('input', syncCompat));
+syncCompat();
+
+// Aperçu image
+document.getElementById('image_url').addEventListener('input', function() {
+  const url = this.value;
+  const preview = document.getElementById('imagePreview');
+  if (!preview) return;
+  if (url) {
+    preview.innerHTML = `
+      <img src="${url}" alt="Aperçu" class="img-fluid rounded" style="max-height: 200px;">
+      <p class="text-muted mt-2">Aperçu de l'image</p>
+    `;
+  } else {
+    preview.innerHTML = `
+      <i class="fas fa-image fa-3x text-muted"></i>
+      <p class="text-muted mt-2">Aperçu de l'image</p>
+    `;
+  }
+});
+
+// Compteur description
+const desc = document.getElementById('description');
+const counter = document.getElementById('descCounter');
+function updateCounter() {
+  const max = 1000;
+  const left = max - (desc.value || '').length;
+  counter.textContent = `${left} caractères restants`;
+  counter.style.color = left < 0 ? 'red' : '';
+}
+desc.addEventListener('input', updateCounter);
+updateCounter();
+
+// Lien Google Maps auto
+const latEl = document.getElementById('latitude');
+const lngEl = document.getElementById('longitude');
+const gmapsLink = document.getElementById('gmapsLink');
+
+function updateGMapsLink() {
+  const lat = latEl.value.trim();
+  const lng = lngEl.value.trim();
+  if (lat !== '' && lng !== '' && !isNaN(lat) && !isNaN(lng)) {
+    gmapsLink.href = `https://www.google.com/maps?q=${lat},${lng}`;
+    gmapsLink.classList.remove('d-none');
+  } else {
+    gmapsLink.classList.add('d-none');
+    gmapsLink.removeAttribute('href');
+  }
+}
+[latEl, lngEl].forEach(el => el.addEventListener('input', updateGMapsLink));
+updateGMapsLink();
+
+// Validation & UX
+document.getElementById('editProductForm').addEventListener('submit', function(e) {
+  const fee = parseFloat(feeEl.value || '0');
+  if (isNaN(fee) || fee < 0) {
+    e.preventDefault();
+    alert('Le prix doit être un nombre positif.');
+    return false;
+  }
+  const btn = this.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enregistrement...';
+});
+</script>
+{% endblock %}
