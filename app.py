@@ -44,11 +44,16 @@ app.config["SQLALCHEMY_DATABASE_URI"] = uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 db.init_app(app)
-
 # --- Login manager ---
+from admin_server import admin_bp
+app.register_blueprint(admin_bp, url_prefix='/admin')
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+# --- Admin en Blueprint ---
+from admin_server import admin_bp
+app.register_blueprint(admin_bp, url_prefix='/admin')
 
 # --- Sous-serveur admin ---
 from admin_server import app as admin_app  # importer après config DB
