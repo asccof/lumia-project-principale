@@ -103,6 +103,22 @@ with app.app_context():
         app.logger.info(f"Admin '{admin_username}' créé.")
 
 # ======================
+# Helper pro courant
+# ======================
+def _get_current_professional():
+    """
+    Récupère le Professional lié à l'utilisateur connecté.
+    - Si le modèle a un champ user_id, on l'utilise.
+    - Sinon on retombe sur le nom (comme dans le reste du code existant).
+    """
+    pro = None
+    if hasattr(Professional, "user_id"):
+        pro = Professional.query.filter_by(user_id=current_user.id).first()
+        if pro:
+            return pro
+    return Professional.query.filter_by(name=current_user.username).first()
+
+# ======================
 # Pages publiques
 # ======================
 @app.route('/')
@@ -234,6 +250,13 @@ def professional_register():
             consultation_fee=consultation_fee,
             status='en_attente'
         )
+        # Lier au user si le champ existe dans le modèle
+        if hasattr(Professional, "user_id"):
+            try:
+                professional.user_id = user.id
+            except Exception:
+                pass
+
         db.session.add(professional)
         db.session.commit()
 
@@ -281,7 +304,7 @@ def professional_dashboard():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _get_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -294,6 +317,78 @@ def professional_dashboard():
                            professional=professional,
                            appointments=appointments)
 
+# --------- NOUVELLE ROUTE : édition du profil côté PRO ---------
+@app.route('/professional/profile', methods=['GET', 'POST'])
+@login_required
+def professional_edit_profile():
+    if current_user.user_type != 'professional':
+        flash('Accès non autorisé')
+        return redirect(url_for('index'))
+
+    pro = _get_current_professional()
+    if not pro:
+        # Crée un profil minimal si absent
+        pro = Professional(name=current_user.username, status='en_attente')
+        if hasattr(Professional, "user_id"):
+            try:
+                pro.user_id = current_user.id
+            except Exception:
+                pass
+        db.session.add(pro)
+        db.session.commit()
+
+    if request.method == 'POST':
+        # Champs texte
+        pro.name = (request.form.get('name') or pro.name or '').strip()
+        pro.specialty = (request.form.get('specialty') or request.form.get('category') or pro.specialty or '').strip()
+        pro.description = (request.form.get('description') or pro.description or '').strip()
+        pro.location = (request.form.get('location') or pro.location or '').strip()
+        pro.phone = (request.form.get('phone') or pro.phone or '').strip()
+        pro.image_url = (request.form.get('image_url') or pro.image_url or '').strip()
+
+        # Tarif (price ou consultation_fee)
+        fee_raw = (request.form.get('price') or request.form.get('consultation_fee') or '').replace(',', '.').strip()
+        if fee_raw:
+            try:
+                pro.consultation_fee = float(fee_raw)
+            except ValueError:
+                flash("Le tarif est invalide.", "error")
+                return redirect(url_for('professional_edit_profile'))
+
+        # Expérience
+        exp_raw = (request.form.get('experience_years') or '').strip()
+        if exp_raw:
+            try:
+                pro.experience_years = int(exp_raw)
+            except ValueError:
+                flash("L'expérience doit être un nombre.", "error")
+                return redirect(url_for('professional_edit_profile'))
+
+        # Disponibilité (ou via 'stock' 1/0)
+        availability = request.form.get('availability')
+        if availability is None:
+            stock = (request.form.get('stock') or '').strip().lower()
+            availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
+        pro.availability = availability
+
+        # Types de consultation (liste ou 3 checkboxes)
+        types_list = request.form.getlist('consultation_types')
+        if not types_list:
+            t = []
+            if request.form.get('home_consultation'): t.append('domicile')
+            if request.form.get('office_consultation'): t.append('cabinet')
+            if request.form.get('online_consultation'): t.append('en_ligne')
+            types_list = t
+        if types_list:
+            pro.consultation_types = ",".join(types_list)
+
+        db.session.commit()
+        flash("Profil mis à jour avec succès.")
+        return redirect(url_for('professional_dashboard'))
+
+    return render_template('professional_edit_profile.html', professional=pro)
+# ---------------------------------------------------------------
+
 @app.route('/professional/availability', methods=['GET', 'POST'])
 @login_required
 def professional_availability():
@@ -301,7 +396,7 @@ def professional_availability():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _get_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -342,7 +437,7 @@ def professional_unavailable_slots():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _get_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -394,7 +489,7 @@ def delete_unavailable_slot(slot_id):
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _get_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -416,7 +511,7 @@ def professional_appointments():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _get_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -435,7 +530,7 @@ def professional_appointment_action(appointment_id, action):
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _get_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
