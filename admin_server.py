@@ -1,11 +1,12 @@
-# admin_server.py  — version Blueprint
+# admin_server.py (version Blueprint)
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
-# On réutilise la même instance SQLAlchemy et les mêmes modèles
+# On réutilise les modèles & la même instance SQLAlchemy que l'app principale
 from models import db, User, Professional, Appointment
 
+# IMPORTANT : Blueprint unique nommé "admin"
 admin_bp = Blueprint("admin", __name__)
 
 # ===================== AUTH ADMIN =====================
@@ -21,7 +22,7 @@ def admin_login():
 
         if user and user.is_admin and check_password_hash(user.password_hash, password):
             login_user(user)
-            return redirect(url_for('.admin_dashboard'))
+            return redirect(url_for('admin.admin_dashboard'))
         else:
             flash('Identifiants incorrects ou accès non autorisé', 'error')
 
@@ -31,7 +32,7 @@ def admin_login():
 @login_required
 def admin_logout():
     logout_user()
-    return redirect(url_for('.admin_login'))
+    return redirect(url_for('admin.admin_login'))
 
 # ===================== DASHBOARD =====================
 @admin_bp.route('/')
@@ -39,7 +40,7 @@ def admin_logout():
 def admin_dashboard():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
 
     professionals = Professional.query.all()
     users = User.query.all()
@@ -71,7 +72,7 @@ def admin_dashboard():
 def admin_products():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     professionals = Professional.query.order_by(Professional.id.desc()).all()
     return render_template('admin_products.html', professionals=professionals)
 
@@ -80,7 +81,7 @@ def admin_products():
 def admin_add_product():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
 
     if request.method == 'POST':
         # Champs texte
@@ -88,21 +89,13 @@ def admin_add_product():
         description = (request.form.get('description') or '').strip()
         specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
 
-        # Adresse exacte + coordonnées (NOUVEAU)
-        address = (request.form.get('address') or '').strip()
-        latitude_raw = (request.form.get('latitude') or '').strip()
-        longitude_raw = (request.form.get('longitude') or '').strip()
-        try:
-            latitude = float(latitude_raw) if latitude_raw else None
-        except ValueError:
-            latitude = None
-        try:
-            longitude = float(longitude_raw) if longitude_raw else None
-        except ValueError:
-            longitude = None
-
-        # Ville (fallback / compat)
+        # Adresse & localisation (NOUVEAU)
+        address_line = (request.form.get('address_line') or '').strip()
         location = (request.form.get('location') or '').strip()
+        lat_raw = (request.form.get('latitude') or '').strip()
+        lng_raw = (request.form.get('longitude') or '').strip()
+        latitude = float(lat_raw) if lat_raw not in ('', None) else None
+        longitude = float(lng_raw) if lng_raw not in ('', None) else None
 
         image_url = (request.form.get('image_url') or '').strip()
         phone = (request.form.get('phone') or '+212 6 XX XX XX XX').strip()
@@ -136,9 +129,10 @@ def admin_add_product():
             if request.form.get('online_consultation'): types_list.append('en_ligne')
         consultation_types = ','.join(types_list) if types_list else 'cabinet'
 
+        # Validations minimales
         if not name or not description or not specialty:
             flash("Nom, description et spécialité sont obligatoires.", "error")
-            return redirect(url_for('.admin_add_product'))
+            return redirect(url_for('admin.admin_add_product'))
 
         professional = Professional(
             name=name,
@@ -148,10 +142,9 @@ def admin_add_product():
             specialty=specialty,
             availability=availability,
             consultation_types=consultation_types,
-            # Ville en compat si pas d’adresse saisie
+            # Adresse & localisation (NOUVEAU)
+            address_line=address_line or None,
             location=location or 'Casablanca',
-            # Nouvelles colonnes
-            address=address or None,
             latitude=latitude,
             longitude=longitude,
             phone=phone,
@@ -161,7 +154,7 @@ def admin_add_product():
         db.session.add(professional)
         db.session.commit()
         flash('Professionnel ajouté avec succès!')
-        return redirect(url_for('.admin_products'))
+        return redirect(url_for('admin.admin_products'))
 
     return render_template('add_product.html')
 
@@ -170,7 +163,7 @@ def admin_add_product():
 def admin_edit_product(product_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
 
     professional = Professional.query.get_or_404(product_id)
 
@@ -178,7 +171,6 @@ def admin_edit_product(product_id):
         professional.name = (request.form.get('name') or professional.name).strip()
         professional.description = (request.form.get('description') or professional.description).strip()
 
-        # alias consultation_fee / price
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.')
         if fee_raw:
             try:
@@ -191,30 +183,21 @@ def admin_edit_product(product_id):
         professional.location = (request.form.get('location') or professional.location).strip()
         professional.phone = (request.form.get('phone') or professional.phone).strip()
 
-        # Adresse + coordonnées (NOUVEAU)
-        professional.address = (request.form.get('address') or professional.address or '').strip() or None
+        # Adresse & localisation (NOUVEAU)
+        professional.address_line = (request.form.get('address_line') or professional.address_line or '').strip() or None
         lat_raw = (request.form.get('latitude') or '').strip()
-        lon_raw = (request.form.get('longitude') or '').strip()
-        try:
-            professional.latitude = float(lat_raw) if lat_raw != '' else professional.latitude
-        except ValueError:
-            pass
-        try:
-            professional.longitude = float(lon_raw) if lon_raw != '' else professional.longitude
-        except ValueError:
-            pass
+        lng_raw = (request.form.get('longitude') or '').strip()
+        professional.latitude = float(lat_raw) if lat_raw not in ('', None) else None
+        professional.longitude = float(lng_raw) if lng_raw not in ('', None) else None
 
-        # statut si fourni
         status_val = (request.form.get('status') or '').strip()
         if status_val:
             professional.status = status_val
 
-        # availability depuis 'stock' si présent
         stock = request.form.get('stock')
         if stock is not None:
             professional.availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
 
-        # types de consultation si présents
         types_list = request.form.getlist('consultation_types')
         if types_list or any(request.form.get(k) for k in ['home_consultation', 'office_consultation', 'online_consultation']):
             t = []
@@ -226,7 +209,6 @@ def admin_edit_product(product_id):
             if t:
                 professional.consultation_types = ','.join(t)
 
-        # experience si fourni
         exp_raw = request.form.get('experience_years')
         if exp_raw:
             try:
@@ -236,7 +218,7 @@ def admin_edit_product(product_id):
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
-        return redirect(url_for('.admin_products'))
+        return redirect(url_for('admin.admin_products'))
 
     return render_template('edit_product.html', professional=professional)
 
@@ -250,23 +232,22 @@ def admin_delete_product(product_id):
     db.session.commit()
     return jsonify({'success': True, 'message': 'Professionnel supprimé avec succès'})
 
-# Variante liste/CRUD par /professionals
+# Variante liste/CRUD par /professionals (templates qui l’utilisent)
 @admin_bp.route('/professionals')
 @login_required
 def admin_professionals():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     professionals = Professional.query.all()
     return render_template('admin_professionals.html', professionals=professionals)
 
 @admin_bp.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'])
 @login_required
 def edit_professional(professional_id):
-    """Unique définition de la route d’édition d’un professionnel (pas de doublon)."""
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
 
     professional = Professional.query.get_or_404(professional_id)
 
@@ -276,12 +257,9 @@ def edit_professional(professional_id):
         specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
         image_url = (request.form.get('image_url') or '').strip()
 
-        if name:
-            professional.name = name
-        if description:
-            professional.description = description
-        if specialty:
-            professional.specialty = specialty
+        if name: professional.name = name
+        if description: professional.description = description
+        if specialty: professional.specialty = specialty
         professional.image_url = image_url  # vide autorisé
 
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.').strip()
@@ -290,24 +268,14 @@ def edit_professional(professional_id):
                 professional.consultation_fee = float(fee_raw)
             except ValueError:
                 flash("Le tarif est invalide.", "error")
-                return redirect(url_for('.edit_professional', professional_id=professional_id))
+                return redirect(url_for('admin.edit_professional', professional_id=professional_id))
 
-        # Adresse + coordonnées (NOUVEAU)
-        address = (request.form.get('address') or '').strip()
-        if address != '':
-            professional.address = address
+        # Adresse & localisation (NOUVEAU)
+        professional.address_line = (request.form.get('address_line') or professional.address_line or '').strip() or None
         lat_raw = (request.form.get('latitude') or '').strip()
-        lon_raw = (request.form.get('longitude') or '').strip()
-        try:
-            if lat_raw != '':
-                professional.latitude = float(lat_raw)
-        except ValueError:
-            pass
-        try:
-            if lon_raw != '':
-                professional.longitude = float(lon_raw)
-        except ValueError:
-            pass
+        lng_raw = (request.form.get('longitude') or '').strip()
+        professional.latitude = float(lat_raw) if lat_raw not in ('', None) else None
+        professional.longitude = float(lng_raw) if lng_raw not in ('', None) else None
 
         status = (request.form.get('status') or '').strip()
         if status in ('valide', 'en_attente', 'rejete'):
@@ -315,9 +283,8 @@ def edit_professional(professional_id):
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
-        return redirect(url_for('.admin_professionals'))
+        return redirect(url_for('admin.admin_professionals'))
 
-    # On réutilise le template existant
     return render_template('edit_product.html', professional=professional)
 
 @admin_bp.route('/professionals/delete/<int:professional_id>')
@@ -325,19 +292,19 @@ def edit_professional(professional_id):
 def delete_professional(professional_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     professional = Professional.query.get_or_404(professional_id)
     db.session.delete(professional)
     db.session.commit()
     flash('Professionnel supprimé avec succès!')
-    return redirect(url_for('.admin_professionals'))
+    return redirect(url_for('admin.admin_professionals'))
 
 @admin_bp.route('/professionals/<int:professional_id>')
 @login_required
 def view_professional(professional_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     professional = Professional.query.get_or_404(professional_id)
     appointments = Appointment.query.filter_by(professional_id=professional_id).all()
     return render_template('view_professional.html', professional=professional, appointments=appointments)
@@ -348,7 +315,7 @@ def view_professional(professional_id):
 def admin_users():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     users = User.query.order_by(User.id.desc()).all()
     return render_template('admin_users.html', users=users)
 
@@ -357,7 +324,7 @@ def admin_users():
 def add_user():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
 
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
@@ -368,14 +335,14 @@ def add_user():
 
         if not username or not email or not password:
             flash("Tous les champs sont obligatoires")
-            return redirect(url_for('.add_user'))
+            return redirect(url_for('admin.add_user'))
 
         if User.query.filter_by(username=username).first():
             flash("Nom d'utilisateur déjà utilisé")
-            return redirect(url_for('.add_user'))
+            return redirect(url_for('admin.add_user'))
         if User.query.filter_by(email=email).first():
             flash("Email déjà utilisé")
-            return redirect(url_for('.add_user'))
+            return redirect(url_for('admin.add_user'))
 
         user = User(
             username=username,
@@ -387,7 +354,7 @@ def add_user():
         db.session.add(user)
         db.session.commit()
         flash('Utilisateur ajouté avec succès!')
-        return redirect(url_for('.admin_users'))
+        return redirect(url_for('admin.admin_users'))
 
     return render_template('add_user.html')
 
@@ -396,7 +363,7 @@ def add_user():
 def edit_user(user_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     user = User.query.get_or_404(user_id)
 
     if request.method == 'POST':
@@ -408,10 +375,10 @@ def edit_user(user_id):
 
         if User.query.filter(User.username == username, User.id != user.id).first():
             flash("Nom d'utilisateur déjà pris")
-            return redirect(url_for('.edit_user', user_id=user.id))
+            return redirect(url_for('admin.edit_user', user_id=user.id))
         if User.query.filter(User.email == email, User.id != user.id).first():
             flash("Email déjà enregistré")
-            return redirect(url_for('.edit_user', user_id=user.id))
+            return redirect(url_for('admin.edit_user', user_id=user.id))
 
         user.username = username
         user.email = email
@@ -423,7 +390,7 @@ def edit_user(user_id):
 
         db.session.commit()
         flash('Utilisateur modifié avec succès!')
-        return redirect(url_for('.admin_users'))
+        return redirect(url_for('admin.admin_users'))
 
     return render_template('edit_user.html', user=user)
 
@@ -432,12 +399,12 @@ def edit_user(user_id):
 def delete_user(user_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     user = User.query.get_or_404(user_id)
     db.session.delete(user)
     db.session.commit()
     flash('Utilisateur supprimé avec succès!')
-    return redirect(url_for('.admin_users'))
+    return redirect(url_for('admin.admin_users'))
 
 # ===================== RDV / COMMANDES =====================
 @admin_bp.route('/orders')
@@ -445,7 +412,7 @@ def delete_user(user_id):
 def admin_orders():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_orders.html', appointments=appointments)
 
@@ -454,7 +421,7 @@ def admin_orders():
 def admin_appointments():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_appointments.html', appointments=appointments)
 
@@ -527,6 +494,6 @@ def reject_professional(professional_id):
 def pending_professionals():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('.admin_login'))
+        return redirect(url_for('admin.admin_login'))
     pending_professionals = Professional.query.filter_by(status='en_attente').all()
     return render_template('pending_professionals.html', professionals=pending_professionals)
