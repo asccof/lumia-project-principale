@@ -6,7 +6,6 @@ from sqlalchemy import or_, text
 import os
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-
 # --- App principale ---
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
@@ -44,6 +43,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 db.init_app(app)
+
 # --- Login manager ---
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -52,11 +52,6 @@ login_manager.login_view = 'login'
 # --- Admin en Blueprint (UNE SEULE FOIS) ---
 from admin_server import admin_bp
 app.register_blueprint(admin_bp, url_prefix='/admin')
-
-
-# --- Sous-serveur admin ---
-from admin_server import app as admin_app  # importer après config DB
-app.wsgi_app = DispatcherMiddleware(app.wsgi_app, {"/admin": admin_app})
 
 # ======================
 # Modèles complémentaires (disponibilités/indispos)
@@ -131,15 +126,16 @@ def professionals():
 
     if search_query:
         like = f'%{search_query}%'
-        pros = base_query.filter(
-            or_(
-                Professional.name.ilike(like),
-                Professional.specialty.ilike(like),
-                Professional.location.ilike(like),
-                Professional.address.ilike(like),         # <-- NEW: recherche sur adresse exacte
-                Professional.description.ilike(like)
-            )
-        ).all()
+        conditions = [
+            Professional.name.ilike(like),
+            Professional.specialty.ilike(like),
+            Professional.location.ilike(like),
+            Professional.description.ilike(like),
+        ]
+        # Ajoute l'adresse si la colonne existe dans le modèle
+        if hasattr(Professional, "address"):
+            conditions.insert(2, Professional.address.ilike(like))
+        pros = base_query.filter(or_(*conditions)).all()
     elif specialty != 'all':
         pros = base_query.filter_by(specialty=specialty).all()
     else:
@@ -326,9 +322,11 @@ def professional_edit_profile():
         pro.name = (request.form.get('name') or pro.name).strip()
         pro.specialty = (request.form.get('specialty') or pro.specialty or '').strip()
         pro.description = (request.form.get('description') or pro.description or '').strip()
-        # Adresse exacte
-        pro.address = (request.form.get('address') or '').strip()
-        # Conserver 'location' comme fallback si pas d'adresse
+        # Adresse exacte (si la colonne existe, on la remplit; sinon on ne casse rien)
+        addr = (request.form.get('address') or '').strip()
+        if hasattr(pro, "address"):
+            pro.address = addr
+        # Conserver 'location' pour compat/fallback
         loc = (request.form.get('location') or '').strip()
         if loc:
             pro.location = loc
@@ -336,15 +334,20 @@ def professional_edit_profile():
         lat = (request.form.get('latitude') or '').strip()
         lng = (request.form.get('longitude') or '').strip()
         try:
-            pro.latitude = float(lat) if lat else None
+            val_lat = float(lat) if lat else None
         except ValueError:
             flash("Latitude invalide", "error")
             return redirect(url_for('professional_edit_profile'))
         try:
-            pro.longitude = float(lng) if lng else None
+            val_lng = float(lng) if lng else None
         except ValueError:
             flash("Longitude invalide", "error")
             return redirect(url_for('professional_edit_profile'))
+
+        if hasattr(pro, "latitude"):
+            pro.latitude = val_lat
+        if hasattr(pro, "longitude"):
+            pro.longitude = val_lng
 
         db.session.commit()
         flash("Profil mis à jour avec succès!")
@@ -527,9 +530,9 @@ def api_professionals():
         'image_url': p.image_url,
         'specialty': p.specialty,
         'availability': p.availability,
-        'address': p.address,            # <-- NEW
-        'latitude': p.latitude,          # <-- NEW
-        'longitude': p.longitude         # <-- NEW
+        'address': getattr(p, 'address', None),      # safe si colonne absente
+        'latitude': getattr(p, 'latitude', None),    # safe si colonne absente
+        'longitude': getattr(p, 'longitude', None)   # safe si colonne absente
     } for p in pros])
 
 @app.route('/api/professional/<int:professional_id>/available-slots')
@@ -591,6 +594,7 @@ def api_available_slots(professional_id):
                     'available': True
                 })
 
+            # avance de 30 min
             current = slot_end
 
     return jsonify({
