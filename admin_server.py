@@ -279,6 +279,7 @@ def admin_professionals():
 @app.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'])
 @login_required
 def edit_professional(professional_id):
+    """Unique définition de la route d’édition d’un professionnel (pas de doublon)."""
     if not current_user.is_admin:
         flash('Accès refusé')
         return redirect(url_for('admin_login'))
@@ -318,42 +319,8 @@ def edit_professional(professional_id):
         flash('Professionnel modifié avec succès!')
         return redirect(url_for('admin_professionals'))
 
-    # ⬅️  ICI LE CHANGEMENT : on rend le template déjà existant
+    # On réutilise le template déjà existant
     return render_template('edit_product.html', professional=professional)
-
-
-@app.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'])
-@login_required
-def edit_professional(professional_id):
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin_login'))
-
-    professional = Professional.query.get_or_404(professional_id)
-
-    if request.method == 'POST':
-        professional.name = (request.form.get('name') or professional.name).strip()
-        professional.description = (request.form.get('description') or professional.description).strip()
-        fee_raw = (request.form.get('consultation_fee') or '').replace(',', '.')
-        if fee_raw:
-            try:
-                professional.consultation_fee = float(fee_raw)
-            except ValueError:
-                pass
-        professional.specialty = (request.form.get('specialty') or professional.specialty).strip()
-        professional.location = (request.form.get('location') or professional.location).strip()
-        exp_raw = request.form.get('experience_years')
-        if exp_raw:
-            try:
-                professional.experience_years = int(exp_raw)
-            except ValueError:
-                pass
-        professional.image_url = (request.form.get('image_url') or professional.image_url).strip()
-        db.session.commit()
-        flash('Professionnel modifié avec succès!')
-        return redirect(url_for('admin_professionals'))
-
-    return render_template('edit_professional.html', professional=professional)
 
 @app.route('/professionals/delete/<int:professional_id>')
 @login_required
