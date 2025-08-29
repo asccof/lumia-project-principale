@@ -39,12 +39,51 @@
       <div class="col-md-6">
         <label class="form-label">Spécialité</label>
         <input type="text" name="specialty" class="form-control" value="{{ professional.specialty or '' }}">
-        <!-- alias possible côté serveur: name="category" -->
+        <!-- alias accepté côté serveur: name="category" -->
       </div>
 
-      <div class="col-md-6">
-        <label class="form-label">Ville</label>
-        <input type="text" name="location" class="form-control" value="{{ professional.location or '' }}">
+      <!-- Remplace l'ancienne "Ville" par une adresse complète -->
+      <div class="col-12">
+        <label class="form-label">Adresse complète</label>
+        <input type="text" name="address" class="form-control"
+               placeholder="Ex: 123 Boulevard Zerktouni, Maarif, Casablanca 20000"
+               value="{{ professional.address or '' }}">
+        <div class="form-text">
+          Saisis l’adresse exacte de ton cabinet / lieu d’exercice.
+        </div>
+      </div>
+
+      <!-- Latitude / Longitude avec bouton 'Me localiser' -->
+      <div class="col-md-5">
+        <label class="form-label">Latitude</label>
+        <input type="text" inputmode="decimal" name="latitude" id="latInput" class="form-control"
+               placeholder="33.5731"
+               value="{{ professional.latitude if professional.latitude is not none else '' }}">
+      </div>
+      <div class="col-md-5">
+        <label class="form-label">Longitude</label>
+        <input type="text" inputmode="decimal" name="longitude" id="lngInput" class="form-control"
+               placeholder="-7.5898"
+               value="{{ professional.longitude if professional.longitude is not none else '' }}">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="button" class="btn btn-outline-primary w-100" id="btnLocate">
+          Me localiser
+        </button>
+      </div>
+
+      <!-- Lien Google Maps (prévisualisation) -->
+      <div class="col-12">
+        <label class="form-label">Prévisualisation</label>
+        <div>
+          <a id="gmapsLink" class="link-primary" target="_blank" rel="noopener"
+             href="#">
+            Ouvrir dans Google Maps
+          </a>
+        </div>
+        <div class="form-text">
+          Le lien utilise la latitude/longitude si présentes, sinon l’adresse.
+        </div>
       </div>
 
       <div class="col-md-6">
@@ -80,5 +119,48 @@
     </div>
   </form>
 </div>
+
+<script>
+  // Construit le lien Google Maps selon lat/lng ou adresse
+  function updateGmapsLink() {
+    const lat = document.getElementById('latInput').value.trim();
+    const lng = document.getElementById('lngInput').value.trim();
+    const address = document.querySelector('input[name="address"]').value.trim();
+    const a = document.getElementById('gmapsLink');
+
+    if (lat && lng) {
+      a.href = `https://www.google.com/maps?q=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`;
+    } else if (address) {
+      a.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+    } else {
+      a.href = '#';
+    }
+  }
+
+  document.getElementById('latInput').addEventListener('input', updateGmapsLink);
+  document.getElementById('lngInput').addEventListener('input', updateGmapsLink);
+  document.querySelector('input[name="address"]').addEventListener('input', updateGmapsLink);
+  updateGmapsLink();
+
+  // Bouton "Me localiser" (remplit lat/lng via le navigateur)
+  document.getElementById('btnLocate').addEventListener('click', function () {
+    if (!navigator.geolocation) {
+      alert("La géolocalisation n'est pas supportée par ce navigateur.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        document.getElementById('latInput').value = latitude.toFixed(6);
+        document.getElementById('lngInput').value = longitude.toFixed(6);
+        updateGmapsLink();
+      },
+      (err) => {
+        alert("Impossible d'obtenir votre position : " + err.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+</script>
 </body>
 </html>
