@@ -140,6 +140,21 @@ def admin_add_product():
         image_url = (request.form.get('image_url') or '').strip()
         phone = (request.form.get('phone') or '+212 6 XX XX XX XX').strip()
 
+        # Adresse + coords (NOUVEAU)
+        address = (request.form.get('address') or '').strip()
+        lat_raw = (request.form.get('latitude') or '').strip()
+        lng_raw = (request.form.get('longitude') or '').strip()
+        try:
+            latitude = float(lat_raw) if lat_raw else None
+        except ValueError:
+            latitude = None
+            flash("Latitude invalide — ignorée", "warning")
+        try:
+            longitude = float(lng_raw) if lng_raw else None
+        except ValueError:
+            longitude = None
+            flash("Longitude invalide — ignorée", "warning")
+
         # Tarif (price ou consultation_fee)
         fee_raw = (request.form.get('price') or request.form.get('consultation_fee') or '0').replace(',', '.')
         try:
@@ -185,7 +200,11 @@ def admin_add_product():
             location=location or 'Casablanca',
             phone=phone,
             experience_years=experience_years,
-            status='en_attente'
+            status='en_attente',
+            # NEW:
+            address=address,
+            latitude=latitude,
+            longitude=longitude
         )
         db.session.add(professional)
         db.session.commit()
@@ -250,6 +269,25 @@ def admin_edit_product(product_id):
             except ValueError:
                 pass
 
+        # NEW: adresse + lat/lng
+        addr = (request.form.get('address') or '').strip()
+        if addr != '':
+            professional.address = addr
+
+        lat_raw = (request.form.get('latitude') or '').strip()
+        if lat_raw != '':
+            try:
+                professional.latitude = float(lat_raw)
+            except ValueError:
+                flash("Latitude invalide — ignorée", "warning")
+
+        lng_raw = (request.form.get('longitude') or '').strip()
+        if lng_raw != '':
+            try:
+                professional.longitude = float(lng_raw)
+            except ValueError:
+                flash("Longitude invalide — ignorée", "warning")
+
         db.session.commit()
         flash('Professionnel modifié avec succès!')
         return redirect(url_for('admin_products'))
@@ -292,6 +330,8 @@ def edit_professional(professional_id):
         description = (request.form.get('description') or '').strip()
         specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
         image_url = (request.form.get('image_url') or '').strip()
+        location = (request.form.get('location') or '').strip()
+        phone = (request.form.get('phone') or '').strip()
 
         if name:
             professional.name = name
@@ -299,7 +339,30 @@ def edit_professional(professional_id):
             professional.description = description
         if specialty:
             professional.specialty = specialty
+        if location:
+            professional.location = location
+        if phone:
+            professional.phone = phone
         professional.image_url = image_url  # vide autorisé
+
+        # Adresse + coords (NOUVEAU aussi ici)
+        addr = (request.form.get('address') or '').strip()
+        if addr != '':
+            professional.address = addr
+
+        lat_raw = (request.form.get('latitude') or '').strip()
+        if lat_raw != '':
+            try:
+                professional.latitude = float(lat_raw)
+            except ValueError:
+                flash("Latitude invalide — ignorée", "warning")
+
+        lng_raw = (request.form.get('longitude') or '').strip()
+        if lng_raw != '':
+            try:
+                professional.longitude = float(lng_raw)
+            except ValueError:
+                flash("Longitude invalide — ignorée", "warning")
 
         # Tarif (accepte price ou consultation_fee)
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.').strip()
