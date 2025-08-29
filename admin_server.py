@@ -1,16 +1,15 @@
-# admin_server.py (version Blueprint)
+# admin_server.py — Version Blueprint (une seule instance Flask dans app.py)
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
-# On réutilise les modèles & la même instance SQLAlchemy que l'app principale
 from models import db, User, Professional, Appointment
 
-# IMPORTANT : Blueprint unique nommé "admin"
-admin_bp = Blueprint("admin", __name__)
+# IMPORTANT : on déclare un Blueprint. Pas de Flask(__name__), pas de db.init_app ici.
+admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
 
 # ===================== AUTH ADMIN =====================
-@admin_bp.route('/login', methods=['GET', 'POST'])
+@admin_bp.route('/login', methods=['GET', 'POST'], endpoint='admin_login')
 def admin_login():
     if request.method == 'POST':
         username_or_email = (request.form.get('username') or '').strip()
@@ -28,14 +27,14 @@ def admin_login():
 
     return render_template('admin_login.html')
 
-@admin_bp.route('/logout')
+@admin_bp.route('/logout', endpoint='admin_logout')
 @login_required
 def admin_logout():
     logout_user()
     return redirect(url_for('admin.admin_login'))
 
 # ===================== DASHBOARD =====================
-@admin_bp.route('/')
+@admin_bp.route('/', endpoint='admin_dashboard')
 @login_required
 def admin_dashboard():
     if not current_user.is_admin:
@@ -66,8 +65,8 @@ def admin_dashboard():
         total_revenue=total_revenue
     )
 
-# ===================== PROFESSIONNELS =====================
-@admin_bp.route('/products')
+# ===================== PROFESSIONNELS (liste type "products") =====================
+@admin_bp.route('/products', endpoint='admin_products')
 @login_required
 def admin_products():
     if not current_user.is_admin:
@@ -76,7 +75,7 @@ def admin_products():
     professionals = Professional.query.order_by(Professional.id.desc()).all()
     return render_template('admin_products.html', professionals=professionals)
 
-@admin_bp.route('/products/add', methods=['GET', 'POST'])
+@admin_bp.route('/products/add', methods=['GET', 'POST'], endpoint='admin_add_product')
 @login_required
 def admin_add_product():
     if not current_user.is_admin:
@@ -88,19 +87,18 @@ def admin_add_product():
         name = (request.form.get('name') or '').strip()
         description = (request.form.get('description') or '').strip()
         specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
-
-        # Adresse & localisation (NOUVEAU)
-        address_line = (request.form.get('address_line') or '').strip()
-        location = (request.form.get('location') or '').strip()
-        lat_raw = (request.form.get('latitude') or '').strip()
-        lng_raw = (request.form.get('longitude') or '').strip()
-        latitude = float(lat_raw) if lat_raw not in ('', None) else None
-        longitude = float(lng_raw) if lng_raw not in ('', None) else None
-
+        city_or_location = (request.form.get('location') or '').strip()  # compat ancien champ
         image_url = (request.form.get('image_url') or '').strip()
         phone = (request.form.get('phone') or '+212 6 XX XX XX XX').strip()
 
-        # Tarif (price ou consultation_fee)
+        # Adresse exacte + lat/lng (NOUVEAU)
+        address = (request.form.get('address') or '').strip()
+        lat_raw = (request.form.get('latitude') or '').strip()
+        lng_raw = (request.form.get('longitude') or '').strip()
+        latitude = float(lat_raw) if lat_raw else None
+        longitude = float(lng_raw) if lng_raw else None
+
+        # Tarif
         fee_raw = (request.form.get('price') or request.form.get('consultation_fee') or '0').replace(',', '.')
         try:
             consultation_fee = float(fee_raw)
@@ -114,13 +112,13 @@ def admin_add_product():
         except ValueError:
             experience_years = 0
 
-        # Disponibilité
+        # Disponibilité (availability direct, sinon stock 1/0)
         availability = request.form.get('availability')
         if availability is None:
             stock = (request.form.get('stock') or '').strip().lower()
             availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
 
-        # Types de consultation
+        # Types de consultation (liste ou 3 checkboxes)
         types_list = request.form.getlist('consultation_types')
         if not types_list:
             types_list = []
@@ -142,15 +140,20 @@ def admin_add_product():
             specialty=specialty,
             availability=availability,
             consultation_types=consultation_types,
-            # Adresse & localisation (NOUVEAU)
-            address_line=address_line or None,
-            location=location or 'Casablanca',
-            latitude=latitude,
-            longitude=longitude,
+            location=city_or_location or 'Casablanca',
             phone=phone,
             experience_years=experience_years,
             status='en_attente'
         )
+
+        # Protéger si le modèle n'a pas encore les colonnes (déploiement progressif)
+        if hasattr(professional, 'address'):
+            professional.address = address
+        if hasattr(professional, 'latitude'):
+            professional.latitude = latitude
+        if hasattr(professional, 'longitude'):
+            professional.longitude = longitude
+
         db.session.add(professional)
         db.session.commit()
         flash('Professionnel ajouté avec succès!')
@@ -158,7 +161,7 @@ def admin_add_product():
 
     return render_template('add_product.html')
 
-@admin_bp.route('/products/edit/<int:product_id>', methods=['GET', 'POST'])
+@admin_bp.route('/products/edit/<int:product_id>', methods=['GET', 'POST'], endpoint='admin_edit_product')
 @login_required
 def admin_edit_product(product_id):
     if not current_user.is_admin:
@@ -183,21 +186,39 @@ def admin_edit_product(product_id):
         professional.location = (request.form.get('location') or professional.location).strip()
         professional.phone = (request.form.get('phone') or professional.phone).strip()
 
-        # Adresse & localisation (NOUVEAU)
-        professional.address_line = (request.form.get('address_line') or professional.address_line or '').strip() or None
+        # Adresse exacte + lat/lng (NOUVEAU)
+        address = (request.form.get('address') or '').strip()
         lat_raw = (request.form.get('latitude') or '').strip()
         lng_raw = (request.form.get('longitude') or '').strip()
-        professional.latitude = float(lat_raw) if lat_raw not in ('', None) else None
-        professional.longitude = float(lng_raw) if lng_raw not in ('', None) else None
+        try:
+            latitude = float(lat_raw) if lat_raw else None
+        except ValueError:
+            latitude = getattr(professional, 'latitude', None)
+            flash("Latitude invalide", "error")
+        try:
+            longitude = float(lng_raw) if lng_raw else None
+        except ValueError:
+            longitude = getattr(professional, 'longitude', None)
+            flash("Longitude invalide", "error")
 
+        if hasattr(professional, 'address'):
+            professional.address = address
+        if hasattr(professional, 'latitude'):
+            professional.latitude = latitude
+        if hasattr(professional, 'longitude'):
+            professional.longitude = longitude
+
+        # statut si fourni
         status_val = (request.form.get('status') or '').strip()
         if status_val:
             professional.status = status_val
 
+        # availability depuis 'stock' si présent
         stock = request.form.get('stock')
         if stock is not None:
             professional.availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
 
+        # types de consultation si présents
         types_list = request.form.getlist('consultation_types')
         if types_list or any(request.form.get(k) for k in ['home_consultation', 'office_consultation', 'online_consultation']):
             t = []
@@ -209,6 +230,7 @@ def admin_edit_product(product_id):
             if t:
                 professional.consultation_types = ','.join(t)
 
+        # experience si fourni
         exp_raw = request.form.get('experience_years')
         if exp_raw:
             try:
@@ -222,7 +244,7 @@ def admin_edit_product(product_id):
 
     return render_template('edit_product.html', professional=professional)
 
-@admin_bp.route('/products/<int:product_id>/delete', methods=['POST'])
+@admin_bp.route('/products/<int:product_id>/delete', methods=['POST'], endpoint='admin_delete_product')
 @login_required
 def admin_delete_product(product_id):
     if not current_user.is_admin:
@@ -232,8 +254,8 @@ def admin_delete_product(product_id):
     db.session.commit()
     return jsonify({'success': True, 'message': 'Professionnel supprimé avec succès'})
 
-# Variante liste/CRUD par /professionals (templates qui l’utilisent)
-@admin_bp.route('/professionals')
+# ===================== Variante CRUD /professionals =====================
+@admin_bp.route('/professionals', endpoint='admin_professionals')
 @login_required
 def admin_professionals():
     if not current_user.is_admin:
@@ -242,7 +264,7 @@ def admin_professionals():
     professionals = Professional.query.all()
     return render_template('admin_professionals.html', professionals=professionals)
 
-@admin_bp.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'])
+@admin_bp.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'], endpoint='edit_professional')
 @login_required
 def edit_professional(professional_id):
     if not current_user.is_admin:
@@ -257,10 +279,13 @@ def edit_professional(professional_id):
         specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
         image_url = (request.form.get('image_url') or '').strip()
 
-        if name: professional.name = name
-        if description: professional.description = description
-        if specialty: professional.specialty = specialty
-        professional.image_url = image_url  # vide autorisé
+        if name:
+            professional.name = name
+        if description:
+            professional.description = description
+        if specialty:
+            professional.specialty = specialty
+        professional.image_url = image_url
 
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.').strip()
         if fee_raw != '':
@@ -269,13 +294,6 @@ def edit_professional(professional_id):
             except ValueError:
                 flash("Le tarif est invalide.", "error")
                 return redirect(url_for('admin.edit_professional', professional_id=professional_id))
-
-        # Adresse & localisation (NOUVEAU)
-        professional.address_line = (request.form.get('address_line') or professional.address_line or '').strip() or None
-        lat_raw = (request.form.get('latitude') or '').strip()
-        lng_raw = (request.form.get('longitude') or '').strip()
-        professional.latitude = float(lat_raw) if lat_raw not in ('', None) else None
-        professional.longitude = float(lng_raw) if lng_raw not in ('', None) else None
 
         status = (request.form.get('status') or '').strip()
         if status in ('valide', 'en_attente', 'rejete'):
@@ -287,7 +305,7 @@ def edit_professional(professional_id):
 
     return render_template('edit_product.html', professional=professional)
 
-@admin_bp.route('/professionals/delete/<int:professional_id>')
+@admin_bp.route('/professionals/delete/<int:professional_id>', endpoint='delete_professional')
 @login_required
 def delete_professional(professional_id):
     if not current_user.is_admin:
@@ -299,7 +317,7 @@ def delete_professional(professional_id):
     flash('Professionnel supprimé avec succès!')
     return redirect(url_for('admin.admin_professionals'))
 
-@admin_bp.route('/professionals/<int:professional_id>')
+@admin_bp.route('/professionals/<int:professional_id>', endpoint='view_professional')
 @login_required
 def view_professional(professional_id):
     if not current_user.is_admin:
@@ -310,7 +328,7 @@ def view_professional(professional_id):
     return render_template('view_professional.html', professional=professional, appointments=appointments)
 
 # ===================== UTILISATEURS =====================
-@admin_bp.route('/users')
+@admin_bp.route('/users', endpoint='admin_users')
 @login_required
 def admin_users():
     if not current_user.is_admin:
@@ -319,7 +337,7 @@ def admin_users():
     users = User.query.order_by(User.id.desc()).all()
     return render_template('admin_users.html', users=users)
 
-@admin_bp.route('/users/add', methods=['GET', 'POST'])
+@admin_bp.route('/users/add', methods=['GET', 'POST'], endpoint='add_user')
 @login_required
 def add_user():
     if not current_user.is_admin:
@@ -358,7 +376,7 @@ def add_user():
 
     return render_template('add_user.html')
 
-@admin_bp.route('/users/edit/<int:user_id>', methods=['GET', 'POST'])
+@admin_bp.route('/users/edit/<int:user_id>', methods=['GET', 'POST'], endpoint='edit_user')
 @login_required
 def edit_user(user_id):
     if not current_user.is_admin:
@@ -394,7 +412,7 @@ def edit_user(user_id):
 
     return render_template('edit_user.html', user=user)
 
-@admin_bp.route('/users/delete/<int:user_id>')
+@admin_bp.route('/users/delete/<int:user_id>', endpoint='delete_user')
 @login_required
 def delete_user(user_id):
     if not current_user.is_admin:
@@ -407,7 +425,7 @@ def delete_user(user_id):
     return redirect(url_for('admin.admin_users'))
 
 # ===================== RDV / COMMANDES =====================
-@admin_bp.route('/orders')
+@admin_bp.route('/orders', endpoint='admin_orders')
 @login_required
 def admin_orders():
     if not current_user.is_admin:
@@ -416,7 +434,7 @@ def admin_orders():
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_orders.html', appointments=appointments)
 
-@admin_bp.route('/appointments')
+@admin_bp.route('/appointments', endpoint='admin_appointments')
 @login_required
 def admin_appointments():
     if not current_user.is_admin:
@@ -425,7 +443,7 @@ def admin_appointments():
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_appointments.html', appointments=appointments)
 
-@admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'])
+@admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'], endpoint='update_appointment_status')
 @login_required
 def update_appointment_status(appointment_id):
     if not current_user.is_admin:
@@ -444,7 +462,7 @@ def update_appointment_status(appointment_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 # ===================== API STATS & VALIDATION =====================
-@admin_bp.route('/api/stats')
+@admin_bp.route('/api/stats', endpoint='api_stats')
 @login_required
 def api_stats():
     if not current_user.is_admin:
@@ -461,7 +479,7 @@ def api_stats():
     }
     return jsonify(stats)
 
-@admin_bp.route('/professionals/<int:professional_id>/validate', methods=['POST'])
+@admin_bp.route('/professionals/<int:professional_id>/validate', methods=['POST'], endpoint='validate_professional')
 @login_required
 def validate_professional(professional_id):
     if not current_user.is_admin:
@@ -475,7 +493,7 @@ def validate_professional(professional_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@admin_bp.route('/professionals/<int:professional_id>/reject', methods=['POST'])
+@admin_bp.route('/professionals/<int:professional_id>/reject', methods=['POST'], endpoint='reject_professional')
 @login_required
 def reject_professional(professional_id):
     if not current_user.is_admin:
@@ -489,7 +507,7 @@ def reject_professional(professional_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@admin_bp.route('/pending-professionals')
+@admin_bp.route('/pending-professionals', endpoint='pending_professionals')
 @login_required
 def pending_professionals():
     if not current_user.is_admin:
