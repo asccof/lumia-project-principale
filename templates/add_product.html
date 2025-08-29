@@ -69,29 +69,61 @@
                 </div>
               </div>
 
+              <!-- Adresse & Localisation -->
               <div class="row">
+                <div class="col-md-12 mb-3">
+                  <label for="address_line" class="form-label">
+                    <i class="fas fa-map-marker-alt me-2"></i>Adresse complète
+                  </label>
+                  <input type="text" class="form-control" id="address_line" name="address_line" placeholder="Ex: 12 Rue Mohammed V, Quartier Gauthier">
+                  <div class="form-text">Affichée aux patients (et utilisée pour le lien Google Maps).</div>
+                </div>
+
                 <div class="col-md-6 mb-3">
                   <label for="location" class="form-label">
-                    <i class="fas fa-map-marker-alt me-2"></i>Ville
+                    <i class="fas fa-city me-2"></i>Ville
                   </label>
                   <input type="text" class="form-control" id="location" name="location" placeholder="Casablanca">
                 </div>
+
+                <div class="col-md-3 mb-3">
+                  <label for="latitude" class="form-label">
+                    <i class="fas fa-location-arrow me-2"></i>Latitude
+                  </label>
+                  <input type="number" step="any" class="form-control" id="latitude" name="latitude" placeholder="33.5731">
+                </div>
+
+                <div class="col-md-3 mb-3">
+                  <label for="longitude" class="form-label">
+                    <i class="fas fa-location-arrow me-2"></i>Longitude
+                  </label>
+                  <input type="number" step="any" class="form-control" id="longitude" name="longitude" placeholder="-7.5898">
+                </div>
+
+                <div class="col-12 mb-2">
+                  <a id="gmapsLink" href="#" target="_blank" class="small text-decoration-underline d-none">
+                    Ouvrir sur Google Maps
+                  </a>
+                </div>
+              </div>
+
+              <div class="row">
                 <div class="col-md-6 mb-3">
                   <label for="phone" class="form-label">
                     <i class="fas fa-phone me-2"></i>Téléphone
                   </label>
                   <input type="text" class="form-control" id="phone" name="phone" placeholder="+212 6 XX XX XX XX">
                 </div>
-              </div>
-
-              <div class="row">
                 <div class="col-md-6 mb-3">
                   <label for="experience_years" class="form-label">
                     <i class="fas fa-briefcase me-2"></i>Années d'expérience
                   </label>
                   <input type="number" class="form-control" id="experience_years" name="experience_years" min="0" value="0">
                 </div>
-                <div class="col-md-6 mb-3">
+              </div>
+
+              <div class="row">
+                <div class="col-md-12 mb-3">
                   <label for="image_url" class="form-label">
                     <i class="fas fa-image me-2"></i>URL de la photo *
                   </label>
@@ -202,7 +234,7 @@ document.getElementById('image_url').addEventListener('input', function() {
   }
 });
 
-// Compteur description (évite de viser des IDs inexistants)
+// Compteur description
 const desc = document.getElementById('description');
 const counter = document.getElementById('descCounter');
 desc.addEventListener('input', function() {
@@ -211,6 +243,25 @@ desc.addEventListener('input', function() {
   counter.textContent = `${left} caractères restants`;
   counter.style.color = left < 0 ? 'red' : '';
 });
+
+// Lien Google Maps auto
+const latEl = document.getElementById('latitude');
+const lngEl = document.getElementById('longitude');
+const gmapsLink = document.getElementById('gmapsLink');
+
+function updateGMapsLink() {
+  const lat = latEl.value.trim();
+  const lng = lngEl.value.trim();
+  if (lat !== '' && lng !== '' && !isNaN(lat) && !isNaN(lng)) {
+    gmapsLink.href = `https://www.google.com/maps?q=${lat},${lng}`;
+    gmapsLink.classList.remove('d-none');
+  } else {
+    gmapsLink.classList.add('d-none');
+    gmapsLink.removeAttribute('href');
+  }
+}
+[latEl, lngEl].forEach(el => el.addEventListener('input', updateGMapsLink));
+updateGMapsLink();
 
 // Validation légère coté client
 document.getElementById('addProductForm').addEventListener('submit', function(e) {
