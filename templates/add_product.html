@@ -1,296 +1,75 @@
 {% extends "admin_base.html" %}
-
-{% block title %}Ajouter un professionnel — Tighri{% endblock %}
-
+{% block title %}Ajouter un professionnel - Admin Lumia{% endblock %}
 {% block content %}
 <div class="container-fluid">
-  <div class="row">
-    <div class="col-12">
-      <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white">
-          <h4 class="card-title mb-0">
-            <i class="fas fa-user-plus me-2"></i>Ajouter un professionnel
-          </h4>
-        </div>
-
-        <div class="card-body">
-
-          <!-- Flashs -->
-          {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
-          {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-              <div class="mb-3">
-                {% for category, message in messages %}
-                  <div class="alert alert-{{ _cats.get(category, 'info') }} alert-dismissible fade show" role="alert">
-                    {{ message }}
-                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
-                  </div>
-                {% endfor %}
-              </div>
-            {% endif %}
-          {% endwith %}
-
-          <section class="py-1">
-            <div class="container px-0">
-              <div class="row justify-content-center">
-                <div class="col-lg-8">
-                  <div class="card border-0 shadow-sm">
-                    <div class="card-body p-4">
-                      <form method="post" action="{{ url_for('admin_add_product') }}" id="addProductForm" accept-charset="utf-8" novalidate>
-                        {% if csrf_token is defined %}
-                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        {% endif %}
-
-                        <div class="row">
-                          <div class="col-md-6 mb-3">
-                            <label for="name" class="form-label"><i class="fas fa-user me-2"></i>Nom du professionnel *</label>
-                            <input type="text" class="form-control" id="name" name="name"
-                                   value="{{ request.form.get('name','') if request else '' }}" required maxlength="120">
-                          </div>
-
-                          <div class="col-md-6 mb-3">
-                            <label for="specialty" class="form-label"><i class="fas fa-folder me-2"></i>Spécialité *</label>
-                            <select class="form-select" id="specialty" name="specialty" required>
-                              {% set _sp = request.form.get('specialty') if request else '' %}
-                              <option value="">Choisir une spécialité</option>
-                              <option value="Psychologue"  {{ 'selected' if _sp=='Psychologue' else '' }}>Psychologue</option>
-                              <option value="Thérapeute"   {{ 'selected' if _sp=='Thérapeute' else '' }}>Thérapeute</option>
-                              <option value="Coach"        {{ 'selected' if _sp=='Coach' else '' }}>Coach</option>
-                            </select>
-                            <!-- compat backend éventuel -->
-                            <input type="hidden" name="category" id="category" value="{{ request.form.get('specialty','') if request else '' }}">
-                          </div>
-                        </div>
-
-                        <div class="row">
-                          <div class="col-md-6 mb-3">
-                            <label for="consultation_fee" class="form-label"><i class="fas fa-money-bill me-2"></i>Prix (MAD) *</label>
-                            <input type="number" class="form-control" id="consultation_fee" name="consultation_fee"
-                                   step="0.01" min="0"
-                                   value="{{ request.form.get('consultation_fee','0') if request else '0' }}" required>
-                            <input type="hidden" name="price" id="price" value="{{ request.form.get('consultation_fee','0') if request else '0' }}">
-                          </div>
-
-                          <div class="col-md-6 mb-3">
-                            <label for="availability" class="form-label"><i class="fas fa-check-circle me-2"></i>Disponibilité *</label>
-                            {% set _av = request.form.get('availability') if request else 'disponible' %}
-                            <select class="form-select" id="availability" name="availability" required>
-                              <option value="disponible"  {{ 'selected' if _av=='disponible' else '' }}>Disponible</option>
-                              <option value="indisponible" {{ 'selected' if _av=='indisponible' else '' }}>Indisponible</option>
-                            </select>
-                            <input type="hidden" name="stock" id="stock" value="{{ '1' if _av=='disponible' else '0' }}">
-                          </div>
-                        </div>
-
-                        <!-- Adresse & Localisation -->
-                        <div class="row">
-                          <div class="col-md-12 mb-3">
-                            <label for="address_line" class="form-label"><i class="fas fa-map-marker-alt me-2"></i>Adresse complète</label>
-                            <input type="text" class="form-control" id="address_line" name="address_line"
-                                   placeholder="Ex: 12 Rue Mohammed V, Quartier Gauthier"
-                                   value="{{ request.form.get('address_line','') if request else '' }}">
-                            <div class="form-text">Affichée aux patients (et utilisée pour le lien Google Maps).</div>
-                          </div>
-
-                          <div class="col-md-6 mb-3">
-                            <label for="location" class="form-label"><i class="fas fa-city me-2"></i>Ville</label>
-                            <input type="text" class="form-control" id="location" name="location" placeholder="Casablanca"
-                                   value="{{ request.form.get('location','') if request else '' }}">
-                          </div>
-
-                          <div class="col-md-3 mb-3">
-                            <label for="latitude" class="form-label"><i class="fas fa-location-arrow me-2"></i>Latitude</label>
-                            <input type="number" step="any" class="form-control" id="latitude" name="latitude" placeholder="33.5731"
-                                   value="{{ request.form.get('latitude','') if request else '' }}">
-                          </div>
-
-                          <div class="col-md-3 mb-3">
-                            <label for="longitude" class="form-label"><i class="fas fa-location-arrow me-2"></i>Longitude</label>
-                            <input type="number" step="any" class="form-control" id="longitude" name="longitude" placeholder="-7.5898"
-                                   value="{{ request.form.get('longitude','') if request else '' }}">
-                          </div>
-
-                          <div class="col-12 mb-2">
-                            <a id="gmapsLink" href="#" target="_blank" class="small text-decoration-underline d-none">Ouvrir sur Google Maps</a>
-                          </div>
-                        </div>
-
-                        <div class="row">
-                          <div class="col-md-6 mb-3">
-                            <label for="phone" class="form-label"><i class="fas fa-phone me-2"></i>Téléphone</label>
-                            <input type="text" class="form-control" id="phone" name="phone" placeholder="+212 6 XX XX XX XX"
-                                   value="{{ request.form.get('phone','') if request else '' }}">
-                          </div>
-                          <div class="col-md-6 mb-3">
-                            <label for="experience_years" class="form-label"><i class="fas fa-briefcase me-2"></i>Années d'expérience</label>
-                            <input type="number" class="form-control" id="experience_years" name="experience_years" min="0"
-                                   value="{{ request.form.get('experience_years','0') if request else '0' }}">
-                          </div>
-                        </div>
-
-                        <div class="row">
-                          <div class="col-md-12 mb-3">
-                            <label for="image_url" class="form-label"><i class="fas fa-image me-2"></i>URL de la photo *</label>
-                            <input type="url" class="form-control" id="image_url" name="image_url" required
-                                   placeholder="https://images.unsplash.com/photo-..."
-                                   value="{{ request.form.get('image_url','') if request else '' }}">
-                            <div class="form-text">Entrez l'URL d'une photo (Unsplash recommandé).</div>
-                          </div>
-                        </div>
-
-                        <div class="mb-3">
-                          <label for="description" class="form-label"><i class="fas fa-align-left me-2"></i>Description et spécialités *</label>
-                          <textarea class="form-control" id="description" name="description" rows="5" required maxlength="1000"
-                                    placeholder="Décrivez les spécialités, l'expérience et les types de consultation proposés...">{{ request.form.get('description','') if request else '' }}</textarea>
-                          <div class="form-text" id="descCounter">1000 caractères restants</div>
-                        </div>
-
-                        <!-- Aperçu image -->
-                        <div class="mb-4">
-                          <label class="form-label">Aperçu de l'image</label>
-                          <div class="border rounded p-3 text-center" id="imagePreview">
-                            {% if request and request.form.get('image_url') %}
-                              <img src="{{ request.form.get('image_url') }}" alt="Aperçu" class="img-fluid rounded" style="max-height:200px;">
-                              <p class="text-muted mt-2">Aperçu de l'image</p>
-                            {% else %}
-                              <i class="fas fa-image fa-3x text-muted"></i>
-                              <p class="text-muted mt-2">Aperçu de l'image</p>
-                            {% endif %}
-                          </div>
-                        </div>
-
-                        <!-- Types de consultation -->
-                        <div class="mb-4">
-                          <h5>Types de consultation proposés</h5>
-                          {% set chk = lambda name: ('checked' if (request and request.form.get(name)) or (not request) else 'checked') %}
-                          <div class="row">
-                            <div class="col-md-4 mb-2">
-                              <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="home_consultation" name="home_consultation" {{ chk('home_consultation') }}>
-                                <label class="form-check-label" for="home_consultation"><i class="fas fa-home me-2"></i>À domicile</label>
-                              </div>
-                            </div>
-                            <div class="col-md-4 mb-2">
-                              <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="office_consultation" name="office_consultation" {{ chk('office_consultation') }}>
-                                <label class="form-check-label" for="office_consultation"><i class="fas fa-building me-2"></i>En cabinet</label>
-                              </div>
-                            </div>
-                            <div class="col-md-4 mb-2">
-                              <div class="form-check">
-                                <input class="form-check-input" type="checkbox" id="online_consultation" name="online_consultation" {{ chk('online_consultation') }}>
-                                <label class="form-check-label" for="online_consultation"><i class="fas fa-video me-2"></i>En ligne</label>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div class="d-flex gap-3">
-                          <button type="submit" class="btn btn-primary btn-lg">
-                            <i class="fas fa-save me-2"></i>Enregistrer le professionnel
-                          </button>
-                          <a href="{{ url_for('admin_products') }}" class="btn btn-outline-secondary btn-lg">
-                            <i class="fas fa-times me-2"></i>Annuler
-                          </a>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
+  <div class="row"><div class="col-12">
+    <div class="card">
+      <div class="card-header"><h4 class="card-title"><i class="fas fa-user-plus me-2"></i>Ajouter un professionnel</h4></div>
+      <div class="card-body">
+<section class="py-3"><div class="container"><div class="row justify-content-center"><div class="col-lg-8">
+  <div class="card border-0 shadow-sm"><div class="card-body p-4">
+    <form method="POST" action="{{ url_for('admin.admin_add_product') }}" id="addProductForm" accept-charset="utf-8">
+      {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+      <div class="row">
+        <div class="col-md-6 mb-3"><label for="name" class="form-label"><i class="fas fa-user me-2"></i>Nom du professionnel *</label><input type="text" class="form-control" id="name" name="name" required></div>
+        <div class="col-md-6 mb-3"><label for="specialty" class="form-label"><i class="fas fa-folder me-2"></i>Spécialité *</label>
+          <select class="form-select" id="specialty" name="specialty" required><option value="">Choisir une spécialité</option><option value="Psychologue">Psychologue</option><option value="Thérapeute">Thérapeute</option><option value="Coach">Coach</option></select>
+          <input type="hidden" name="category" id="category"></div>
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3"><label for="consultation_fee" class="form-label"><i class="fas fa-money-bill me-2"></i>Prix (MAD) *</label>
+          <input type="number" class="form-control" id="consultation_fee" name="consultation_fee" step="0.01" min="0" value="0" required>
+          <input type="hidden" name="price" id="price"></div>
+        <div class="col-md-6 mb-3"><label for="availability" class="form-label"><i class="fas fa-check-circle me-2"></i>Disponibilité *</label>
+          <select class="form-select" id="availability" name="availability" required><option value="disponible" selected>Disponible</option><option value="indisponible">Indisponible</option></select>
+          <input type="hidden" name="stock" id="stock"></div>
+      </div>
+      <div class="row">
+        <div class="col-md-12 mb-3"><label for="address_line" class="form-label"><i class="fas fa-map-marker-alt me-2"></i>Adresse complète</label><input type="text" class="form-control" id="address_line" name="address_line" placeholder="Ex: 12 Rue Mohammed V, Quartier Gauthier"><div class="form-text">Affichée aux patients.</div></div>
+        <div class="col-md-6 mb-3"><label for="location" class="form-label"><i class="fas fa-city me-2"></i>Ville</label><input type="text" class="form-control" id="location" name="location" placeholder="Casablanca"></div>
+        <div class="col-md-3 mb-3"><label for="latitude" class="form-label"><i class="fas fa-location-arrow me-2"></i>Latitude</label><input type="number" step="any" class="form-control" id="latitude" name="latitude" placeholder="33.5731"></div>
+        <div class="col-md-3 mb-3"><label for="longitude" class="form-label"><i class="fas fa-location-arrow me-2"></i>Longitude</label><input type="number" step="any" class="form-control" id="longitude" name="longitude" placeholder="-7.5898"></div>
+        <div class="col-12 mb-2"><a id="gmapsLink" href="#" target="_blank" class="small text-decoration-underline d-none">Ouvrir sur Google Maps</a></div>
+      </div>
+      <div class="row">
+        <div class="col-md-6 mb-3"><label for="phone" class="form-label"><i class="fas fa-phone me-2"></i>Téléphone</label><input type="text" class="form-control" id="phone" name="phone" placeholder="+212 6 XX XX XX XX"></div>
+        <div class="col-md-6 mb-3"><label for="experience_years" class="form-label"><i class="fas fa-briefcase me-2"></i>Années d'expérience</label><input type="number" class="form-control" id="experience_years" name="experience_years" min="0" value="0"></div>
+      </div>
+      <div class="row">
+        <div class="col-md-12 mb-3"><label for="image_url" class="form-label"><i class="fas fa-image me-2"></i>URL de la photo *</label><input type="url" class="form-control" id="image_url" name="image_url" required placeholder="https://images.unsplash.com/photo-..."><div class="form-text">Unsplash recommandé</div></div>
+      </div>
+      <div class="mb-3"><label for="description" class="form-label"><i class="fas fa-align-left me-2"></i>Description et spécialités *</label><textarea class="form-control" id="description" name="description" rows="5" required></textarea><div class="form-text" id="descCounter">1000 caractères restants</div></div>
+      <div class="mb-4"><label class="form-label">Aperçu de l'image</label><div class="border rounded p-3 text-center" id="imagePreview"><i class="fas fa-image fa-3x text-muted"></i><p class="text-muted mt-2">Aperçu de l'image</p></div></div>
+      <div class="mb-4">
+        <h5>Types de consultation proposés</h5>
+        <div class="row">
+          <div class="col-md-4 mb-2"><div class="form-check"><input class="form-check-input" type="checkbox" id="home_consultation" name="home_consultation" checked><label class="form-check-label" for="home_consultation"><i class="fas fa-home me-2"></i>À domicile</label></div></div>
+          <div class="col-md-4 mb-2"><div class="form-check"><input class="form-check-input" type="checkbox" id="office_consultation" name="office_consultation" checked><label class="form-check-label" for="office_consultation"><i class="fas fa-building me-2"></i>En cabinet</label></div></div>
+          <div class="col-md-4 mb-2"><div class="form-check"><input class="form-check-input" type="checkbox" id="online_consultation" name="online_consultation" checked><label class="form-check-label" for="online_consultation"><i class="fas fa-video me-2"></i>En ligne</label></div></div>
         </div>
       </div>
+      <div class="d-flex gap-3">
+        <button type="submit" class="btn btn-primary btn-lg"><i class="fas fa-save me-2"></i>Enregistrer le professionnel</button>
+        <a href="{{ url_for('admin.admin_products') }}" class="btn btn-outline-secondary btn-lg"><i class="fas fa-times me-2"></i>Annuler</a>
+      </div>
+    </form>
+  </div></div>
+</div></div></div></section>
+      </div>
     </div>
-  </div>
+  </div></div>
 </div>
 {% endblock %}
-
 {% block extra_js %}
 <script>
-(function() {
-  // éléments (avec garde-fous si des IDs changent)
-  const specialtyEl = document.getElementById('specialty');
-  const categoryEl  = document.getElementById('category');
-  const feeEl       = document.getElementById('consultation_fee');
-  const priceEl     = document.getElementById('price');
-  const availEl     = document.getElementById('availability');
-  const stockEl     = document.getElementById('stock');
-  const imgEl       = document.getElementById('image_url');
-  const preview     = document.getElementById('imagePreview');
-  const desc        = document.getElementById('description');
-  const counter     = document.getElementById('descCounter');
-  const latEl       = document.getElementById('latitude');
-  const lngEl       = document.getElementById('longitude');
-  const gmapsLink   = document.getElementById('gmapsLink');
-
-  function syncCompat() {
-    if (categoryEl && specialtyEl) categoryEl.value = specialtyEl.value || '';
-    if (priceEl && feeEl)          priceEl.value   = feeEl.value || '0';
-    if (stockEl && availEl)        stockEl.value   = (availEl.value === 'disponible') ? '1' : '0';
-  }
-  [specialtyEl, feeEl, availEl].forEach(el => el && el.addEventListener('input', syncCompat));
-  syncCompat();
-
-  // Aperçu image
-  if (imgEl && preview) {
-    imgEl.addEventListener('input', function() {
-      const url = this.value.trim();
-      if (url) {
-        preview.innerHTML = `<img src="${url}" alt="Aperçu" class="img-fluid rounded" style="max-height:200px;"><p class="text-muted mt-2">Aperçu de l'image</p>`;
-      } else {
-        preview.innerHTML = `<i class="fas fa-image fa-3x text-muted"></i><p class="text-muted mt-2">Aperçu de l'image</p>`;
-      }
-    });
-  }
-
-  // Compteur description
-  if (desc && counter) {
-    const max = 1000;
-    const updateCount = () => {
-      const left = max - (desc.value || '').length;
-      counter.textContent = `${left} caractères restants`;
-      counter.style.color = left < 0 ? 'red' : '';
-    };
-    desc.addEventListener('input', updateCount);
-    updateCount();
-  }
-
-  // Lien Google Maps auto
-  function updateGMapsLink() {
-    if (!latEl || !lngEl || !gmapsLink) return;
-    const lat = (latEl.value || '').trim();
-    const lng = (lngEl.value || '').trim();
-    if (lat !== '' && lng !== '' && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
-      gmapsLink.href = `https://www.google.com/maps?q=${lat},${lng}`;
-      gmapsLink.classList.remove('d-none');
-    } else {
-      gmapsLink.classList.add('d-none');
-      gmapsLink.removeAttribute('href');
-    }
-  }
-  [latEl, lngEl].forEach(el => el && el.addEventListener('input', updateGMapsLink));
-  updateGMapsLink();
-
-  // Validation légère
-  const form = document.getElementById('addProductForm');
-  if (form) {
-    form.addEventListener('submit', function(e) {
-      const fee = parseFloat(feeEl ? feeEl.value : '0');
-      if (isNaN(fee) || fee < 0) {
-        e.preventDefault();
-        alert('Le prix doit être un nombre positif.');
-        return false;
-      }
-      const submitBtn = form.querySelector('button[type="submit"]');
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Enregistrement...';
-      }
-    });
-  }
-})();
+const specialtyEl=document.getElementById('specialty'),categoryEl=document.getElementById('category'),feeEl=document.getElementById('consultation_fee'),priceEl=document.getElementById('price'),availEl=document.getElementById('availability'),stockEl=document.getElementById('stock');
+function syncCompat(){ categoryEl.value=specialtyEl.value||''; priceEl.value=feeEl.value||'0'; stockEl.value=(availEl.value==='disponible')?'1':'0'; }
+[specialtyEl,feeEl,availEl].forEach(el=>el.addEventListener('input',syncCompat)); syncCompat();
+document.getElementById('image_url').addEventListener('input',function(){ const url=this.value,preview=document.getElementById('imagePreview'); preview.innerHTML = url ? `<img src="${url}" alt="Aperçu" class="img-fluid rounded" style="max-height:200px;"><p class="text-muted mt-2">Aperçu de l'image</p>` : `<i class="fas fa-image fa-3x text-muted"></i><p class="text-muted mt-2">Aperçu de l'image</p>`; });
+const desc=document.getElementById('description'),counter=document.getElementById('descCounter'); desc.addEventListener('input',function(){ const max=1000,left=max-this.value.length; counter.textContent=`${left} caractères restants`; counter.style.color=left<0?'red':''; });
+const latEl=document.getElementById('latitude'),lngEl=document.getElementById('longitude'),gmapsLink=document.getElementById('gmapsLink');
+function updateGMapsLink(){ const lat=latEl.value.trim(),lng=lngEl.value.trim(); if(lat!==''&&lng!==''&&!isNaN(lat)&&!isNaN(lng)){ gmapsLink.href=`https://www.google.com/maps?q=${lat},${lng}`; gmapsLink.classList.remove('d-none'); } else { gmapsLink.classList.add('d-none'); gmapsLink.removeAttribute('href'); } }
+[latEl,lngEl].forEach(el=>el.addEventListener('input',updateGMapsLink)); updateGMapsLink();
+document.getElementById('addProductForm').addEventListener('submit',function(e){ const fee=parseFloat(feeEl.value||'0'); if(isNaN(fee)||fee<0){ e.preventDefault(); alert('Le prix doit être un nombre positif.'); return; } const btn=this.querySelector('button[type="submit"]'); btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin me-2"></i>Enregistrement...'; });
 </script>
 {% endblock %}
