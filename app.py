@@ -1,11 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from datetime import datetime, date, timedelta
 from sqlalchemy import or_, text
 import os
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+
 
 # --- App principale ---
 app = Flask(__name__)
