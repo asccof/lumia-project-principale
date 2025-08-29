@@ -276,50 +276,51 @@ def admin_professionals():
     professionals = Professional.query.all()
     return render_template('admin_professionals.html', professionals=professionals)
 
-@app.route('/professionals/add', methods=['GET', 'POST'])
+@app.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'])
 @login_required
-def add_professional():
+def edit_professional(professional_id):
     if not current_user.is_admin:
         flash('Accès refusé')
         return redirect(url_for('admin_login'))
 
+    professional = Professional.query.get_or_404(professional_id)
+
     if request.method == 'POST':
+        # Champs texte (robuste si un champ manque dans le form)
         name = (request.form.get('name') or '').strip()
         description = (request.form.get('description') or '').strip()
-        fee_raw = (request.form.get('consultation_fee') or '0').replace(',', '.')
-        try:
-            consultation_fee = float(fee_raw)
-        except ValueError:
-            consultation_fee = 0.0
-        specialty = (request.form.get('specialty') or '').strip()
-        location = (request.form.get('location') or '').strip()
-        exp_raw = request.form.get('experience_years') or '0'
-        try:
-            experience_years = int(exp_raw)
-        except ValueError:
-            experience_years = 0
+        specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
         image_url = (request.form.get('image_url') or '').strip()
 
-        if not name or not description or not specialty:
-            flash("Nom, description et spécialité sont obligatoires.", "error")
-            return redirect(url_for('add_professional'))
+        if name:
+            professional.name = name
+        if description:
+            professional.description = description
+        if specialty:
+            professional.specialty = specialty
+        professional.image_url = image_url  # vide autorisé
 
-        professional = Professional(
-            name=name,
-            description=description,
-            consultation_fee=consultation_fee,
-            specialty=specialty,
-            location=location or 'Casablanca',
-            experience_years=experience_years,
-            image_url=image_url,
-            status='en_attente'
-        )
-        db.session.add(professional)
+        # Tarif (accepte price ou consultation_fee)
+        fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.').strip()
+        if fee_raw != '':
+            try:
+                professional.consultation_fee = float(fee_raw)
+            except ValueError:
+                flash("Le tarif est invalide.", "error")
+                return redirect(url_for('edit_professional', professional_id=professional_id))
+
+        # Statut si le form l’envoie
+        status = (request.form.get('status') or '').strip()
+        if status in ('valide', 'en_attente', 'rejete'):
+            professional.status = status
+
         db.session.commit()
-        flash('Professionnel ajouté avec succès!')
+        flash('Professionnel modifié avec succès!')
         return redirect(url_for('admin_professionals'))
 
-    return render_template('add_professional.html')
+    # ⬅️  ICI LE CHANGEMENT : on rend le template déjà existant
+    return render_template('edit_product.html', professional=professional)
+
 
 @app.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'])
 @login_required
