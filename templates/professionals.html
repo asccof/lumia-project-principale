@@ -273,6 +273,10 @@
                             <h3 class="professional-name">{{ professional.name }}</h3>
                             <p class="professional-specialty">{{ professional.specialty }}</p>
                             <p class="professional-location">📍 {{ professional.location }}</p>
+                            <p class="text-muted mb-1">
+  {{ (p.address or p.location) or '' }}
+</p>
+
                             <p class="professional-description">{{ professional.description[:100] }}{% if professional.description|length > 100 %}...{% endif %}</p>
                             
                             <div class="professional-rating">
