@@ -1,59 +1,22 @@
 {% extends "admin_base.html" %}
-
 {% block title %}Professionnels — Tighri{% endblock %}
-
 {% block content %}
 <div class="container mt-4">
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+  <div class="d-flex justify-content-between align-items-center mb-4">
     <h2 class="mb-0"><i class="fas fa-user-md me-2"></i>Gestion des Professionnels</h2>
     <div class="d-flex gap-2">
-      <a href="{{ url_for('pending_professionals') }}" class="btn btn-outline-secondary">
-        <i class="fas fa-clock me-2"></i>En attente
-      </a>
-      <a href="{{ url_for('admin_add_product') }}" class="btn btn-primary">
-        <i class="fas fa-plus me-2"></i>Ajouter un Professionnel
-      </a>
+      <a href="{{ url_for('admin.pending_professionals') }}" class="btn btn-outline-secondary"><i class="fas fa-clock me-2"></i>En attente</a>
+      <a href="{{ url_for('admin.admin_add_product') }}" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Ajouter un Professionnel</a>
     </div>
   </div>
 
-  <!-- Recherche / Filtres -->
-  <form class="row g-2 mb-4" method="get" action="{{ url_for('admin_products') }}">
-    <div class="col-md-4">
-      <input type="text" class="form-control" name="q" placeholder="Rechercher (nom, email, ville, spécialité)"
-             value="{{ request.args.get('q','') if request else '' }}">
-    </div>
-    <div class="col-md-3">
-      <select class="form-select" name="status">
-        {% set _st = request.args.get('status') if request else '' %}
-        <option value="">Tous les statuts</option>
-        <option value="en_attente" {{ 'selected' if _st=='en_attente' else '' }}>En attente</option>
-        <option value="valide" {{ 'selected' if _st=='valide' else '' }}>Validé</option>
-        <option value="rejete" {{ 'selected' if _st=='rejete' else '' }}>Rejeté</option>
-      </select>
-    </div>
-    <div class="col-md-3">
-      <select class="form-select" name="city">
-        {% set _city = request.args.get('city') if request else '' %}
-        <option value="">Toutes les villes</option>
-        {% for city in (cities|default([])) %}
-          <option value="{{ city }}" {{ 'selected' if _city==city else '' }}>{{ city }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-md-2 d-grid">
-      <button class="btn btn-outline-primary" type="submit"><i class="fas fa-search me-2"></i>Filtrer</button>
-    </div>
-  </form>
-
-  <!-- Flashs -->
   {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="flashes">
         {% for category, message in messages %}
           <div class="alert alert-{{ _cats.get(category, 'info') }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            {{ message }} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
           </div>
         {% endfor %}
       </div>
@@ -65,17 +28,7 @@
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0">
           <thead class="table-light">
-            <tr>
-              <th>ID</th>
-              <th>Photo</th>
-              <th>Nom</th>
-              <th>Spécialité</th>
-              <th>Ville</th>
-              <th>Prix</th>
-              <th>Statut</th>
-              <th>Validation</th>
-              <th>Actions</th>
-            </tr>
+            <tr><th>ID</th><th>Photo</th><th>Nom</th><th>Spécialité</th><th>Ville</th><th>Prix</th><th>Statut</th><th>Validation</th><th>Actions</th></tr>
           </thead>
           <tbody>
             {% for professional in professionals|default([]) %}
@@ -83,25 +36,15 @@
               <td>{{ professional.id }}</td>
               <td>
                 {% if professional.photo_url %}
-                  <img src="{{ professional.photo_url }}" alt="{{ professional.name or '—' }}"
-                       class="rounded-circle" width="40" height="40" style="object-fit:cover;">
+                  <img src="{{ professional.photo_url }}" alt="{{ professional.name or '—' }}" class="rounded-circle" width="40" height="40" style="object-fit:cover;">
                 {% else %}
-                  <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center"
-                       style="width:40px;height:40px;">
-                    <i class="fas fa-user text-white"></i>
-                  </div>
+                  <div class="rounded-circle bg-secondary d-flex align-items-center justify-content-center" style="width:40px;height:40px;"><i class="fas fa-user text-white"></i></div>
                 {% endif %}
               </td>
-              <td>
-                <strong>{{ professional.name or '—' }}</strong><br>
-                <small class="text-muted">{{ professional.email or '' }}</small>
-              </td>
+              <td><strong>{{ professional.name or '—' }}</strong><br><small class="text-muted">{{ professional.email or '' }}</small></td>
               <td><span class="badge bg-info">{{ professional.specialty or '—' }}</span></td>
               <td>{{ professional.location or '—' }}</td>
-              <td>
-                {% set fee = professional.consultation_fee if professional.consultation_fee is not none else 0 %}
-                {{ (fee|float)|round(2) }} DH
-              </td>
+              <td>{{ (professional.consultation_fee or 0) }} DH</td>
               <td>
                 {% if professional.status == 'valide' %}
                   <span class="text-success"><i class="fas fa-check-circle me-1"></i>Validé</span>
@@ -116,14 +59,8 @@
               <td>
                 {% if professional.status == 'en_attente' %}
                   <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-sm btn-outline-success"
-                            onclick="validateProfessional({{ professional.id }})" title="Valider">
-                      <i class="fas fa-check"></i>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger"
-                            onclick="rejectProfessional({{ professional.id }})" title="Rejeter">
-                      <i class="fas fa-times"></i>
-                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="validateProfessional({{ professional.id }})" title="Valider"><i class="fas fa-check"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="rejectProfessional({{ professional.id }})" title="Rejeter"><i class="fas fa-times"></i></button>
                   </div>
                 {% else %}
                   <span class="text-muted">—</span>
@@ -131,18 +68,9 @@
               </td>
               <td>
                 <div class="btn-group" role="group">
-                  <a href="{{ url_for('view_professional', professional_id=professional.id) }}"
-                     class="btn btn-sm btn-outline-info" title="Voir">
-                    <i class="fas fa-eye"></i>
-                  </a>
-                  <a href="{{ url_for('admin_edit_product', product_id=professional.id) }}"
-                     class="btn btn-sm btn-outline-primary" title="Modifier">
-                    <i class="fas fa-edit"></i>
-                  </a>
-                  <button type="button" class="btn btn-sm btn-outline-danger"
-                          onclick="deleteProfessional({{ professional.id }})" title="Supprimer">
-                    <i class="fas fa-trash"></i>
-                  </button>
+                  <a href="{{ url_for('admin.view_professional', professional_id=professional.id) }}" class="btn btn-sm btn-outline-info" title="Voir"><i class="fas fa-eye"></i></a>
+                  <a href="{{ url_for('admin.admin_edit_product', product_id=professional.id) }}" class="btn btn-sm btn-outline-primary" title="Modifier"><i class="fas fa-edit"></i></a>
+                  <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteProfessional({{ professional.id }})" title="Supprimer"><i class="fas fa-trash"></i></button>
                 </div>
               </td>
             </tr>
@@ -152,90 +80,44 @@
                 <i class="fas fa-user-md fa-3x text-muted mb-3"></i>
                 <h5 class="text-muted">Aucun professionnel trouvé</h5>
                 <p class="text-muted mb-3">Commencez par ajouter votre premier professionnel.</p>
-                <a href="{{ url_for('admin_add_product') }}" class="btn btn-primary">
-                  <i class="fas fa-plus me-2"></i>Ajouter un Professionnel
-                </a>
+                <a href="{{ url_for('admin.admin_add_product') }}" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Ajouter un Professionnel</a>
               </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-
-      <!-- Pagination (optionnelle) -->
-      {% if pagination and pagination.pages > 1 %}
-      <nav class="mt-3">
-        <ul class="pagination justify-content-center mb-0">
-          <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
-            <a class="page-link"
-               href="{{ url_for(request.endpoint, **request.view_args, page=pagination.prev_num, **request.args.to_dict()) }}"
-               tabindex="-1">&laquo;</a>
-          </li>
-          <li class="page-item disabled"><span class="page-link">Page {{ pagination.page }} / {{ pagination.pages }}</span></li>
-          <li class="page-item {{ 'disabled' if not pagination.has_next }}">
-            <a class="page-link"
-               href="{{ url_for(request.endpoint, **request.view_args, page=pagination.next_num, **request.args.to_dict()) }}">&raquo;</a>
-          </li>
-        </ul>
-      </nav>
-      {% endif %}
     </div>
   </div>
 </div>
-
-<!-- Modal de confirmation (optionnel) -->
-<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog"><div class="modal-content">
-    <div class="modal-header">
-      <h5 class="modal-title">Confirmer la suppression</h5>
-      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
-    </div>
-    <div class="modal-body">Êtes-vous sûr de vouloir supprimer ce professionnel ? Cette action est irréversible.</div>
-    <div class="modal-footer">
-      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
-      <form id="deleteForm" method="POST" style="display:inline;">
-        <button type="submit" class="btn btn-danger">Supprimer</button>
-      </form>
-    </div>
-  </div></div>
-</div>
 {% endblock %}
-
 {% block extra_js %}
 <script>
   const CSRF_TOKEN = `{{ csrf_token() if csrf_token is defined else '' }}`;
-
   function postJSON(url, body = {}) {
-    const headers = { 'Content-Type': 'application/json' };
-    if (CSRF_TOKEN) headers['X-CSRFToken'] = CSRF_TOKEN;
-    return fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const h = { 'Content-Type': 'application/json' }; if (CSRF_TOKEN) h['X-CSRFToken'] = CSRF_TOKEN;
+    return fetch(url, { method:'POST', headers:h, body:JSON.stringify(body) });
   }
-
-  function deleteProfessional(id) {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer ce professionnel ?')) return;
-    const url = "{{ url_for('admin_delete_product', product_id=0) }}".replace('0', id);
-    postJSON(url)
-      .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); })
-      .then(d => { if (d.success) location.reload(); else alert('Erreur : ' + (d.message || 'suppression')); })
-      .catch(err => { console.error(err); alert('Erreur lors de la suppression'); });
+  function deleteProfessional(id){
+    if(!confirm('Supprimer ce professionnel ?')) return;
+    const url = "{{ url_for('admin.admin_delete_product', product_id=0) }}".replace('0', id);
+    postJSON(url).then(async r=>{ if(!r.ok) throw new Error(await r.text()); return r.json(); })
+      .then(d=>{ if(d.success){ location.reload(); } else { alert('Erreur: ' + (d.message||'')); } })
+      .catch(e=>{ console.error(e); alert('Erreur lors de la suppression'); });
   }
-
-  function validateProfessional(id) {
-    if (!confirm('Valider ce professionnel ?')) return;
-    const url = "{{ url_for('validate_professional', professional_id=0) }}".replace('0', id);
-    postJSON(url)
-      .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); })
-      .then(d => { if (d.success) { alert('Professionnel validé !'); location.reload(); } else alert('Erreur : ' + (d.message || '')); })
-      .catch(err => { console.error(err); alert('Erreur lors de la validation'); });
+  function validateProfessional(id){
+    if(!confirm('Valider ce professionnel ?')) return;
+    const url = "{{ url_for('admin.validate_professional', professional_id=0) }}".replace('0', id);
+    postJSON(url).then(async r=>{ if(!r.ok) throw new Error(await r.text()); return r.json(); })
+      .then(d=>{ if(d.success){ alert('Professionnel validé'); location.reload(); } else { alert('Erreur: ' + (d.message||'')); } })
+      .catch(e=>{ console.error(e); alert('Erreur lors de la validation'); });
   }
-
-  function rejectProfessional(id) {
-    if (!confirm('Rejeter ce professionnel ?')) return;
-    const url = "{{ url_for('reject_professional', professional_id=0) }}".replace('0', id);
-    postJSON(url)
-      .then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); })
-      .then(d => { if (d.success) { alert('Professionnel rejeté'); location.reload(); } else alert('Erreur : ' + (d.message || '')); })
-      .catch(err => { console.error(err); alert('Erreur lors du rejet'); });
+  function rejectProfessional(id){
+    if(!confirm('Rejeter ce professionnel ?')) return;
+    const url = "{{ url_for('admin.reject_professional', professional_id=0) }}".replace('0', id);
+    postJSON(url).then(async r=>{ if(!r.ok) throw new Error(await r.text()); return r.json(); })
+      .then(d=>{ if(d.success){ alert('Professionnel rejeté'); location.reload(); } else { alert('Erreur: ' + (d.message||'')); } })
+      .catch(e=>{ console.error(e); alert('Erreur lors du rejet'); });
   }
 </script>
 {% endblock %}
