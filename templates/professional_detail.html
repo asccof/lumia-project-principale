@@ -15,8 +15,12 @@
     body{ background:var(--light); }
     .pro-header{ background:white; border-radius:16px; box-shadow:0 10px 25px rgba(111,66,193,.08); }
     .avatar{
-      width: 100%; max-width: 280px; aspect-ratio: 1/1; object-fit: cover;
-      border-radius: 16px; box-shadow:0 10px 25px rgba(0,0,0,.06);
+      width: 100%;
+      max-width: 280px;
+      aspect-ratio: 1/1;
+      object-fit: cover;
+      border-radius: 16px;
+      box-shadow:0 10px 25px rgba(0,0,0,.06);
     }
     .badge-chip{ background: rgba(111,66,193,.1); color: var(--primary); border-radius: 999px; padding:.35rem .75rem; }
     .price{ font-size:1.6rem; font-weight:700; color:var(--primary); }
@@ -46,21 +50,32 @@
     <div class="row g-4 align-items-start">
       <div class="col-lg-4 text-center">
         <img class="avatar"
-             src="{{ professional.image_url or 'https://via.placeholder.com/600x600?text=Photo' }}"
-             alt="Photo de {{ professional.name }}">
+             src="{{ ((professional.image_url or '')|trim) or 'https://placehold.co/600x600?text=Photo' }}"
+             alt="Photo de {{ professional.name }}"
+             loading="lazy"
+             onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=Photo+indisponible';">
       </div>
       <div class="col-lg-8">
         <h1 class="h2 mb-2">{{ professional.name }}</h1>
+
         <div class="mb-3">
-          <span class="badge-chip me-2"><i class="fas fa-user-md me-1"></i>{{ professional.specialty or 'Spécialité non renseignée' }}</span>
+          <span class="badge-chip me-2">
+            <i class="fas fa-user-md me-1"></i>{{ professional.specialty or 'Spécialité non renseignée' }}
+          </span>
           {% if professional.experience_years %}
-            <span class="badge-chip me-2"><i class="fas fa-briefcase me-1"></i>{{ professional.experience_years }} ans d’expérience</span>
+            <span class="badge-chip me-2">
+              <i class="fas fa-briefcase me-1"></i>{{ professional.experience_years }} ans d’expérience
+            </span>
           {% endif %}
           {% if professional.consultation_types %}
             {% for t in professional.consultation_types.split(',') %}
               <span class="badge-chip me-2">
                 <i class="fas fa-stethoscope me-1"></i>
-                {% if t.strip()=='cabinet' %}Cabinet{% elif t.strip()=='domicile' %}Domicile{% elif t.strip() in ['en_ligne','video'] %}En ligne{% else %}{{ t }}{% endif %}
+                {% set tt = t.strip() %}
+                {% if tt=='cabinet' %}Cabinet
+                {% elif tt=='domicile' %}Domicile
+                {% elif tt in ['en_ligne','video','vidéo'] %}En ligne
+                {% else %}{{ t }}{% endif %}
               </span>
             {% endfor %}
           {% endif %}
@@ -71,7 +86,8 @@
         {% if has_coords %}
           {% set maps_url = 'https://www.google.com/maps?q=' ~ professional.latitude ~ ',' ~ professional.longitude %}
         {% else %}
-          {% set maps_url = 'https://www.google.com/maps/search/?api=1&query=' ~ (professional.address or professional.location or '') %}
+          {% set maps_q = (professional.address or professional.location or '') %}
+          {% set maps_url = 'https://www.google.com/maps/search/?api=1&query=' ~ maps_q %}
         {% endif %}
 
         <div class="mb-2">
@@ -88,12 +104,17 @@
         {% if professional.phone %}
           <div class="mb-2">
             <i class="fas fa-phone me-2 text-success"></i>
-            <a href="tel:{{ professional.phone | replace(' ', '') }}" class="text-decoration-none">{{ professional.phone }}</a>
+            <a href="tel:{{ professional.phone | replace(' ', '') }}" class="text-decoration-none">
+              {{ professional.phone }}
+            </a>
           </div>
         {% endif %}
 
         {% if professional.consultation_fee is not none %}
-          <div class="mb-3"><span class="price">{{ '%.0f'|format(professional.consultation_fee) }} MAD</span> <small class="text-muted">/ séance</small></div>
+          <div class="mb-3">
+            <span class="price">{{ '%.0f'|format(professional.consultation_fee) }} MAD</span>
+            <small class="text-muted">/ séance</small>
+          </div>
         {% endif %}
 
         <div class="cta d-flex flex-wrap gap-2 mt-3">
