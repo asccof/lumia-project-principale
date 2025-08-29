@@ -29,6 +29,24 @@ class Professional(db.Model):
     experience_years = db.Column(db.Integer, default=0)
     status = db.Column(db.String(20), default='en_attente')
     created_at = db.Column(db.DateTime, server_default=db.func.now())
+# models.py
+from flask_sqlalchemy import SQLAlchemy
+db = SQLAlchemy()
+
+class Professional(db.Model):
+    __tablename__ = 'professionals'
+    id = db.Column(db.Integer, primary_key=True)
+    # ... tes champs existants ...
+    location = db.Column(db.String(120))         # ville (fallback)
+    address = db.Column(db.String(255))          # <-- NEW: adresse exacte
+    latitude = db.Column(db.Float)               # <-- NEW: lat
+    longitude = db.Column(db.Float)              # <-- NEW: lng
+    # ... le reste ...
+
+    @property
+    def display_address(self) -> str:
+        """Adresse à afficher (adresse exacte si dispo, sinon ville)."""
+        return self.address or self.location or ""
 
 class Appointment(db.Model):
     __tablename__ = "appointments"
