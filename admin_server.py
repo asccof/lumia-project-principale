@@ -1,94 +1,45 @@
-# admin_server.py
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
-from flask_login import LoginManager, login_user, login_required, logout_user, current_user
+# admin_server.py  — version Blueprint
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
-import os
-from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
-# --- Flask app ADMIN ---
-app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'admin_cle_secrete_ici')
-app.config['SESSION_COOKIE_NAME'] = 'tighri_admin_session'
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = True  # en prod HTTPS
-
-# --- Normalisation Postgres -> psycopg3 ---
-def _normalize_pg_uri(uri: str) -> str:
-    if not uri:
-        return uri
-    if uri.startswith("postgres://"):
-        uri = "postgresql://" + uri[len("postgres://"):]
-    if uri.startswith("postgresql+psycopg2://"):
-        uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
-    elif uri.startswith("postgresql+psycopg2cffi://"):
-        uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2cffi://"):]
-    elif uri.startswith("postgresql://"):
-        uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
-    parsed = urlparse(uri)
-    q = parse_qs(parsed.query)
-    if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
-        q["sslmode"] = ["require"]
-        uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
-    return uri
-
-db_uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
-if not db_uri:
-    raise RuntimeError("DATABASE_URL manquant pour admin_server")
-db_uri = _normalize_pg_uri(db_uri)
-
-# --- Réutiliser la même instance SQLAlchemy et les mêmes modèles ---
+# On réutilise la même instance SQLAlchemy et les mêmes modèles
 from models import db, User, Professional, Appointment
 
-app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {"pool_pre_ping": True}
-db.init_app(app)  # ne pas recréer une 2e instance
-
-# --- Login ---
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'admin_login'
-
-@login_manager.user_loader
-def load_user(user_id: str):
-    try:
-        return User.query.get(int(user_id))
-    except Exception:
-        return None
+admin_bp = Blueprint("admin", __name__)
 
 # ===================== AUTH ADMIN =====================
-@app.route('/login', methods=['GET', 'POST'])
+@admin_bp.route('/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
         username_or_email = (request.form.get('username') or '').strip()
         password = (request.form.get('password') or '')
 
-        # on accepte username ou email
         user = User.query.filter(
             (User.username == username_or_email) | (User.email == username_or_email.lower())
         ).first()
 
         if user and user.is_admin and check_password_hash(user.password_hash, password):
             login_user(user)
-            return redirect(url_for('admin_dashboard'))
+            return redirect(url_for('.admin_dashboard'))
         else:
             flash('Identifiants incorrects ou accès non autorisé', 'error')
 
     return render_template('admin_login.html')
 
-@app.route('/logout')
+@admin_bp.route('/logout')
 @login_required
 def admin_logout():
     logout_user()
-    return redirect(url_for('admin_login'))
+    return redirect(url_for('.admin_login'))
 
 # ===================== DASHBOARD =====================
-@app.route('/')
+@admin_bp.route('/')
 @login_required
 def admin_dashboard():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
 
     professionals = Professional.query.all()
     users = User.query.all()
@@ -115,45 +66,46 @@ def admin_dashboard():
     )
 
 # ===================== PROFESSIONNELS =====================
-@app.route('/products')
+@admin_bp.route('/products')
 @login_required
 def admin_products():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     professionals = Professional.query.order_by(Professional.id.desc()).all()
     return render_template('admin_products.html', professionals=professionals)
 
-@app.route('/products/add', methods=['GET', 'POST'])
+@admin_bp.route('/products/add', methods=['GET', 'POST'])
 @login_required
 def admin_add_product():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
 
     if request.method == 'POST':
         # Champs texte
         name = (request.form.get('name') or '').strip()
         description = (request.form.get('description') or '').strip()
         specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
-        location = (request.form.get('location') or '').strip()
-        image_url = (request.form.get('image_url') or '').strip()
-        phone = (request.form.get('phone') or '+212 6 XX XX XX XX').strip()
 
-        # Adresse + coords (NOUVEAU)
+        # Adresse exacte + coordonnées (NOUVEAU)
         address = (request.form.get('address') or '').strip()
-        lat_raw = (request.form.get('latitude') or '').strip()
-        lng_raw = (request.form.get('longitude') or '').strip()
+        latitude_raw = (request.form.get('latitude') or '').strip()
+        longitude_raw = (request.form.get('longitude') or '').strip()
         try:
-            latitude = float(lat_raw) if lat_raw else None
+            latitude = float(latitude_raw) if latitude_raw else None
         except ValueError:
             latitude = None
-            flash("Latitude invalide — ignorée", "warning")
         try:
-            longitude = float(lng_raw) if lng_raw else None
+            longitude = float(longitude_raw) if longitude_raw else None
         except ValueError:
             longitude = None
-            flash("Longitude invalide — ignorée", "warning")
+
+        # Ville (fallback / compat)
+        location = (request.form.get('location') or '').strip()
+
+        image_url = (request.form.get('image_url') or '').strip()
+        phone = (request.form.get('phone') or '+212 6 XX XX XX XX').strip()
 
         # Tarif (price ou consultation_fee)
         fee_raw = (request.form.get('price') or request.form.get('consultation_fee') or '0').replace(',', '.')
@@ -169,13 +121,13 @@ def admin_add_product():
         except ValueError:
             experience_years = 0
 
-        # Disponibilité (availability direct, sinon stock 1/0)
+        # Disponibilité
         availability = request.form.get('availability')
         if availability is None:
             stock = (request.form.get('stock') or '').strip().lower()
             availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
 
-        # Types de consultation (liste ou 3 checkboxes)
+        # Types de consultation
         types_list = request.form.getlist('consultation_types')
         if not types_list:
             types_list = []
@@ -184,10 +136,9 @@ def admin_add_product():
             if request.form.get('online_consultation'): types_list.append('en_ligne')
         consultation_types = ','.join(types_list) if types_list else 'cabinet'
 
-        # Validations minimales
         if not name or not description or not specialty:
             flash("Nom, description et spécialité sont obligatoires.", "error")
-            return redirect(url_for('admin_add_product'))
+            return redirect(url_for('.admin_add_product'))
 
         professional = Professional(
             name=name,
@@ -197,28 +148,29 @@ def admin_add_product():
             specialty=specialty,
             availability=availability,
             consultation_types=consultation_types,
+            # Ville en compat si pas d’adresse saisie
             location=location or 'Casablanca',
+            # Nouvelles colonnes
+            address=address or None,
+            latitude=latitude,
+            longitude=longitude,
             phone=phone,
             experience_years=experience_years,
-            status='en_attente',
-            # NEW:
-            address=address,
-            latitude=latitude,
-            longitude=longitude
+            status='en_attente'
         )
         db.session.add(professional)
         db.session.commit()
         flash('Professionnel ajouté avec succès!')
-        return redirect(url_for('admin_products'))
+        return redirect(url_for('.admin_products'))
 
     return render_template('add_product.html')
 
-@app.route('/products/edit/<int:product_id>', methods=['GET', 'POST'])
+@admin_bp.route('/products/edit/<int:product_id>', methods=['GET', 'POST'])
 @login_required
 def admin_edit_product(product_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
 
     professional = Professional.query.get_or_404(product_id)
 
@@ -238,6 +190,19 @@ def admin_edit_product(product_id):
         professional.image_url = (request.form.get('image_url') or professional.image_url).strip()
         professional.location = (request.form.get('location') or professional.location).strip()
         professional.phone = (request.form.get('phone') or professional.phone).strip()
+
+        # Adresse + coordonnées (NOUVEAU)
+        professional.address = (request.form.get('address') or professional.address or '').strip() or None
+        lat_raw = (request.form.get('latitude') or '').strip()
+        lon_raw = (request.form.get('longitude') or '').strip()
+        try:
+            professional.latitude = float(lat_raw) if lat_raw != '' else professional.latitude
+        except ValueError:
+            pass
+        try:
+            professional.longitude = float(lon_raw) if lon_raw != '' else professional.longitude
+        except ValueError:
+            pass
 
         # statut si fourni
         status_val = (request.form.get('status') or '').strip()
@@ -269,32 +234,13 @@ def admin_edit_product(product_id):
             except ValueError:
                 pass
 
-        # NEW: adresse + lat/lng
-        addr = (request.form.get('address') or '').strip()
-        if addr != '':
-            professional.address = addr
-
-        lat_raw = (request.form.get('latitude') or '').strip()
-        if lat_raw != '':
-            try:
-                professional.latitude = float(lat_raw)
-            except ValueError:
-                flash("Latitude invalide — ignorée", "warning")
-
-        lng_raw = (request.form.get('longitude') or '').strip()
-        if lng_raw != '':
-            try:
-                professional.longitude = float(lng_raw)
-            except ValueError:
-                flash("Longitude invalide — ignorée", "warning")
-
         db.session.commit()
         flash('Professionnel modifié avec succès!')
-        return redirect(url_for('admin_products'))
+        return redirect(url_for('.admin_products'))
 
     return render_template('edit_product.html', professional=professional)
 
-@app.route('/products/<int:product_id>/delete', methods=['POST'])
+@admin_bp.route('/products/<int:product_id>/delete', methods=['POST'])
 @login_required
 def admin_delete_product(product_id):
     if not current_user.is_admin:
@@ -304,34 +250,31 @@ def admin_delete_product(product_id):
     db.session.commit()
     return jsonify({'success': True, 'message': 'Professionnel supprimé avec succès'})
 
-# Variante liste/CRUD par /professionals (templates qui l’utilisent)
-@app.route('/professionals')
+# Variante liste/CRUD par /professionals
+@admin_bp.route('/professionals')
 @login_required
 def admin_professionals():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     professionals = Professional.query.all()
     return render_template('admin_professionals.html', professionals=professionals)
 
-@app.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'])
+@admin_bp.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'])
 @login_required
 def edit_professional(professional_id):
     """Unique définition de la route d’édition d’un professionnel (pas de doublon)."""
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
 
     professional = Professional.query.get_or_404(professional_id)
 
     if request.method == 'POST':
-        # Champs texte (robuste si un champ manque dans le form)
         name = (request.form.get('name') or '').strip()
         description = (request.form.get('description') or '').strip()
         specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
         image_url = (request.form.get('image_url') or '').strip()
-        location = (request.form.get('location') or '').strip()
-        phone = (request.form.get('phone') or '').strip()
 
         if name:
             professional.name = name
@@ -339,90 +282,82 @@ def edit_professional(professional_id):
             professional.description = description
         if specialty:
             professional.specialty = specialty
-        if location:
-            professional.location = location
-        if phone:
-            professional.phone = phone
         professional.image_url = image_url  # vide autorisé
 
-        # Adresse + coords (NOUVEAU aussi ici)
-        addr = (request.form.get('address') or '').strip()
-        if addr != '':
-            professional.address = addr
-
-        lat_raw = (request.form.get('latitude') or '').strip()
-        if lat_raw != '':
-            try:
-                professional.latitude = float(lat_raw)
-            except ValueError:
-                flash("Latitude invalide — ignorée", "warning")
-
-        lng_raw = (request.form.get('longitude') or '').strip()
-        if lng_raw != '':
-            try:
-                professional.longitude = float(lng_raw)
-            except ValueError:
-                flash("Longitude invalide — ignorée", "warning")
-
-        # Tarif (accepte price ou consultation_fee)
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.').strip()
         if fee_raw != '':
             try:
                 professional.consultation_fee = float(fee_raw)
             except ValueError:
                 flash("Le tarif est invalide.", "error")
-                return redirect(url_for('edit_professional', professional_id=professional_id))
+                return redirect(url_for('.edit_professional', professional_id=professional_id))
 
-        # Statut si le form l’envoie
+        # Adresse + coordonnées (NOUVEAU)
+        address = (request.form.get('address') or '').strip()
+        if address != '':
+            professional.address = address
+        lat_raw = (request.form.get('latitude') or '').strip()
+        lon_raw = (request.form.get('longitude') or '').strip()
+        try:
+            if lat_raw != '':
+                professional.latitude = float(lat_raw)
+        except ValueError:
+            pass
+        try:
+            if lon_raw != '':
+                professional.longitude = float(lon_raw)
+        except ValueError:
+            pass
+
         status = (request.form.get('status') or '').strip()
         if status in ('valide', 'en_attente', 'rejete'):
             professional.status = status
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
-        return redirect(url_for('admin_professionals'))
+        return redirect(url_for('.admin_professionals'))
 
-    # On réutilise le template déjà existant
+    # On réutilise le template existant
     return render_template('edit_product.html', professional=professional)
 
-@app.route('/professionals/delete/<int:professional_id>')
+@admin_bp.route('/professionals/delete/<int:professional_id>')
 @login_required
 def delete_professional(professional_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     professional = Professional.query.get_or_404(professional_id)
     db.session.delete(professional)
     db.session.commit()
     flash('Professionnel supprimé avec succès!')
-    return redirect(url_for('admin_professionals'))
+    return redirect(url_for('.admin_professionals'))
 
-@app.route('/professionals/<int:professional_id>')
+@admin_bp.route('/professionals/<int:professional_id>')
 @login_required
 def view_professional(professional_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     professional = Professional.query.get_or_404(professional_id)
     appointments = Appointment.query.filter_by(professional_id=professional_id).all()
     return render_template('view_professional.html', professional=professional, appointments=appointments)
 
 # ===================== UTILISATEURS =====================
-@app.route('/users')
+@admin_bp.route('/users')
 @login_required
 def admin_users():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     users = User.query.order_by(User.id.desc()).all()
     return render_template('admin_users.html', users=users)
 
-@app.route('/users/add', methods=['GET', 'POST'])
+@admin_bp.route('/users/add', methods=['GET', 'POST'])
 @login_required
 def add_user():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
 
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
@@ -433,14 +368,14 @@ def add_user():
 
         if not username or not email or not password:
             flash("Tous les champs sont obligatoires")
-            return redirect(url_for('add_user'))
+            return redirect(url_for('.add_user'))
 
         if User.query.filter_by(username=username).first():
             flash("Nom d'utilisateur déjà utilisé")
-            return redirect(url_for('add_user'))
+            return redirect(url_for('.add_user'))
         if User.query.filter_by(email=email).first():
             flash("Email déjà utilisé")
-            return redirect(url_for('add_user'))
+            return redirect(url_for('.add_user'))
 
         user = User(
             username=username,
@@ -452,16 +387,16 @@ def add_user():
         db.session.add(user)
         db.session.commit()
         flash('Utilisateur ajouté avec succès!')
-        return redirect(url_for('admin_users'))
+        return redirect(url_for('.admin_users'))
 
     return render_template('add_user.html')
 
-@app.route('/users/edit/<int:user_id>', methods=['GET', 'POST'])
+@admin_bp.route('/users/edit/<int:user_id>', methods=['GET', 'POST'])
 @login_required
 def edit_user(user_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     user = User.query.get_or_404(user_id)
 
     if request.method == 'POST':
@@ -471,13 +406,12 @@ def edit_user(user_id):
         is_admin = 'is_admin' in request.form
         new_pw = (request.form.get('new_password') or request.form.get('password') or '').strip()
 
-        # Unicité
         if User.query.filter(User.username == username, User.id != user.id).first():
             flash("Nom d'utilisateur déjà pris")
-            return redirect(url_for('edit_user', user_id=user.id))
+            return redirect(url_for('.edit_user', user_id=user.id))
         if User.query.filter(User.email == email, User.id != user.id).first():
             flash("Email déjà enregistré")
-            return redirect(url_for('edit_user', user_id=user.id))
+            return redirect(url_for('.edit_user', user_id=user.id))
 
         user.username = username
         user.email = email
@@ -489,42 +423,42 @@ def edit_user(user_id):
 
         db.session.commit()
         flash('Utilisateur modifié avec succès!')
-        return redirect(url_for('admin_users'))
+        return redirect(url_for('.admin_users'))
 
     return render_template('edit_user.html', user=user)
 
-@app.route('/users/delete/<int:user_id>')
+@admin_bp.route('/users/delete/<int:user_id>')
 @login_required
 def delete_user(user_id):
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     user = User.query.get_or_404(user_id)
     db.session.delete(user)
     db.session.commit()
     flash('Utilisateur supprimé avec succès!')
-    return redirect(url_for('admin_users'))
+    return redirect(url_for('.admin_users'))
 
 # ===================== RDV / COMMANDES =====================
-@app.route('/orders')
+@admin_bp.route('/orders')
 @login_required
 def admin_orders():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_orders.html', appointments=appointments)
 
-@app.route('/appointments')
+@admin_bp.route('/appointments')
 @login_required
 def admin_appointments():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_appointments.html', appointments=appointments)
 
-@app.route('/orders/<int:appointment_id>/status', methods=['POST'])
+@admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'])
 @login_required
 def update_appointment_status(appointment_id):
     if not current_user.is_admin:
@@ -543,7 +477,7 @@ def update_appointment_status(appointment_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 # ===================== API STATS & VALIDATION =====================
-@app.route('/api/stats')
+@admin_bp.route('/api/stats')
 @login_required
 def api_stats():
     if not current_user.is_admin:
@@ -560,7 +494,7 @@ def api_stats():
     }
     return jsonify(stats)
 
-@app.route('/professionals/<int:professional_id>/validate', methods=['POST'])
+@admin_bp.route('/professionals/<int:professional_id>/validate', methods=['POST'])
 @login_required
 def validate_professional(professional_id):
     if not current_user.is_admin:
@@ -574,7 +508,7 @@ def validate_professional(professional_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@app.route('/professionals/<int:professional_id>/reject', methods=['POST'])
+@admin_bp.route('/professionals/<int:professional_id>/reject', methods=['POST'])
 @login_required
 def reject_professional(professional_id):
     if not current_user.is_admin:
@@ -588,27 +522,11 @@ def reject_professional(professional_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
 
-@app.route('/pending-professionals')
+@admin_bp.route('/pending-professionals')
 @login_required
 def pending_professionals():
     if not current_user.is_admin:
         flash('Accès refusé')
-        return redirect(url_for('admin_login'))
+        return redirect(url_for('.admin_login'))
     pending_professionals = Professional.query.filter_by(status='en_attente').all()
     return render_template('pending_professionals.html', professionals=pending_professionals)
-
-# ===================== MAIN (local seulement) =====================
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
-        if not User.query.first():
-            admin = User(
-                username='admin',
-                email='admin@tighri.com',
-                password_hash=generate_password_hash('admin123'),
-                is_admin=True,
-                user_type='professional'
-            )
-            db.session.add(admin)
-            db.session.commit()
-    app.run(debug=True, port=8080)
