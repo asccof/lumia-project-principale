@@ -3,7 +3,8 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date, timedelta
 from sqlalchemy import or_, text
-import os
+from jinja2 import TemplateNotFound
+import os, re
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 # === [TIGHRI_R1:CONFIG_INLINE_SAFE] =========================================
@@ -49,6 +50,8 @@ try:
     MAX_CONTENT_LENGTH
 except NameError:
     MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5 Mo
+
+ALLOWED_SOCIAL_PLATFORMS = {'facebook', 'instagram', 'tiktok', 'youtube', 'other'}
 # ===========================================================================
 
 # --- App principale ---
@@ -129,6 +132,34 @@ class UnavailableSlot(db.Model):
     reason = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
+# ======================
+# Nouveaux modèles : Liens Sociaux & Avis
+# ======================
+class SocialLink(db.Model):
+    __tablename__ = "social_links"
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
+    platform = db.Column(db.String(30), nullable=False)  # facebook/instagram/tiktok/youtube/other
+    url = db.Column(db.String(500), nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending/approved/rejected
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+    # backref : professional.social_links
+    professional = db.relationship('Professional', backref=db.backref('social_links', lazy='dynamic'))
+
+class Review(db.Model):
+    __tablename__ = "reviews"
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    rating = db.Column(db.Integer, nullable=False)  # 1..5
+    comment = db.Column(db.Text)
+    status = db.Column(db.String(20), default='pending')  # pending/approved/rejected
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+    professional = db.relationship('Professional', backref=db.backref('reviews', lazy='dynamic'))
+    user = db.relationship('User', backref=db.backref('reviews', lazy='dynamic'))
+
 # --- User loader ---
 @login_manager.user_loader
 def load_user(user_id):
@@ -142,7 +173,6 @@ with app.app_context():
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
-        # Astuce : on conserve image_url existant pour stocker le chemin local de la photo uploadée
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration adresses: {e}")
@@ -228,6 +258,25 @@ else:
 # ===========================================================================
 
 # ======================
+# Helpers Social/Reviews
+# ======================
+_url_re = re.compile(r'^(https?://)?', re.IGNORECASE)
+
+def _normalize_url(u: str) -> str:
+    u = (u or '').strip()
+    if not u:
+        return u
+    if not _url_re.match(u):
+        u = 'https://' + u
+    return u
+
+def _require_admin():
+    if not (current_user.is_authenticated and getattr(current_user, 'is_admin', False)):
+        flash("Accès admin requis.", "danger")
+        return False
+    return True
+
+# ======================
 # Pages publiques
 # ======================
 @app.route('/')
@@ -250,7 +299,6 @@ def professionals():
             Professional.location.ilike(like),
             Professional.description.ilike(like),
         ]
-        # Ajoute l'adresse si la colonne existe dans le modèle
         if hasattr(Professional, "address"):
             conditions.insert(2, Professional.address.ilike(like))
         pros = base_query.filter(or_(*conditions)).all()
@@ -283,9 +331,7 @@ def register():
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-
-        # NOTE: téléphone obligatoire sera appliqué après mise à jour du modèle User (phone)
-        phone = request.form.get('phone', '').strip()  # champ à ajouter au template
+        phone = request.form.get('phone', '').strip()
 
         if not username or not email or not password:
             flash("Tous les champs sont obligatoires.")
@@ -305,7 +351,6 @@ def register():
             password_hash=generate_password_hash(password),
             user_type='patient'
         )
-        # Affecte téléphone seulement si le modèle le supporte déjà
         if hasattr(User, 'phone') and phone:
             try:
                 user.phone = phone
@@ -331,7 +376,7 @@ def professional_register():
         experience_raw = request.form.get('experience', '0')
         description = request.form.get('description', '').strip()
         fee_raw = request.form.get('consultation_fee', '0')
-        phone = request.form.get('phone', '').strip()  # champ à ajouter au template
+        phone = request.form.get('phone', '').strip()
 
         try:
             experience = int(experience_raw or 0)
@@ -361,7 +406,6 @@ def professional_register():
             password_hash=generate_password_hash(password),
             user_type='professional'
         )
-        # Affecte téléphone seulement si le modèle le supporte déjà
         if hasattr(User, 'phone') and phone:
             try:
                 user.phone = phone
@@ -484,11 +528,11 @@ def professional_edit_profile():
         pro.name = (request.form.get('name') or pro.name).strip()
         pro.specialty = (request.form.get('specialty') or pro.specialty or '').strip()
         pro.description = (request.form.get('description') or pro.description or '').strip()
-        # Adresse exacte (si la colonne existe, on la remplit; sinon on ne casse rien)
+        # Adresse exacte
         addr = (request.form.get('address') or '').strip()
         if hasattr(pro, "address"):
             pro.address = addr
-        # Conserver 'location' pour compat/fallback
+        # Conserver 'location'
         loc = (request.form.get('location') or '').strip()
         if loc:
             pro.location = loc
@@ -543,7 +587,6 @@ def professional_upload_photo():
             return redirect(url_for('professional_upload_photo'))
         try:
             saved_name = _process_and_save_profile_image(file)
-            # Conserver compatibilité : on stocke l'URL locale dans image_url
             pro.image_url = f"/media/profiles/{saved_name}"
             db.session.commit()
             flash("Photo de profil mise à jour avec succès.", "success")
@@ -558,7 +601,6 @@ def professional_upload_photo():
             flash("Erreur interne lors du traitement de l'image.", "danger")
             return redirect(url_for('professional_upload_photo'))
 
-    # petit formulaire minimal si aucun template dédié
     return render_template('upload_photo.html')
 # ===========================================================================
 
@@ -700,7 +742,6 @@ def professional_appointments():
 def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
     """
     Stub de notifications (compte + téléphone).
-    A brancher plus tard sur SMS/WhatsApp/Email.
     kind: 'accepted' | 'refused' | 'reminder' | 'pending'
     """
     app.logger.info("[NOTIFY] user=%s kind=%s ap_id=%s brand=%s",
@@ -738,6 +779,167 @@ def professional_appointment_action(appointment_id, action):
     return redirect(url_for('professional_appointments'))
 
 # ======================
+# Gestion des LIENS SOCIAUX (Pro + Admin)
+# ======================
+@app.route('/pro/social', methods=['GET', 'POST'])
+@login_required
+def pro_social():
+    if current_user.user_type != 'professional':
+        flash("Accès réservé aux professionnels.", "danger")
+        return redirect(url_for('index'))
+
+    pro = Professional.query.filter_by(name=current_user.username).first_or_404()
+
+    if request.method == 'POST':
+        platform = (request.form.get('platform') or '').strip().lower()
+        url = _normalize_url(request.form.get('url') or '')
+        if platform not in ALLOWED_SOCIAL_PLATFORMS:
+            flash("Plateforme non prise en charge.", "danger")
+            return redirect(url_for('pro_social'))
+        if not url or len(url) < 8:
+            flash("URL invalide.", "danger")
+            return redirect(url_for('pro_social'))
+
+        sl = SocialLink(professional_id=pro.id, platform=platform, url=url, status='pending')
+        db.session.add(sl)
+        db.session.commit()
+        flash("Lien ajouté et en attente de validation.", "success")
+        return redirect(url_for('pro_social'))
+
+    links = SocialLink.query.filter_by(professional_id=pro.id).order_by(SocialLink.created_at.desc()).all()
+    # Rendu template + fallback
+    try:
+        return render_template('pro_social_links.html', professional=pro, links=links, allowed=sorted(ALLOWED_SOCIAL_PLATFORMS))
+    except TemplateNotFound:
+        html = ["<h2>Mes liens sociaux</h2>",
+                "<form method='post'>",
+                "<select name='platform'>"] + \
+               [f"<option value='{p}'>{p.capitalize()}</option>" for p in sorted(ALLOWED_SOCIAL_PLATFORMS)] + \
+               ["</select> <input name='url' placeholder='https://...'>",
+                "<button type='submit'>Ajouter</button>",
+                "</form>",
+                "<ul>"]
+        for l in links:
+            html.append(f"<li>{l.platform}: <a href='{l.url}' target='_blank'>{l.url}</a> — statut: {l.status} "
+                        f"<form method='post' action='/pro/social/{l.id}/delete' style='display:inline'>"
+                        f"<button>Supprimer</button></form></li>")
+        html.append("</ul>")
+        return "".join(html)
+
+@app.route('/pro/social/<int:link_id>/delete', methods=['POST'])
+@login_required
+def pro_social_delete(link_id):
+    if current_user.user_type != 'professional':
+        flash("Accès réservé aux professionnels.", "danger")
+        return redirect(url_for('index'))
+
+    pro = Professional.query.filter_by(name=current_user.username).first_or_404()
+    link = SocialLink.query.get_or_404(link_id)
+    if link.professional_id != pro.id:
+        flash("Action non autorisée.", "danger")
+        return redirect(url_for('pro_social'))
+
+    db.session.delete(link)
+    db.session.commit()
+    flash("Lien supprimé.", "success")
+    return redirect(url_for('pro_social'))
+
+@app.route('/admin/social-pending')
+@login_required
+def admin_social_pending():
+    if not _require_admin():
+        return redirect(url_for('index'))
+    links = SocialLink.query.filter_by(status='pending').order_by(SocialLink.created_at.asc()).all()
+    try:
+        return render_template('admin_social_pending.html', links=links)
+    except TemplateNotFound:
+        items = "".join([f"<li>{l.platform} — <a href='{l.url}' target='_blank'>{l.url}</a> (pro #{l.professional_id}) "
+                         f"<form style='display:inline' method='post' action='/admin/social/{l.id}/approve'><button>Approuver</button></form> "
+                         f"<form style='display:inline' method='post' action='/admin/social/{l.id}/reject'><button>Rejeter</button></form>"
+                         f"</li>" for l in links])
+        return f"<h2>Liens sociaux en attente</h2><ul>{items or '<li>Aucun</li>'}</ul>"
+
+@app.route('/admin/social/<int:link_id>/<action>', methods=['POST'])
+@login_required
+def admin_social_action(link_id, action):
+    if not _require_admin():
+        return redirect(url_for('index'))
+    link = SocialLink.query.get_or_404(link_id)
+    if action not in ('approve', 'reject'):
+        flash("Action invalide.", "danger")
+        return redirect(url_for('admin_social_pending'))
+    link.status = 'approved' if action == 'approve' else 'rejected'
+    db.session.commit()
+    flash("Décision enregistrée.", "success")
+    return redirect(url_for('admin_social_pending'))
+
+# ======================
+# Avis (Reviews)
+# ======================
+@app.route('/reviews/add', methods=['POST'])
+@login_required
+def reviews_add():
+    if current_user.user_type != 'patient':
+        flash("Seuls les patients peuvent déposer un avis.", "danger")
+        return redirect(url_for('index'))
+
+    pro_id = request.form.get('pro_id')
+    rating = request.form.get('rating')
+    comment = (request.form.get('comment') or '').strip()
+
+    try:
+        pro_id = int(pro_id)
+    except Exception:
+        flash("Professionnel invalide.", "danger")
+        return redirect(url_for('index'))
+
+    try:
+        rating = int(rating)
+        if rating < 1 or rating > 5:
+            raise ValueError
+    except Exception:
+        flash("Note invalide (1 à 5).", "danger")
+        return redirect(url_for('professional_detail', professional_id=pro_id))
+
+    pro = Professional.query.get_or_404(pro_id)
+
+    rv = Review(professional_id=pro.id, user_id=current_user.id, rating=rating, comment=comment, status='pending')
+    db.session.add(rv)
+    db.session.commit()
+    flash("Merci pour votre avis ! Il sera publié après validation.", "success")
+    return redirect(url_for('professional_detail', professional_id=pro.id))
+
+@app.route('/admin/reviews-pending')
+@login_required
+def admin_reviews_pending():
+    if not _require_admin():
+        return redirect(url_for('index'))
+    reviews = Review.query.filter_by(status='pending').order_by(Review.created_at.asc()).all()
+    try:
+        return render_template('admin_reviews_pending.html', reviews=reviews)
+    except TemplateNotFound:
+        def stars(n): return "★"*n + "☆"*(5-n)
+        items = "".join([f"<li>Pro #{r.professional_id} — {stars(r.rating)} — {r.comment or ''} "
+                         f"<form style='display:inline' method='post' action='/admin/review/{r.id}/approve'><button>Approuver</button></form> "
+                         f"<form style='display:inline' method='post' action='/admin/review/{r.id}/reject'><button>Rejeter</button></form></li>"
+                         for r in reviews])
+        return f"<h2>Avis en attente</h2><ul>{items or '<li>Aucun</li>'}</ul>"
+
+@app.route('/admin/review/<int:rid>/<action>', methods=['POST'])
+@login_required
+def admin_review_action(rid, action):
+    if not _require_admin():
+        return redirect(url_for('index'))
+    rv = Review.query.get_or_404(rid)
+    if action not in ('approve', 'reject'):
+        flash("Action invalide.", "danger")
+        return redirect(url_for('admin_reviews_pending'))
+    rv.status = 'approved' if action == 'approve' else 'rejected'
+    db.session.commit()
+    flash("Décision enregistrée.", "success")
+    return redirect(url_for('admin_reviews_pending'))
+
+# ======================
 # API REST
 # ======================
 @app.route('/api/professionals')
@@ -751,9 +953,9 @@ def api_professionals():
         'image_url': p.image_url,
         'specialty': p.specialty,
         'availability': p.availability,
-        'address': getattr(p, 'address', None),      # safe si colonne absente
-        'latitude': getattr(p, 'latitude', None),    # safe si colonne absente
-        'longitude': getattr(p, 'longitude', None)   # safe si colonne absente
+        'address': getattr(p, 'address', None),
+        'latitude': getattr(p, 'latitude', None),
+        'longitude': getattr(p, 'longitude', None)
     } for p in pros])
 
 @app.route('/api/professional/<int:professional_id>/available-slots')
@@ -815,7 +1017,6 @@ def api_available_slots(professional_id):
                     'available': True
                 })
 
-            # avance de 30 min
             current = slot_end
 
     return jsonify({
@@ -891,7 +1092,7 @@ def book_appointment(professional_id):
             flash("Ce créneau est marqué comme indisponible.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Créer RDV (statut EN ATTENTE de validation par le pro)
+        # Créer RDV (statut EN ATTENTE)
         appointment = Appointment(
             patient_id=current_user.id,
             professional_id=professional_id,
@@ -903,7 +1104,6 @@ def book_appointment(professional_id):
         db.session.add(appointment)
         db.session.commit()
 
-        # Notification compte + (plus tard) téléphone/WhatsApp
         notify_user_account_and_phone(user_id=current_user.id, kind='pending', ap=appointment)
 
         flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
