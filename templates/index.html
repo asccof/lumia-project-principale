@@ -96,21 +96,45 @@
             margin-left: auto;
             margin-right: auto;
         }
+
+        /* ===== Barre de recherche étendue ===== */
         .search-bar {
             display: flex;
             justify-content: center;
             margin: 2rem 0 1rem 0;
+            gap: 0; /* on gère les arrondis par élément */
+            flex-wrap: wrap;
+            padding: 0 1rem;
         }
-        .search-bar input {
-            width: 400px;
-            padding: 1rem 1.5rem;
+        .search-bar .chunk {
+            display: flex;
+            align-items: stretch;
+        }
+        .search-bar input,
+        .search-bar select {
+            padding: 1rem 1.2rem;
             border: 1px solid #8B5CF6;
-            border-radius: 30px 0 0 30px;
             font-size: 1rem;
             outline: none;
+            background: #fff;
         }
-        .search-bar button {
-            padding: 1rem 2rem;
+        .search-bar .q-input {
+            width: 280px;
+            border-radius: 30px 0 0 30px;
+            border-right: none;
+        }
+        .search-bar .city-input {
+            width: 200px;
+            border-right: none;
+            border-left: 1px solid #8B5CF6;
+        }
+        .search-bar .spec-input {
+            width: 220px;
+            border-right: none;
+            border-left: 1px solid #8B5CF6;
+        }
+        .search-bar .btn-search {
+            padding: 1rem 1.4rem;
             border: none;
             background: #8B5CF6;
             color: #fff;
@@ -120,9 +144,21 @@
             font-weight: 700;
             transition: background 0.2s;
         }
-        .search-bar button:hover {
+        .search-bar .btn-search:hover {
             background: #6D28D9;
         }
+        .see-all {
+            display: flex;
+            justify-content: center;
+            margin: 0.5rem 0 0 0;
+        }
+        .see-all a {
+            color: #8B5CF6;
+            text-decoration: none;
+            font-weight: 700;
+        }
+        .see-all a:hover { text-decoration: underline; }
+
         .sections {
             display: flex;
             flex-wrap: wrap;
@@ -168,6 +204,57 @@
         .section a:hover {
             background: #6D28D9;
         }
+
+        /* ===== Carte “Nous contacter” demandée ===== */
+        .cta-contact {
+            max-width: 1200px;
+            margin: 0 auto 2rem auto;
+            padding: 0 2rem;
+        }
+        .cta-card {
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
+            padding: 2rem;
+            text-align: center;
+        }
+        .cta-card h3 {
+            margin: 0 0 0.5rem 0;
+            color: #6D28D9;
+            font-size: 1.6rem;
+        }
+        .cta-card p {
+            color: #4B3869;
+            margin-bottom: 1.25rem;
+        }
+        .cta-actions {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .btn-ghost, .btn-whatsapp, .btn-call {
+            display: inline-block;
+            padding: 0.8rem 1.2rem;
+            border-radius: 999px;
+            text-decoration: none;
+            font-weight: 700;
+        }
+        .btn-ghost {
+            background: #fff;
+            color: #8B5CF6;
+            border: 2px solid #8B5CF6;
+        }
+        .btn-ghost:hover { background: #8B5CF6; color: #fff; }
+        .btn-call {
+            background: #8B5CF6; color: #fff;
+        }
+        .btn-call:hover { background: #6D28D9; }
+        .btn-whatsapp {
+            background: #25D366; color: #fff;
+        }
+        .btn-whatsapp:hover { filter: brightness(0.9); }
+
         .featured {
             max-width: 1200px;
             margin: 0 auto 4rem auto;
@@ -223,6 +310,7 @@
         .professional-card a:hover {
             text-decoration: underline;
         }
+
         .about-section {
             background: #fff;
             padding: 4rem 2rem;
@@ -245,6 +333,7 @@
             max-width: 800px;
             margin: 0 auto 2rem auto;
         }
+
         .services-section {
             padding: 4rem 2rem;
             background: #f7f5fa;
@@ -279,6 +368,7 @@
             color: #4B3869;
             line-height: 1.6;
         }
+
         .contact-section {
             background: #8B5CF6;
             color: #fff;
@@ -313,45 +403,43 @@
         .contact-item strong {
             font-size: 1.1rem;
         }
+
         footer {
             background: #2d1a47;
             color: #fff;
             text-align: center;
             padding: 2rem;
         }
+
+        @media (max-width: 992px) {
+            .search-bar .q-input { width: 240px; }
+            .search-bar .city-input { width: 180px; }
+            .search-bar .spec-input { width: 200px; }
+        }
         @media (max-width: 768px) {
-            .nav-container {
-                flex-direction: column;
-                gap: 1rem;
+            .nav-container { flex-direction: column; gap: 1rem; }
+            .nav-menu { flex-direction: column; gap: 1rem; }
+            header { padding: 6rem 0 2rem 0; }
+            header h1 { font-size: 2rem; }
+            .search-bar { gap: .5rem; }
+            .search-bar .q-input,
+            .search-bar .city-input,
+            .search-bar .spec-input,
+            .search-bar .btn-search {
+                border-radius: 30px !important;
+                width: 100%;
+                border-right: 1px solid #8B5CF6;
             }
-            .nav-menu {
-                flex-direction: column;
-                gap: 1rem;
-            }
-            header {
-                padding: 6rem 0 2rem 0;
-            }
-            header h1 {
-                font-size: 2rem;
-            }
-            .search-bar input {
-                width: 250px;
-            }
-            .sections {
-                flex-direction: column;
-                align-items: center;
-            }
-            .contact-info {
-                flex-direction: column;
-                gap: 1.5rem;
-            }
+            .see-all { margin-top: .75rem; }
+            .sections { flex-direction: column; align-items: center; }
+            .contact-info { flex-direction: column; gap: 1.5rem; }
         }
     </style>
 </head>
 <body>
     <nav class="navbar">
         <div class="nav-container">
-                            <a href="/" class="nav-logo">Tighri</a>
+            <a href="/" class="nav-logo">Tighri</a>
             <ul class="nav-menu">
                 <li><a href="#about">À propos</a></li>
                 <li><a href="#services">Services</a></li>
@@ -365,14 +453,35 @@
     </nav>
 
     <header>
-                        <h1>Tighri</h1>
+        <h1>Tighri</h1>
         <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
     </header>
 
-    <form class="search-bar" method="get" action="/professionals">
-        <input type="text" name="q" placeholder="Rechercher un professionnel, une spécialité, une ville...">
-        <button type="submit">Rechercher</button>
+    <!-- ===== Barre de recherche multi-critères ===== -->
+    <form class="search-bar" method="get" action="/professionals" id="homeSearchForm">
+        <div class="chunk">
+            <input type="text" name="q" id="qInput" class="q-input" placeholder="Nom du pro ou mots-clés…">
+            <input type="text" id="cityInput" class="city-input" placeholder="Ville">
+            <input type="text" name="specialty" class="spec-input" placeholder="Spécialité">
+            <button type="submit" class="btn-search">Rechercher</button>
+        </div>
     </form>
+    <div class="see-all">
+        <a href="/professionals">Voir tous les spécialistes</a>
+    </div>
+
+    <!-- ===== Carte “Nous contacter” (message requis) ===== -->
+    <div class="cta-contact">
+      <div class="cta-card" id="cta-contact">
+        <h3>Nous contacter</h3>
+        <p>Bienvenue au Centre d'écoute et de conseil du Tighri. Si vous avez besoin d'aide et de conseils gratuits, n'hésitez pas à nous contacter.</p>
+        <div class="cta-actions">
+          <a class="btn-ghost" href="mailto:contact@tighri.ma">Email</a>
+          <a class="btn-call" href="tel:+212522123456">Téléphone</a>
+          <a class="btn-whatsapp" href="https://wa.me/212600000000" target="_blank" rel="noopener">WhatsApp</a>
+        </div>
+      </div>
+    </div>
 
     <div class="sections">
         <div class="section">
@@ -382,7 +491,7 @@
         </div>
         <div class="section">
             <h2>Espace Professionnel</h2>
-                            <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
+            <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
             <a href="/professional_register">Je suis professionnel</a>
         </div>
     </div>
@@ -466,5 +575,21 @@
     <footer>
         <p>&copy; 2024 Tighri. Tous droits réservés. | Plateforme de santé mentale au Maroc</p>
     </footer>
+
+    <!-- Fusionner Ville -> q avant envoi pour rester compatible avec /professionals -->
+    <script>
+      (function () {
+        const form = document.getElementById('homeSearchForm');
+        const q = document.getElementById('qInput');
+        const city = document.getElementById('cityInput');
+
+        form.addEventListener('submit', function (e) {
+          const parts = [];
+          if (q.value && q.value.trim()) parts.push(q.value.trim());
+          if (city.value && city.value.trim()) parts.push(city.value.trim());
+          if (parts.length) q.value = parts.join(' ');
+        });
+      })();
+    </script>
 </body>
-</html> 
+</html>
