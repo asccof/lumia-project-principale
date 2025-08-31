@@ -6,36 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{{ professional.name }} - Fiche professionnelle</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
   <style>
-    :root{
-      --primary:#6f42c1;
-      --light:#f8f5ff;
-    }
+    :root{ --primary:#6f42c1; --light:#f8f5ff; }
     body{ background:var(--light); }
     .pro-header{ background:white; border-radius:16px; box-shadow:0 10px 25px rgba(111,66,193,.08); }
-    .avatar{
-      width: 100%;
-      max-width: 280px;
-      aspect-ratio: 1/1;
-      object-fit: cover;
-      border-radius: 16px;
-      box-shadow:0 10px 25px rgba(0,0,0,.06);
-    }
+    .avatar{ width: 100%; max-width: 280px; aspect-ratio: 1/1; object-fit: cover; border-radius: 16px; box-shadow:0 10px 25px rgba(0,0,0,.06); }
     .badge-chip{ background: rgba(111,66,193,.1); color: var(--primary); border-radius: 999px; padding:.35rem .75rem; }
     .price{ font-size:1.6rem; font-weight:700; color:var(--primary); }
     .cta a{ min-width: 220px; }
-
-    /* Sociaux & Avis */
-    .socials a { display:inline-flex; align-items:center; gap:.5rem; padding:.5rem .9rem; border-radius:999px; border:1px solid #eee; text-decoration:none; }
-    .socials a:hover{ background:#f6f1ff; }
-    .rating-stars{ color:#fbbf24; }
-    .review-item{ border-bottom:1px solid #f0eaff; padding-bottom:1rem; margin-bottom:1rem; }
-    .review-item:last-child{ border-bottom:0; margin-bottom:0; padding-bottom:0; }
+    .socials a{ display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.08); margin-right:.5rem; border:1px solid #eee; }
+    .socials a:hover{ transform: translateY(-2px); }
   </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark" style="background:linear-gradient(135deg,#6f42c1,#8e44ad);">
+<nav class="navbar navbar-expand-lg navbar-dark" style="background:linear-gradient(135deg,#6f42c1,#8b5cf6);">
   <div class="container">
     <a class="navbar-brand fw-bold" href="{{ url_for('index') }}"><i class="fas fa-brain me-2"></i>Tighri</a>
     <div class="navbar-nav ms-auto">
@@ -52,12 +37,11 @@
     </div>
   {% endif %}
 
-  <!-- En-tête fiche -->
   <div class="pro-header p-4 p-lg-5">
     <div class="row g-4 align-items-start">
       <div class="col-lg-4 text-center">
         <img class="avatar"
-             src="{{ ((professional.image_url or '')|trim) or url_for('static', filename='img/avatar_default.jpg') }}"
+             src="{{ ((professional.image_url or '')|trim) or 'https://placehold.co/600x600?text=Photo' }}"
              alt="Photo de {{ professional.name }}"
              loading="lazy"
              onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=Photo+indisponible';">
@@ -66,18 +50,13 @@
         <h1 class="h2 mb-2">{{ professional.name }}</h1>
 
         <div class="mb-3">
-          <span class="badge-chip me-2">
-            <i class="fas fa-user-md me-1"></i>{{ professional.specialty or 'Spécialité non renseignée' }}
-          </span>
+          <span class="badge-chip me-2"><i class="fas fa-user-md me-1"></i>{{ professional.specialty or 'Spécialité non renseignée' }}</span>
           {% if professional.experience_years %}
-            <span class="badge-chip me-2">
-              <i class="fas fa-briefcase me-1"></i>{{ professional.experience_years }} ans d’expérience
-            </span>
+          <span class="badge-chip me-2"><i class="fas fa-briefcase me-1"></i>{{ professional.experience_years }} ans d’expérience</span>
           {% endif %}
           {% if professional.consultation_types %}
             {% for t in professional.consultation_types.split(',') %}
-              <span class="badge-chip me-2">
-                <i class="fas fa-stethoscope me-1"></i>
+              <span class="badge-chip me-2"><i class="fas fa-stethoscope me-1"></i>
                 {% set tt = t.strip() %}
                 {% if tt=='cabinet' %}Cabinet
                 {% elif tt=='domicile' %}Domicile
@@ -88,7 +67,6 @@
           {% endif %}
         </div>
 
-        {# Adresse + lien Google Maps #}
         {% set has_coords = (professional.latitude is not none) and (professional.longitude is not none) %}
         {% if has_coords %}
           {% set maps_url = 'https://www.google.com/maps?q=' ~ professional.latitude ~ ',' ~ professional.longitude %}
@@ -100,20 +78,14 @@
         <div class="mb-2">
           <i class="fas fa-map-marker-alt me-2 text-danger"></i>
           {{ professional.address or professional.location or 'Adresse non renseignée' }}
-          {% if has_coords %}
-            <small class="text-muted"> ({{ professional.latitude }}, {{ professional.longitude }})</small>
-          {% endif %}
-          {% if (professional.address or has_coords or professional.location) %}
-            · <a href="{{ maps_url }}" target="_blank" rel="noopener" class="link-primary">Voir sur Google Maps</a>
-          {% endif %}
+          {% if has_coords %}<small class="text-muted"> ({{ professional.latitude }}, {{ professional.longitude }})</small>{% endif %}
+          {% if (professional.address or has_coords or professional.location) %} · <a href="{{ maps_url }}" target="_blank" rel="noopener" class="link-primary">Voir sur Google Maps</a>{% endif %}
         </div>
 
         {% if professional.phone %}
           <div class="mb-2">
             <i class="fas fa-phone me-2 text-success"></i>
-            <a href="tel:{{ professional.phone | replace(' ', '') }}" class="text-decoration-none">
-              {{ professional.phone }}
-            </a>
+            <a href="tel:{{ professional.phone | replace(' ', '') }}" class="text-decoration-none">{{ professional.phone }}</a>
           </div>
         {% endif %}
 
@@ -124,39 +96,38 @@
           </div>
         {% endif %}
 
-        <!-- Réseaux sociaux approuvés -->
-        {% set approved_links = professional.social_links.filter_by(status='approved').all() if professional.social_links is not none else [] %}
-        {% if approved_links and approved_links|length > 0 %}
-          <div class="mt-3 socials d-flex flex-wrap gap-2">
-            {% for l in approved_links %}
-              {% set icon = 'fa-link' %}
-              {% if l.platform == 'facebook' %}{% set icon = 'fa-facebook' %}
-              {% elif l.platform == 'instagram' %}{% set icon = 'fa-instagram' %}
-              {% elif l.platform == 'tiktok' %}{% set icon = 'fa-tiktok' %}
-              {% elif l.platform == 'youtube' %}{% set icon = 'fa-youtube' %}
+        {% set has_socials = professional.facebook_url or professional.instagram_url or professional.tiktok_url or professional.youtube_url %}
+        {% if has_socials %}
+          {% if professional.social_links_approved %}
+            <div class="socials mb-3">
+              {% if professional.facebook_url %}
+                <a href="{{ professional.facebook_url }}" target="_blank" rel="noopener" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
               {% endif %}
-              <a href="{{ l.url }}" target="_blank" rel="noopener">
-                <i class="fab {{ icon }}"></i> {{ l.platform|capitalize }}
-              </a>
-            {% endfor %}
-          </div>
+              {% if professional.instagram_url %}
+                <a href="{{ professional.instagram_url }}" target="_blank" rel="noopener" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+              {% endif %}
+              {% if professional.tiktok_url %}
+                <a href="{{ professional.tiktok_url }}" target="_blank" rel="noopener" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
+              {% endif %}
+              {% if professional.youtube_url %}
+                <a href="{{ professional.youtube_url }}" target="_blank" rel="noopener" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
+              {% endif %}
+            </div>
+          {% else %}
+            <div class="alert alert-info py-2 mb-3"><i class="fa-solid fa-hourglass-half me-2"></i>Les liens réseaux sociaux sont en attente de validation.</div>
+          {% endif %}
         {% endif %}
 
         <div class="cta d-flex flex-wrap gap-2 mt-3">
           {% if professional.status == 'valide' %}
-            <a class="btn btn-primary"
-               href="{{ url_for('book_appointment', professional_id=professional.id) }}">
+            <a class="btn btn-primary" href="{{ url_for('book_appointment', professional_id=professional.id) }}">
               <i class="fas fa-calendar-plus me-2"></i>Prendre rendez-vous
             </a>
           {% else %}
-            <button class="btn btn-secondary" disabled>
-              <i class="fas fa-lock me-2"></i>Prendre rendez-vous (profil non validé)
-            </button>
+            <button class="btn btn-secondary" disabled><i class="fas fa-lock me-2"></i>Prendre rendez-vous (profil non validé)</button>
           {% endif %}
           {% if professional.phone %}
-            <a class="btn btn-outline-success" href="tel:{{ professional.phone | replace(' ', '') }}">
-              <i class="fas fa-phone me-2"></i>Appeler
-            </a>
+            <a class="btn btn-outline-success" href="tel:{{ professional.phone | replace(' ', '') }}"><i class="fas fa-phone me-2"></i>Appeler</a>
           {% endif %}
         </div>
       </div>
@@ -175,97 +146,68 @@
     </div>
   </div>
 
-  <!-- Avis & évaluations -->
+  <!-- Avis -->
   <div class="mt-4">
     <div class="card shadow-sm">
-      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+      <div class="card-header bg-white d-flex align-items-center justify-content-between">
         <h5 class="mb-0"><i class="fa-solid fa-star me-2 text-warning"></i>Avis & évaluations</h5>
-        {% set approved_reviews = professional.reviews.filter_by(status='approved').all() if professional.reviews is not none else [] %}
-        {% set ratings = approved_reviews | map(attribute='rating') | list %}
-        {% set rc = ratings|length %}
-        {% set avg = (ratings|sum / rc) if rc > 0 else 0 %}
-        {% set rounded = avg|round(0, 'common') %}
-        <div class="small text-muted">
-          {% if rc > 0 %}
-            <span class="rating-stars">
-              {% for _ in range(rounded|int) %}★{% endfor %}{% for _ in range(5-rounded|int) %}☆{% endfor %}
-            </span>
-            {{ "%.1f"|format(avg) }} · {{ rc }} avis
-          {% else %}
-            — Aucun avis
-          {% endif %}
-        </div>
+        {% if avg_rating %}
+          <span class="badge bg-warning text-dark">Moyenne : {{ avg_rating }}/5</span>
+        {% endif %}
       </div>
       <div class="card-body">
-        {% if approved_reviews and approved_reviews|length > 0 %}
-          {% for r in approved_reviews %}
-            <div class="review-item">
-              <div class="d-flex align-items-center justify-content-between">
-                <strong>
-                  {% for _ in range(r.rating) %}★{% endfor %}{% for _ in range(5 - r.rating) %}☆{% endfor %}
-                </strong>
-                <small class="text-muted">{{ r.created_at.strftime('%d/%m/%Y') if r.created_at else '' }}</small>
+        {% if reviews %}
+          <div class="list-group mb-3">
+            {% for r in reviews %}
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between">
+                  <strong>{{ r.user.username }}</strong>
+                  <small class="text-muted">{{ r.created_at.strftime('%d/%m/%Y %H:%M') if r.created_at else '' }}</small>
+                </div>
+                <div class="mb-1">
+                  <span class="text-warning">
+                    {% for i in range(0, r.rating) %}★{% endfor %}{% for i in range(r.rating, 5) %}☆{% endfor %}
+                  </span>
+                </div>
+                <div>{{ r.comment }}</div>
               </div>
-              {% if r.comment %}
-                <p class="mb-0 mt-2">{{ r.comment }}</p>
-              {% endif %}
-            </div>
-          {% endfor %}
+            {% endfor %}
+          </div>
         {% else %}
-          <p class="mb-0 text-muted">Pas encore d’avis pour ce professionnel.</p>
+          <p class="text-muted">Pas encore d’avis pour ce professionnel.</p>
+        {% endif %}
+
+        {% if current_user.is_authenticated and current_user.user_type == 'patient' %}
+          <hr>
+          <form method="post" action="{{ url_for('add_review', professional_id=professional.id) }}">
+            {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <div class="row g-3">
+              <div class="col-md-3">
+                <label class="form-label">Note</label>
+                <select name="rating" class="form-select" required>
+                  <option value="">Choisir…</option>
+                  <option value="5">5 - Excellent</option>
+                  <option value="4">4 - Très bien</option>
+                  <option value="3">3 - Bien</option>
+                  <option value="2">2 - Moyen</option>
+                  <option value="1">1 - Insuffisant</option>
+                </select>
+              </div>
+              <div class="col-md-9">
+                <label class="form-label">Commentaire</label>
+                <textarea name="comment" rows="2" class="form-control" placeholder="Partagez votre expérience…" required></textarea>
+              </div>
+            </div>
+            <button class="btn btn-primary mt-3"><i class="fa-solid fa-paper-plane me-2"></i>Envoyer</button>
+          </form>
+        {% else %}
+          <p class="text-muted mt-3">Connectez-vous en tant que patient pour laisser un avis.</p>
         {% endif %}
       </div>
     </div>
   </div>
 
-  <!-- Formulaire : ajouter un avis (actif pour patients connectés) -->
-  <div class="mt-3">
-    {% if current_user.is_authenticated and current_user.user_type == 'patient' %}
-      <div class="card shadow-sm">
-        <div class="card-header bg-white">
-          <h6 class="mb-0"><i class="fa-regular fa-comment-dots me-2"></i>Déposer un avis</h6>
-        </div>
-        <div class="card-body">
-          <!-- NOTE: L’endpoint /reviews/add sera fourni dans la prochaine étape -->
-          <form method="post" action="/reviews/add">
-            <input type="hidden" name="pro_id" value="{{ professional.id }}">
-            <div class="mb-3">
-              <label class="form-label">Note</label>
-              <select name="rating" class="form-select" required>
-                <option value="5">5 - Excellent</option>
-                <option value="4">4 - Très bien</option>
-                <option value="3">3 - Bien</option>
-                <option value="2">2 - Moyen</option>
-                <option value="1">1 - À améliorer</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Commentaire (optionnel)</label>
-              <textarea name="comment" rows="3" class="form-control" placeholder="Partagez votre expérience…"></textarea>
-            </div>
-            <div class="d-flex gap-2">
-              <button class="btn btn-primary" type="submit">
-                <i class="fa-regular fa-paper-plane me-2"></i>Envoyer
-              </button>
-              <a href="{{ url_for('professionals') }}" class="btn btn-outline-secondary">Annuler</a>
-            </div>
-            <p class="text-muted small mt-3 mb-0">
-              Votre avis sera publié après validation par l’administrateur.
-            </p>
-          </form>
-        </div>
-      </div>
-    {% else %}
-      <div class="alert alert-info">
-        <i class="fa-regular fa-circle-user me-2"></i>
-        Connectez-vous en tant que <strong>patient</strong> pour déposer un avis.
-        <a class="ms-2" href="{{ url_for('login') }}">Se connecter</a>
-      </div>
-    {% endif %}
-  </div>
-
 </div>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
