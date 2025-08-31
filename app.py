@@ -166,18 +166,32 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
+# ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
 # Ajoute colonnes côté DB si absentes (sans casser le modèle Python)
 with app.app_context():
     db.create_all()
     try:
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"))
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
+        # Professionals : adresse + géoloc
+        db.session.execute(text(
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"
+        ))
+        db.session.execute(text(
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"
+        ))
+        db.session.execute(text(
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"
+        ))
+
+        # Users : téléphone (pour rendre possible l’enregistrement du numéro)
+        db.session.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"
+        ))
+
         db.session.commit()
     except Exception as e:
-        app.logger.warning(f"Mini-migration adresses: {e}")
+        app.logger.warning(f"Mini-migrations: {e}")
 
-    # Seed admin si absent
+    # Seed admin si absent (inchangé)
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -190,10 +204,13 @@ with app.app_context():
             is_admin=True,
             user_type="professional",
         )
+        # NB : si tu ajoutes plus tard User.phone dans models.py,
+        # tu pourras initialiser ici : u.phone = "0663400190"
         db.session.add(u)
         db.session.commit()
         app.logger.info(f"Admin '{admin_username}' créé.")
 # ===========================================================================
+
 
 # ===== [TIGHRI_R1:IMAGES_INLINE_FALLBACK] ===================================
 TARGET_SIZE = (512, 512)
