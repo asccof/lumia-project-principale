@@ -36,18 +36,23 @@ def admin_login():
     if request.method == 'POST':
         username_or_email = (request.form.get('username') or '').strip()
         password = (request.form.get('password') or '')
+        remember = bool(request.form.get('remember'))  # ✅ prise en compte du "Se souvenir de moi"
 
         user = User.query.filter(
             (User.username == username_or_email) | (User.email == username_or_email.lower())
         ).first()
 
         if user and user.is_admin and check_password_hash(user.password_hash, password):
-            login_user(user)
+            login_user(user, remember=remember)  # ✅ cookie de session persistant si coché
+            next_url = request.form.get('next') or request.args.get('next')
+            if next_url and next_url.startswith('/'):  # sécurité basique contre open redirect
+                return redirect(next_url)
             return redirect(url_for('admin.admin_dashboard'))
         else:
             flash('Identifiants incorrects ou accès non autorisé', 'error')
 
     return render_template('admin_login.html')
+
 
 @admin_bp.route('/logout', endpoint='admin_logout')
 @login_required
