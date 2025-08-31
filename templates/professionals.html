@@ -1,314 +1,111 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Professionnels - Tighri</title>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Montserrat', Arial, sans-serif;
-            background: #f7f5fa;
-            margin: 0;
-            color: #2d1a47;
-        }
-        .navbar {
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
-            position: fixed;
-            top: 0;
-            width: 100%;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(139,92,246,0.1);
-        }
-        .nav-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 2rem;
-        }
-        .nav-logo {
-            color: #8B5CF6;
-            font-size: 1.8rem;
-            font-weight: 700;
-            text-decoration: none;
-        }
-        .nav-links {
-            display: flex;
-            gap: 2rem;
-        }
-        .nav-links a {
-            color: #4B3869;
-            text-decoration: none;
-            font-weight: 600;
-            transition: color 0.2s;
-        }
-        .nav-links a:hover { color: #8B5CF6; }
-
-        .container {
-            max-width: 1200px;
-            margin: 100px auto 2rem auto;
-            padding: 0 2rem;
-        }
-        .page-header {
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
-            padding: 2rem;
-            margin-bottom: 2rem;
-            text-align: center;
-        }
-        .page-header h1 { color: #8B5CF6; margin-bottom: 1rem; }
-
-        .search-section {
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
-            padding: 2rem;
-            margin-bottom: 2rem;
-        }
-        .search-form {
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1rem;
-            flex-wrap: wrap;
-        }
-        .search-input, .city-input {
-            flex: 1 1 240px;
-            padding: 0.8rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            font-size: 1rem;
-            background: #fff;
-        }
-        .search-input:focus, .city-input:focus { outline: none; border-color: #8B5CF6; }
-        .search-btn {
-            background: #8B5CF6;
-            color: #fff;
-            padding: 0.8rem 1.5rem;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .search-btn:hover { background: #6D28D9; }
-
-        .filters {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        .filter-btn {
-            padding: 0.5rem 1rem;
-            border: 1px solid #e2e8f0;
-            background: #fff;
-            border-radius: 20px;
-            cursor: pointer;
-            transition: all 0.2s;
-            text-decoration: none;
-            color: #4B3869;
-        }
-        .filter-btn:hover, .filter-btn.active { background: #8B5CF6; color: #fff; border-color: #8B5CF6; }
-
-        .professionals-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-            gap: 2rem;
-        }
-        .professional-card {
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
-            overflow: hidden;
-            transition: transform 0.2s;
-        }
-        .professional-card:hover { transform: translateY(-4px); }
-        .professional-image {
-            width: 100%;
-            height: 200px;
-            object-fit: cover;
-        }
-        .professional-content { padding: 1.5rem; }
-        .professional-name {
-            color: #6D28D9;
-            font-size: 1.3rem;
-            font-weight: 700;
-            margin-bottom: 0.25rem;
-        }
-        .professional-specialty { color: #8B5CF6; font-weight: 600; margin-bottom: 0.25rem; }
-        .professional-location {
-            color: #4B3869;
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.3rem;
-        }
-        .professional-description {
-            color: #4B3869;
-            margin-bottom: 0.75rem;
-            line-height: 1.5;
-        }
-        .professional-rating {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 0.75rem;
-            color: #4B3869;
-        }
-        .stars { color: #fbbf24; }
-        .professional-price {
-            color: #8B5CF6;
-            font-weight: 700;
-            font-size: 1.05rem;
-            margin-bottom: 1rem;
-        }
-        .btn-book {
-            width: 100%;
-            background: #8B5CF6;
-            color: #fff;
-            padding: 0.8rem;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-            text-decoration: none;
-            display: block;
-            text-align: center;
-        }
-        .btn-book:hover { background: #6D28D9; }
-
-        .no-results {
-            text-align: center;
-            padding: 3rem;
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
-        }
-        .no-results h3 { color: #8B5CF6; margin-bottom: 1rem; }
-
-        @media (max-width: 768px) {
-            .nav-links { display: none; }
-            .professionals-grid { grid-template-columns: 1fr; }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Professionnels - Tighri</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body{font-family:'Montserrat',Arial,sans-serif;background:#f7f5fa;margin:0;color:#2d1a47}
+    .navbar{background:rgba(255,255,255,.95);backdrop-filter:blur(10px);position:fixed;top:0;width:100%;z-index:1000;box-shadow:0 2px 10px rgba(139,92,246,.1)}
+    .nav-container{max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;padding:1rem 2rem}
+    .nav-logo{color:#8B5CF6;font-size:1.8rem;font-weight:700;text-decoration:none}
+    .nav-links{display:flex;gap:2rem}
+    .nav-links a{color:#4B3869;text-decoration:none;font-weight:600;transition:color .2s}
+    .nav-links a:hover{color:#8B5CF6}
+    .container{max-width:1200px;margin:100px auto 2rem auto;padding:0 2rem}
+    .page-header{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08);padding:2rem;margin-bottom:2rem;text-align:center}
+    .page-header h1{color:#8B5CF6;margin-bottom:1rem}
+    .search-section{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08);padding:2rem;margin-bottom:2rem}
+    .search-form{display:grid;grid-template-columns:1fr 1fr 160px;gap:1rem;margin-bottom:1rem}
+    .search-input{padding:.8rem;border:1px solid #e2e8f0;border-radius:8px;font-size:1rem}
+    .search-input:focus{outline:none;border-color:#8B5CF6}
+    .search-btn{background:#8B5CF6;color:#fff;padding:.8rem 1.5rem;border:none;border-radius:8px;font-weight:600;cursor:pointer;transition:background .2s}
+    .search-btn:hover{background:#6D28D9}
+    .filters{display:flex;gap:.5rem;flex-wrap:wrap}
+    .filter-btn{padding:.5rem 1rem;border:1px solid #e2e8f0;background:#fff;border-radius:20px;cursor:pointer;transition:all .2s;text-decoration:none;color:#4B3869}
+    .filter-btn:hover,.filter-btn.active{background:#8B5CF6;color:#fff;border-color:#8B5CF6}
+    .professionals-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:2rem}
+    .professional-card{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08);overflow:hidden;transition:transform .2s}
+    .professional-card:hover{transform:translateY(-4px)}
+    .professional-image{width:100%;height:200px;object-fit:cover}
+    .professional-content{padding:1.5rem}
+    .professional-name{color:#6D28D9;font-size:1.3rem;font-weight:700;margin-bottom:.2rem}
+    .professional-specialty{color:#8B5CF6;font-weight:600;margin-bottom:.4rem}
+    .professional-location{color:#4B3869;margin-bottom:.6rem}
+    .professional-description{color:#4B3869;margin-bottom:1rem;line-height:1.5}
+    .btn-book{width:100%;background:#8B5CF6;color:#fff;padding:.8rem;border:none;border-radius:8px;font-weight:600;cursor:pointer;transition:background .2s;text-decoration:none;display:block;text-align:center}
+    .btn-book:hover{background:#6D28D9}
+    .no-results{text-align:center;padding:3rem;background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08)}
+    @media (max-width: 880px){.search-form{grid-template-columns:1fr}}
+  </style>
 </head>
 <body>
-    <nav class="navbar">
-        <div class="nav-container">
-            <a href="/" class="nav-logo">Tighri</a>
-            <div class="nav-links">
-                <a href="/">Accueil</a>
-                <a href="/professionals">Professionnels</a>
-                {% if current_user.is_authenticated %}
-                    <a href="/my_appointments">Mes rendez-vous</a>
-                    <a href="/logout">Déconnexion</a>
-                {% else %}
-                    <a href="/login">Connexion</a>
-                    <a href="/register">Inscription</a>
-                {% endif %}
-            </div>
-        </div>
-    </nav>
-
-    <div class="container">
-        <div class="page-header">
-            <h1>Trouvez votre professionnel</h1>
-            <p>Consultez notre réseau de psychologues, thérapeutes et coachs qualifiés</p>
-        </div>
-
-        <div class="search-section">
-            <!-- Formulaire recherche : q (mots-clés + ville), specialty (optionnel) -->
-            <form class="search-form" method="GET" id="prosSearchForm" action="/professionals">
-                {% if specialty %}
-                  <input type="hidden" name="specialty" value="{{ specialty }}">
-                {% endif %}
-                <input type="text" name="q" id="qInput" placeholder="Rechercher par nom, spécialité, ville..."
-                       class="search-input" value="{{ search_query or '' }}">
-                <input type="text" id="cityInput" placeholder="Ville (ex: Casablanca)" class="city-input" value="">
-                <button type="submit" class="search-btn">🔍 Rechercher</button>
-            </form>
-
-            <!-- Filtres rapides par spécialité (ton route lit ?specialty=...) -->
-            <div class="filters">
-                <a href="?specialty=all{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-                   class="filter-btn {% if specialty == 'all' %}active{% endif %}">Toutes les spécialités</a>
-                <a href="?specialty=Psychologue{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-                   class="filter-btn {% if specialty == 'Psychologue' %}active{% endif %}">Psychologue</a>
-                <a href="?specialty=Thérapeute{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-                   class="filter-btn {% if specialty == 'Thérapeute' %}active{% endif %}">Thérapeute</a>
-                <a href="?specialty=Coach{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-                   class="filter-btn {% if specialty == 'Coach' %}active{% endif %}">Coach</a>
-            </div>
-        </div>
-
-        {% if professionals %}
-            <div class="professionals-grid">
-                {% for professional in professionals %}
-                    <div class="professional-card">
-                        <img src="{{ professional.image_url or 'https://via.placeholder.com/350x200/8B5CF6/FFFFFF?text=Professionnel' }}"
-                             alt="{{ professional.name }}" class="professional-image">
-
-                        <div class="professional-content">
-                            <h3 class="professional-name">{{ professional.name }}</h3>
-                            <p class="professional-specialty">{{ professional.specialty }}</p>
-                            <p class="professional-location">📍 {{ professional.address or professional.location or '' }}</p>
-
-                            <p class="professional-description">
-                                {{ professional.description[:120] }}{% if professional.description and professional.description|length > 120 %}...{% endif %}
-                            </p>
-
-                            <!-- Avis (si le modèle Review est présent et des avis approuvés existent) -->
-                            {% set approved_reviews = professional.reviews.filter_by(status='approved').all() if professional.reviews is not none else [] %}
-                            {% set ratings = approved_reviews | map(attribute='rating') | list %}
-                            {% set rc = ratings|length %}
-                            {% set avg = (ratings|sum / rc) if rc > 0 else 0 %}
-                            {% set rounded = avg|round(0, 'common') %}
-                            <div class="professional-rating">
-                                {% if rc > 0 %}
-                                    <span class="stars">
-                                        {% for _ in range(rounded|int) %}★{% endfor %}{% for _ in range(5-rounded|int) %}☆{% endfor %}
-                                    </span>
-                                    <span>{{ "%.1f"|format(avg) }} · {{ rc }} avis</span>
-                                {% else %}
-                                    <span class="text-muted">— Aucun avis</span>
-                                {% endif %}
-                            </div>
-
-                            <p class="professional-price">
-                                {{ professional.consultation_fee }} MAD / consultation
-                            </p>
-
-                            <a href="/professional/{{ professional.id }}" class="btn-book">Voir le profil</a>
-                        </div>
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <div class="no-results">
-                <h3>Aucun professionnel trouvé</h3>
-                <p>Essayez de modifier vos critères de recherche ou de consulter toutes les spécialités.</p>
-            </div>
-        {% endif %}
+<nav class="navbar">
+  <div class="nav-container">
+    <a href="/" class="nav-logo">Tighri</a>
+    <div class="nav-links">
+      <a href="/">Accueil</a>
+      <a href="/professionals">Professionnels</a>
+      {% if current_user.is_authenticated %}
+        <a href="/my_appointments">Mes rendez-vous</a>
+        <a href="/logout">Déconnexion</a>
+      {% else %}
+        <a href="/login">Connexion</a>
+        <a href="/register">Inscription</a>
+      {% endif %}
     </div>
+  </div>
+</nav>
 
-    <!-- Fusion Ville -> q pour rester compatible avec le backend /professionals -->
-    <script>
-      (function(){
-        const form = document.getElementById('prosSearchForm');
-        const q = document.getElementById('qInput');
-        const city = document.getElementById('cityInput');
+<div class="container">
+  <div class="page-header">
+    <h1>Trouvez votre professionnel</h1>
+    <p>Recherchez par nom, spécialité ou ville.</p>
+  </div>
 
-        form.addEventListener('submit', function(e){
-          const parts = [];
-          if (q.value && q.value.trim()) parts.push(q.value.trim());
-          if (city.value && city.value.trim()) parts.push(city.value.trim());
-          if (parts.length) q.value = parts.join(' ');
-        });
-      })();
-    </script>
+  <div class="search-section">
+    <form class="search-form" method="GET">
+      <input type="text" name="q" placeholder="Nom, spécialité, mots-clés…" class="search-input" value="{{ search_query or '' }}">
+      <input type="text" name="city" placeholder="Ville (ex: Casablanca)" class="search-input" value="{{ city or '' }}">
+      <button type="submit" class="search-btn">🔍 Rechercher</button>
+    </form>
+
+    <div class="filters">
+      <a href="?specialty=all{% if search_query %}&q={{ search_query }}{% endif %}{% if city %}&city={{ city }}{% endif %}"
+         class="filter-btn {% if specialty == 'all' %}active{% endif %}">Toutes les spécialités</a>
+      {% for sp in specialties %}
+        <a href="?specialty={{ sp }}{% if search_query %}&q={{ search_query }}{% endif %}{% if city %}&city={{ city }}{% endif %}"
+           class="filter-btn {% if specialty == sp %}active{% endif %}">{{ sp }}</a>
+      {% endfor %}
+      <a href="/professionals" class="filter-btn">Voir tous</a>
+    </div>
+  </div>
+
+  {% if professionals %}
+    <div class="professionals-grid">
+      {% for professional in professionals %}
+        <div class="professional-card">
+          <img src="{{ professional.image_url or 'https://via.placeholder.com/350x200/8B5CF6/FFFFFF?text=Professionnel' }}"
+               alt="{{ professional.name }}" class="professional-image">
+          <div class="professional-content">
+            <h3 class="professional-name">{{ professional.name }}</h3>
+            <p class="professional-specialty">{{ professional.specialty }}</p>
+            <p class="professional-location">📍 {{ professional.address or professional.location or '' }}</p>
+            <p class="professional-description">
+              {{ professional.description[:110] }}{% if professional.description and professional.description|length > 110 %}…{% endif %}
+            </p>
+            <a href="/professional/{{ professional.id }}" class="btn-book">Voir le profil</a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="no-results">
+      <h3>Aucun professionnel trouvé</h3>
+      <p>Essayez de modifier vos critères de recherche ou de consulter toutes les spécialités.</p>
+    </div>
+  {% endif %}
+</div>
 </body>
 </html>
