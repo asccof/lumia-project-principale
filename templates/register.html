@@ -1,121 +1,113 @@
-{% extends "base.html" %}
-
-{% block title %}Inscription - Lumia{% endblock %}
-
-{% block content %}
-<section class="py-5" style="background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); min-height: 100vh; display: flex; align-items: center;">
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-lg-6 col-md-8">
-                <div class="card shadow-lg border-0">
-                    <div class="card-body p-5">
-                        <div class="text-center mb-4">
-                            <i class="fas fa-user-plus fa-3x text-primary mb-3"></i>
-                            <h2 class="fw-bold">Créer un compte</h2>
-                            <p class="text-muted">Rejoignez la communauté Lumia</p>
-                        </div>
-                        
-                        <form method="POST" id="registerForm">
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="username" class="form-label">
-                                        <i class="fas fa-user me-2"></i>Nom d'utilisateur *
-                                    </label>
-                                    <input type="text" class="form-control" id="username" name="username" required minlength="3">
-                                    <div class="form-text">Minimum 3 caractères</div>
-                                </div>
-                                
-                                <div class="col-md-6 mb-3">
-                                    <label for="email" class="form-label">
-                                        <i class="fas fa-envelope me-2"></i>Adresse email *
-                                    </label>
-                                    <input type="email" class="form-control" id="email" name="email" required>
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="password" class="form-label">
-                                        <i class="fas fa-lock me-2"></i>Mot de passe *
-                                    </label>
-                                    <input type="password" class="form-control" id="password" name="password" required minlength="6">
-                                    <div class="form-text">Minimum 6 caractères</div>
-                                </div>
-                                
-                                <div class="col-md-6 mb-3">
-                                    <label for="confirmPassword" class="form-label">
-                                        <i class="fas fa-lock me-2"></i>Confirmer le mot de passe *
-                                    </label>
-                                    <input type="password" class="form-control" id="confirmPassword" required>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="terms" required>
-                                <label class="form-check-label" for="terms">
-                                    J'accepte les <a href="#" class="text-decoration-none">conditions d'utilisation</a> et la <a href="#" class="text-decoration-none">politique de confidentialité</a>
-                                </label>
-                            </div>
-                            
-                            <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="newsletter">
-                                <label class="form-check-label" for="newsletter">
-                                    Je souhaite recevoir les newsletters et offres spéciales
-                                </label>
-                            </div>
-                            
-                            <div class="d-grid mb-3">
-                                <button type="submit" class="btn btn-primary btn-lg">
-                                    <i class="fas fa-user-plus me-2"></i>Créer mon compte
-                                </button>
-                            </div>
-                        </form>
-                        
-                        <hr class="my-4">
-                        
-                        <div class="text-center">
-                            <p class="text-muted mb-3">Déjà un compte ?</p>
-                            <a href="{{ url_for('login') }}" class="btn btn-outline-primary">
-                                <i class="fas fa-sign-in-alt me-2"></i>Se connecter
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Tighri — Inscription patient</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <style>
+    :root{ --primary:#6f42c1; --secondary:#8e44ad; --light:#f8f5ff; --ink:#2d1a47 }
+    body{ background:var(--light); color:var(--ink) }
+    .navbar{ background:linear-gradient(135deg,var(--primary),var(--secondary)) }
+    .card{ border:0; border-radius:16px; box-shadow:0 10px 24px rgba(111,66,193,.12) }
+    .form-control{ border-radius:10px }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-dark">
+  <div class="container">
+    <a class="navbar-brand fw-bold" href="{{ url_for('index') }}"><i class="fa-solid fa-brain me-2"></i>Tighri</a>
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link" href="{{ url_for('login') }}"><i class="fa-solid fa-right-to-bracket me-1"></i>Connexion</a>
     </div>
-</section>
-{% endblock %}
+  </div>
+</nav>
 
-{% block extra_js %}
+<div class="container py-5">
+  {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-3">
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ _cats.get(cat,'info') }} alert-dismissible fade show" role="alert">
+            <i class="fa-solid fa-circle-info me-2"></i>{{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="row justify-content-center">
+    <div class="col-md-8 col-lg-7">
+      <div class="card">
+        <div class="card-body p-4 p-md-5">
+          <h1 class="h4 mb-3"><i class="fa-regular fa-user text-primary me-2"></i>Créer un compte patient</h1>
+          <p class="text-muted mb-4">Le numéro de téléphone est <strong>obligatoire</strong> pour sécuriser votre compte et recevoir les notifications de rendez-vous.</p>
+
+          <form method="post" action="{{ url_for('register') }}" novalidate>
+            {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Nom d’utilisateur</label>
+                <input type="text" class="form-control" name="username" required maxlength="80" autocomplete="username">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" name="email" required autocomplete="email">
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Téléphone <small class="text-muted">(ex. +212612345678 ou 06 12 34 56 78)</small></label>
+                <input type="tel" class="form-control" name="phone" required inputmode="tel"
+                       pattern="^(\+212|0)([ \-]?\d){9}$" placeholder="+2126…">
+                <div class="form-text">Format marocain accepté : <code>+2126…</code> ou <code>06…</code>.</div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label">Mot de passe</label>
+                <div class="input-group">
+                  <input type="password" class="form-control" name="password" id="pw" required autocomplete="new-password" minlength="8">
+                  <button class="btn btn-outline-secondary" type="button" onclick="togglePw('pw', this)"><i class="fa-regular fa-eye"></i></button>
+                </div>
+                <div class="form-text">8 caractères minimum.</div>
+              </div>
+            </div>
+
+            <div class="d-grid mt-4">
+              <button class="btn btn-primary btn-lg" type="submit">
+                <i class="fa-regular fa-user me-2"></i>Créer mon compte
+              </button>
+            </div>
+          </form>
+
+          <div class="text-center mt-4">
+            <a href="{{ url_for('forgot_password') }}">Mot de passe oublié</a> ·
+            <a href="{{ url_for('change_password') }}">Changer mot de passe</a>
+          </div>
+
+          <div class="text-center mt-2">
+            <span class="text-muted">Vous êtes professionnel ?</span>
+            <a class="ms-1" href="{{ url_for('professional_register') }}">Créer un compte professionnel</a>
+          </div>
+        </div>
+      </div>
+      <div class="text-center mt-3">
+        <a href="{{ url_for('index') }}" class="text-decoration-none"><i class="fa-solid fa-arrow-left-long me-1"></i>Retour à l’accueil</a>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-document.getElementById('registerForm').addEventListener('submit', function(e) {
-    const password = document.getElementById('password').value;
-    const confirmPassword = document.getElementById('confirmPassword').value;
-    
-    if (password !== confirmPassword) {
-        e.preventDefault();
-        alert('Les mots de passe ne correspondent pas !');
-        return false;
-    }
-    
-    if (password.length < 6) {
-        e.preventDefault();
-        alert('Le mot de passe doit contenir au moins 6 caractères !');
-        return false;
-    }
-});
-
-// Validation en temps réel
-document.getElementById('confirmPassword').addEventListener('input', function() {
-    const password = document.getElementById('password').value;
-    const confirmPassword = this.value;
-    
-    if (confirmPassword && password !== confirmPassword) {
-        this.setCustomValidity('Les mots de passe ne correspondent pas');
-    } else {
-        this.setCustomValidity('');
-    }
-});
+function togglePw(id, btn){
+  const el=document.getElementById(id); if(!el) return;
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.querySelector('i').classList.toggle('fa-eye'); btn.querySelector('i').classList.toggle('fa-eye-slash');
+}
 </script>
-{% endblock %} 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
