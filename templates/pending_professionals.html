@@ -1,69 +1,344 @@
-{% extends "admin_base.html" %}
-{% block title %}Professionnels en attente - Administration Lumia{% endblock %}
-{% block content %}
-<div class="container-fluid">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0 text-gray-800"><i class="fas fa-user-clock"></i> Professionnels en attente de validation</h1>
-    <a href="{{ url_for('admin.admin_dashboard') }}" class="btn btn-secondary"><i class="fas fa-arrow-left"></i> Retour au tableau de bord</a>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Tighri — Administration · Professionnels en attente</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <style>
+    :root{ --primary:#6f42c1; --secondary:#8e44ad; --light:#f8f5ff; --ink:#2d1a47 }
+    body{ background:var(--light); color:var(--ink) }
+    .navbar{ background:linear-gradient(135deg,var(--primary),var(--secondary)) }
+    .brand{ font-weight:800 }
+    .card{ border:0; border-radius:16px; box-shadow:0 10px 24px rgba(111,66,193,.12) }
+    .table> :not(caption)>*>*{ vertical-align:middle }
+    .avatar{ width:56px; height:56px; object-fit:cover; border-radius:12px }
+    .filters .form-control{ border-radius:10px }
+    .btn-icon{ display:inline-flex; align-items:center; gap:.45rem }
+    .badge-chip{ background:rgba(111,66,193,.08); color:var(--primary); border-radius:999px; padding:.25rem .65rem; font-weight:600 }
+    .small-mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .empty{ text-align:center; padding:3rem 1rem }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-dark">
+  <div class="container">
+    <a class="navbar-brand brand" href="{{ url_for('admin.admin_dashboard') }}">
+      <i class="fa-solid fa-shield-halved me-2"></i>Tighri — Administration
+    </a>
+    <div class="d-flex align-items-center gap-2">
+      <a class="btn btn-light btn-sm" href="{{ url_for('change_password') }}">
+        <i class="fa-solid fa-key me-1"></i>Changer mot de passe
+      </a>
+      <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin.admin_logout') }}">
+        <i class="fa-solid fa-right-from-bracket me-1"></i>Déconnexion
+      </a>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-4">
+
+  {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-3">
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ _cats.get(cat,'info') }} alert-dismissible fade show" role="alert">
+            <i class="fa-solid fa-circle-info me-2"></i>{{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-2 mb-md-0">
+      <i class="fa-solid fa-hourglass-half text-warning me-2"></i>
+      Professionnels en attente
+      <span class="badge bg-warning text-dark ms-2">{{ professionals|length if professionals else 0 }}</span>
+    </h1>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin.admin_products') }}" class="btn btn-outline-primary btn-icon">
+        <i class="fa-solid fa-briefcase-medical"></i> Tous les professionnels
+      </a>
+      <a href="{{ url_for('admin.admin_add_product') }}" class="btn btn-primary btn-icon">
+        <i class="fa-solid fa-plus"></i> Ajouter un professionnel
+      </a>
+    </div>
   </div>
 
-  {% if professionals %}
-    <div class="row">
-      {% for professional in professionals %}
-      <div class="col-lg-6 col-xl-4 mb-4">
-        <div class="card border-left-warning shadow h-100 py-2">
-          <div class="card-body">
-            <div class="d-flex align-items-center mb-2">
-              <img src="{{ professional.image_url or 'https://via.placeholder.com/50x50/8B5CF6/FFFFFF?text=Pro' }}" alt="{{ professional.name }}" class="rounded-circle me-3" style="width:50px;height:50px;object-fit:cover;">
-              <div><h6 class="fw-bold text-primary mb-0">{{ professional.name }}</h6><small class="text-muted">{{ professional.specialty }}</small></div>
-            </div>
-            <div class="mb-3">
-              <p class="mb-1 text-muted"><i class="fas fa-map-marker-alt me-1"></i>{{ professional.location }}</p>
-              <p class="mb-1 text-muted"><i class="fas fa-phone me-1"></i>{{ professional.phone }}</p>
-              <p class="mb-1 text-muted"><i class="fas fa-clock me-1"></i>{{ professional.experience_years }} ans d'expérience</p>
-              <p class="mb-1 text-muted"><i class="fas fa-money-bill me-1"></i>{{ professional.consultation_fee }} MAD</p>
-            </div>
-            <div class="mb-3">
-              <small class="text-muted">Description:</small>
-              <p class="mb-0">{{ professional.description[:100] }}{% if professional.description|length > 100 %}...{% endif %}</p>
-            </div>
-            <div class="mb-3">
-              <small class="text-muted">Créé le:</small>
-              <p class="mb-0">{{ professional.created_at.strftime('%d/%m/%Y à %H:%M') }}</p>
-            </div>
-            <div class="d-flex gap-2">
-              <button class="btn btn-success btn-sm" onclick="validateProfessional({{ professional.id }})"><i class="fas fa-check"></i> Valider</button>
-              <button class="btn btn-danger btn-sm" onclick="rejectProfessional({{ professional.id }})"><i class="fas fa-times"></i> Rejeter</button>
-              <a class="btn btn-info btn-sm" href="{{ url_for('admin.view_professional', professional_id=professional.id) }}"><i class="fas fa-eye"></i> Détails</a>
-            </div>
+  <!-- Filtres & actions groupées -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="row g-2 align-items-end filters">
+        <div class="col-lg-6">
+          <label class="form-label">Recherche</label>
+          <input id="searchInput" type="text" class="form-control"
+                 placeholder="Nom, spécialité, ville, adresse…">
+        </div>
+        <div class="col-lg-6 text-lg-end">
+          <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+            <button id="btnValidateSel" class="btn btn-success btn-icon" disabled>
+              <i class="fa-solid fa-check"></i> Valider la sélection
+            </button>
+            <button id="btnRejectSel" class="btn btn-outline-danger btn-icon" disabled>
+              <i class="fa-solid fa-xmark"></i> Rejeter la sélection
+            </button>
+          </div>
+          <div class="small text-muted mt-2 mt-lg-1">
+            <span id="selCount">0</span> sélectionné(s)
           </div>
         </div>
       </div>
-      {% endfor %}
     </div>
-  {% else %}
-    <div class="text-center py-5">
-      <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
-      <h4 class="text-success">Aucun professionnel en attente</h4>
-      <p class="text-muted">Tous les professionnels ont été traités.</p>
+  </div>
+
+  <!-- Tableau -->
+  <div class="card">
+    <div class="card-body">
+      {% if professionals and professionals|length %}
+        <div class="table-responsive">
+          <table class="table align-middle" id="pendingTable">
+            <thead>
+              <tr>
+                <th style="width:44px;">
+                  <input type="checkbox" id="checkAll" class="form-check-input">
+                </th>
+                <th>Professionnel</th>
+                <th>Spécialité</th>
+                <th>Ville / Adresse</th>
+                <th>Exp.</th>
+                <th>Tarif</th>
+                <th>Types</th>
+                <th class="text-end" style="width:280px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in professionals %}
+                <tr
+                  data-id="{{ p.id }}"
+                  data-name="{{ (p.name or '')|lower }}"
+                  data-spec="{{ (p.specialty or '')|lower }}"
+                  data-loc="{{ (p.location or '')|lower }}"
+                  data-addr="{{ (p.address or '')|lower }}"
+                >
+                  <td>
+                    <input type="checkbox" class="form-check-input row-check">
+                  </td>
+                  <td>
+                    <div class="d-flex align-items-center gap-2">
+                      <img class="avatar"
+                           src="{{ (p.image_url or '')|trim or 'https://placehold.co/112x112?text=Pro' }}"
+                           onerror="this.onerror=null;this.src='https://placehold.co/112x112?text=Pro';"
+                           alt="">
+                      <div>
+                        <div class="fw-semibold">{{ p.name }}</div>
+                        <div class="small text-muted small-mono">#{{ p.id }}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="badge-chip">{{ p.specialty or '—' }}</span>
+                  </td>
+                  <td>
+                    {% if p.address %}
+                      <div class="text-truncate" style="max-width:260px">
+                        <i class="fa-solid fa-location-dot text-danger me-1"></i>{{ p.address }}
+                      </div>
+                    {% else %}
+                      <span class="text-muted">{{ p.location or '—' }}</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ p.experience_years or 0 }} an(s)</td>
+                  <td>{{ '%.0f'|format(p.consultation_fee or 0) }} MAD</td>
+                  <td>
+                    {% if p.consultation_types %}
+                      {% for t in p.consultation_types.split(',') %}
+                        {% set tt = t.strip() %}
+                        <span class="badge bg-light text-dark">
+                          {% if tt=='cabinet' %}Cabinet
+                          {% elif tt=='domicile' %}Domicile
+                          {% elif tt in ['en_ligne','video','vidéo'] %}En ligne
+                          {% else %}{{ tt }}{% endif %}
+                        </span>
+                      {% endfor %}
+                    {% else %}
+                      <span class="text-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    <div class="btn-group" role="group">
+                      <a class="btn btn-sm btn-outline-secondary btn-icon"
+                         href="{{ url_for('admin.view_professional', professional_id=p.id) }}">
+                        <i class="fa-solid fa-eye"></i> Voir
+                      </a>
+                      <a class="btn btn-sm btn-outline-primary btn-icon"
+                         href="{{ url_for('admin.edit_professional', professional_id=p.id) }}">
+                        <i class="fa-solid fa-pen-to-square"></i> Éditer
+                      </a>
+                      <button class="btn btn-sm btn-success btn-icon js-validate" data-id="{{ p.id }}">
+                        <i class="fa-solid fa-check"></i> Valider
+                      </button>
+                      <button class="btn btn-sm btn-outline-danger btn-icon js-reject" data-id="{{ p.id }}">
+                        <i class="fa-solid fa-xmark"></i> Rejeter
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="empty">
+          <i class="fa-solid fa-user-doctor fa-3x text-muted mb-3"></i>
+          <h2 class="h5">Aucun professionnel en attente</h2>
+          <p class="text-muted">Lorsqu’un professionnel s’inscrit, il apparaîtra ici pour validation.</p>
+          <a class="btn btn-primary btn-icon" href="{{ url_for('admin.admin_products') }}">
+            <i class="fa-solid fa-briefcase-medical"></i> Gérer les professionnels
+          </a>
+        </div>
+      {% endif %}
     </div>
-  {% endif %}
+  </div>
 </div>
-{% endblock %}
-{% block extra_js %}
+
+<!-- CSRF caché si présent (pour POST AJAX) -->
+{% if csrf_token is defined %}
+  <form style="display:none"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-  function postJSON(url){ return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'}}).then(async r=>{const ct=r.headers.get('content-type')||'';const p=ct.includes('application/json')?await r.json():{success:false,message:await r.text()};if(!r.ok) throw new Error(p.message||`HTTP ${r.status}`);return p;}); }
-  function validateProfessional(id){
-    if(!confirm('Valider ce professionnel ?')) return;
-    postJSON("{{ url_for('admin.validate_professional', professional_id=0) }}".replace('0',id))
-      .then(d=>{ if(d.success){ alert('Professionnel validé !'); location.reload(); } else { alert('Erreur: '+(d.message||'')); }})
-      .catch(e=>{ console.error(e); alert('Erreur lors de la validation: '+e.message);});
+(function(){
+  const $q=(s,c=document)=>c.querySelector(s);
+  const $$=(s,c=document)=>Array.from(c.querySelectorAll(s));
+  const table=$q('#pendingTable');
+  const search=$q('#searchInput');
+  const btnValidateSel=$q('#btnValidateSel');
+  const btnRejectSel=$q('#btnRejectSel');
+  const selCount=$q('#selCount');
+  const checkAll=$q('#checkAll');
+
+  const getCSRF = ()=> (document.querySelector('input[name="csrf_token"]')||{}).value || null;
+
+  function applySearch(){
+    if(!table) return;
+    const q=(search.value||'').trim().toLowerCase();
+    const rows=$$('tbody tr', table);
+    rows.forEach(tr=>{
+      const name = tr.dataset.name||'';
+      const spec = tr.dataset.spec||'';
+      const loc  = tr.dataset.loc||'';
+      const addr = tr.dataset.addr||'';
+      const ok = !q || name.includes(q) || spec.includes(q) || loc.includes(q) || addr.includes(q);
+      tr.style.display = ok ? '' : 'none';
+    });
   }
-  function rejectProfessional(id){
-    if(!confirm('Rejeter ce professionnel ?')) return;
-    postJSON("{{ url_for('admin.reject_professional', professional_id=0) }}".replace('0',id))
-      .then(d=>{ if(d.success){ alert('Professionnel rejeté'); location.reload(); } else { alert('Erreur: '+(d.message||'')); }})
-      .catch(e=>{ console.error(e); alert('Erreur lors du rejet: '+e.message);});
+
+  function updateSelectionUI(){
+    if(!table) return;
+    const checked = $$('tbody .row-check:checked', table);
+    const n = checked.length;
+    selCount.textContent = n;
+    btnValidateSel.disabled = n===0;
+    btnRejectSel.disabled   = n===0;
   }
+
+  // Liaisons filtres
+  if(search) search.addEventListener('input', applySearch);
+
+  // Sélection
+  if(table){
+    table.addEventListener('change', (e)=>{
+      if(e.target.matches('.row-check')) updateSelectionUI();
+    });
+  }
+  if(checkAll && table){
+    checkAll.addEventListener('change', ()=>{
+      const visibleRows = $$('tbody tr', table).filter(tr=>tr.style.display!=='none');
+      visibleRows.forEach(tr=>{
+        const cb = $q('.row-check', tr);
+        if(cb){ cb.checked = checkAll.checked; }
+      });
+      updateSelectionUI();
+    });
+  }
+
+  // Action simple (ligne)
+  async function postAction(url){
+    const headers = { 'Content-Type':'application/json' };
+    const csrf = getCSRF(); if(csrf) headers['X-CSRFToken']=csrf;
+    const res = await fetch(url, { method:'POST', headers, body:'{}' });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data = await res.json().catch(()=> ({}));
+    if(!data.success) throw new Error(data.message||'Action refusée');
+    return data;
+  }
+
+  document.addEventListener('click', async (e)=>{
+    const valBtn = e.target.closest('.js-validate');
+    const rejBtn = e.target.closest('.js-reject');
+    if(!valBtn && !rejBtn) return;
+
+    const id = (valBtn||rejBtn).dataset.id;
+    const tr = (valBtn||rejBtn).closest('tr');
+    if(!id || !tr) return;
+
+    if(rejBtn && !confirm('Rejeter ce professionnel ?')) return;
+
+    const validateUrl = "{{ url_for('admin.validate_professional', professional_id=0) }}".replace('/0/', `/${id}/`);
+    const rejectUrl   = "{{ url_for('admin.reject_professional', professional_id=0) }}".replace('/0/', `/${id}/`);
+
+    try{
+      if(valBtn) await postAction(validateUrl);
+      else       await postAction(rejectUrl);
+      tr.remove();
+      updateSelectionUI();
+    }catch(err){
+      console.error(err);
+      alert(err.message || 'Erreur');
+    }
+  });
+
+  // Actions groupées
+  async function bulk(action){
+    const rows = $$('tbody .row-check:checked', table).map(cb=>cb.closest('tr')).filter(Boolean);
+    if(rows.length===0) return;
+
+    if(action==='reject' && !confirm(`Rejeter ${rows.length} professionnel(s) ?`)) return;
+
+    const headers = { 'Content-Type':'application/json' };
+    const csrf = getCSRF(); if(csrf) headers['X-CSRFToken']=csrf;
+
+    for(const tr of rows){
+      const id = tr.dataset.id;
+      const url = (action==='validate'
+        ? "{{ url_for('admin.validate_professional', professional_id=0) }}".replace('/0/', `/${id}/`)
+        : "{{ url_for('admin.reject_professional', professional_id=0) }}".replace('/0/', `/${id}/`)
+      );
+      try{
+        const res = await fetch(url, { method:'POST', headers, body:'{}' });
+        const j = await res.json().catch(()=> ({}));
+        if(!(res.ok && j.success)) throw new Error(j.message||'Échec');
+        tr.remove();
+      }catch(err){
+        console.error('Échec pour id', id, err);
+      }
+    }
+    updateSelectionUI();
+  }
+
+  if(btnValidateSel) btnValidateSel.addEventListener('click', ()=> bulk('validate'));
+  if(btnRejectSel)   btnRejectSel.addEventListener('click', ()=> bulk('reject'));
+
+  // Init
+  applySearch();
+  updateSelectionUI();
+})();
 </script>
-{% endblock %}
+</body>
+</html>
