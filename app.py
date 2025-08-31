@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, date, timedelta
@@ -6,11 +6,64 @@ from sqlalchemy import or_, text
 import os
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
+# === [TIGHRI_R1:CONFIG_INLINE_SAFE] =========================================
+from pathlib import Path
+import uuid, io
+try:
+    from PIL import Image, ImageOps
+    _PIL_OK = True
+except Exception:
+    _PIL_OK = False
+
+try:
+    BASE_DIR
+except NameError:
+    BASE_DIR = Path(__file__).resolve().parent
+
+try:
+    UPLOAD_FOLDER
+except NameError:
+    UPLOAD_FOLDER = BASE_DIR / 'uploads' / 'profiles'
+
+try:
+    ALLOWED_IMAGE_EXT
+except NameError:
+    ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
+
+try:
+    BRAND_NAME
+except NameError:
+    BRAND_NAME = 'Tighri'
+
+try:
+    ENABLE_SMS
+except NameError:
+    ENABLE_SMS = True
+
+try:
+    ENABLE_WHATSAPP
+except NameError:
+    ENABLE_WHATSAPP = True
+
+try:
+    MAX_CONTENT_LENGTH
+except NameError:
+    MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5 Mo
+# ===========================================================================
+
 # --- App principale ---
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = True  # Render est en HTTPS
+# Taille max d'upload (respecte la valeur si déjà définie ailleurs)
+app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
+
+# Crée le dossier d'upload si besoin (idempotent)
+try:
+    UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
 
 # --- Normalisation de l'URI Postgres -> psycopg3 ---
 def _normalize_pg_uri(uri: str) -> str:
@@ -81,18 +134,20 @@ class UnavailableSlot(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# --- Tables + seed admin + mini-migration adresses ---
+# ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
+# Ajoute colonnes côté DB si absentes (sans casser le modèle Python)
 with app.app_context():
     db.create_all()
-    # Mini-migration: ajoute les colonnes si elles n'existent pas
     try:
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
+        # Astuce : on conserve image_url existant pour stocker le chemin local de la photo uploadée
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration adresses: {e}")
 
+    # Seed admin si absent
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -108,6 +163,69 @@ with app.app_context():
         db.session.add(u)
         db.session.commit()
         app.logger.info(f"Admin '{admin_username}' créé.")
+# ===========================================================================
+
+# ===== [TIGHRI_R1:IMAGES_INLINE_FALLBACK] ===================================
+TARGET_SIZE = (512, 512)
+
+def _ext_ok(filename: str) -> bool:
+    if not filename:
+        return False
+    _, ext = os.path.splitext(filename.lower())
+    return ext in ALLOWED_IMAGE_EXT
+
+def _process_and_save_profile_image(file_storage) -> str:
+    """
+    Traite l'image de profil (vérif + carré 512 + JPEG qualité) et sauvegarde dans UPLOAD_FOLDER.
+    Retourne le nom de fichier (ex: 'a1b2c3.jpg').
+    """
+    filename = getattr(file_storage, "filename", None)
+    if not filename or not _ext_ok(filename):
+        raise ValueError("Extension non autorisée")
+
+    raw = file_storage.read()
+    if not _PIL_OK:
+        raise RuntimeError("Le traitement d'image nécessite Pillow (PIL).")
+
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img.verify()  # intégrité
+    except Exception:
+        raise ValueError("Fichier image invalide ou corrompu")
+
+    img = Image.open(io.BytesIO(raw))
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGB")
+
+    # Supprimer EXIF (recréation)
+    img_no_exif = Image.new(img.mode, img.size)
+    img_no_exif.putdata(list(img.getdata()))
+
+    img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
+
+    out_name = f"{uuid.uuid4().hex}.jpg"
+    out_path = UPLOAD_FOLDER / out_name
+    img_square.save(out_path, format="JPEG", quality=88, optimize=True)
+
+    return out_name
+# ===========================================================================
+
+# ===== [TIGHRI_R1:PACK_REGISTRATION_SAFE] ===================================
+# Enregistrement tolérant du pack R1 (blueprints additionnels si présents)
+try:
+    from tighri_r1 import register_tighri_r1
+except Exception as e:
+    app.logger.info("Pack Tighri R1 non chargé (sera ajouté plus tard). %s", e)
+else:
+    register_tighri_r1(
+        app,
+        upload_folder=str(UPLOAD_FOLDER),
+        brand_name=(app.config.get('BRAND_NAME') or BRAND_NAME),
+        enable_sms=bool(app.config.get('ENABLE_SMS', ENABLE_SMS)),
+        enable_whatsapp=bool(app.config.get('ENABLE_WHATSAPP', ENABLE_WHATSAPP)),
+        allowed_ext=ALLOWED_IMAGE_EXT,
+    )
+# ===========================================================================
 
 # ======================
 # Pages publiques
@@ -166,6 +284,9 @@ def register():
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
 
+        # NOTE: téléphone obligatoire sera appliqué après mise à jour du modèle User (phone)
+        phone = request.form.get('phone', '').strip()  # champ à ajouter au template
+
         if not username or not email or not password:
             flash("Tous les champs sont obligatoires.")
             return redirect(url_for('register'))
@@ -184,6 +305,13 @@ def register():
             password_hash=generate_password_hash(password),
             user_type='patient'
         )
+        # Affecte téléphone seulement si le modèle le supporte déjà
+        if hasattr(User, 'phone') and phone:
+            try:
+                user.phone = phone
+            except Exception:
+                pass
+
         db.session.add(user)
         db.session.commit()
 
@@ -203,6 +331,7 @@ def professional_register():
         experience_raw = request.form.get('experience', '0')
         description = request.form.get('description', '').strip()
         fee_raw = request.form.get('consultation_fee', '0')
+        phone = request.form.get('phone', '').strip()  # champ à ajouter au template
 
         try:
             experience = int(experience_raw or 0)
@@ -232,6 +361,13 @@ def professional_register():
             password_hash=generate_password_hash(password),
             user_type='professional'
         )
+        # Affecte téléphone seulement si le modèle le supporte déjà
+        if hasattr(User, 'phone') and phone:
+            try:
+                user.phone = phone
+            except Exception:
+                pass
+
         db.session.add(user)
         db.session.commit()
 
@@ -280,6 +416,32 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('index'))
+
+# ===== [TIGHRI_R1:AUTH_PASSWORD_ROUTES] =====================================
+@app.route('/change_password', methods=['GET', 'POST'])
+@login_required
+def change_password():
+    if request.method == 'POST':
+        old = request.form.get('old', '')
+        new = request.form.get('new', '')
+        if not check_password_hash(current_user.password_hash, old):
+            flash('Ancien mot de passe incorrect.', 'danger')
+        else:
+            current_user.password_hash = generate_password_hash(new)
+            db.session.commit()
+            flash('Mot de passe modifié.', 'success')
+            return redirect(url_for('index'))
+    return render_template('change_password.html')
+
+@app.route('/forgot_password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email = request.form.get('email','').strip().lower()
+        # TODO: générer un token et envoyer par email (à implémenter)
+        flash('Si le compte existe, un email de réinitialisation a été envoyé.', 'info')
+        return redirect(url_for('login'))
+    return render_template('forgot_password.html')
+# ===========================================================================
 
 # ======================
 # Espace Professionnel
@@ -354,6 +516,51 @@ def professional_edit_profile():
         return redirect(url_for('professional_dashboard'))
 
     return render_template('professional_edit_profile.html', professional=pro)
+
+# ===== [TIGHRI_R1:PROFILE_PHOTO_UPLOAD] =====================================
+# Route média pour servir les photos locales
+@app.route('/media/profiles/<path:filename>')
+def profile_media(filename):
+    return send_from_directory(str(UPLOAD_FOLDER), filename, as_attachment=False, max_age=31536000)
+
+# Upload de photo de profil (fichier, pas lien)
+@app.route('/professional/profile/photo', methods=['GET', 'POST'])
+@login_required
+def professional_upload_photo():
+    if current_user.user_type != 'professional':
+        flash('Accès non autorisé')
+        return redirect(url_for('index'))
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé")
+        return redirect(url_for('professional_dashboard'))
+
+    if request.method == 'POST':
+        file = request.files.get('photo')
+        if not file:
+            flash("Veuillez sélectionner une image.", "warning")
+            return redirect(url_for('professional_upload_photo'))
+        try:
+            saved_name = _process_and_save_profile_image(file)
+            # Conserver compatibilité : on stocke l'URL locale dans image_url
+            pro.image_url = f"/media/profiles/{saved_name}"
+            db.session.commit()
+            flash("Photo de profil mise à jour avec succès.", "success")
+            return redirect(url_for('professional_dashboard'))
+        except RuntimeError as e:
+            app.logger.exception("PIL manquant pour traitement image.")
+            flash("Le traitement d'image nécessite Pillow. Merci d'installer la dépendance.", "danger")
+        except ValueError as e:
+            flash(str(e), "danger")
+        except Exception:
+            app.logger.exception("Erreur interne lors du traitement de l'image")
+            flash("Erreur interne lors du traitement de l'image.", "danger")
+            return redirect(url_for('professional_upload_photo'))
+
+    # petit formulaire minimal si aucun template dédié
+    return render_template('upload_photo.html')
+# ===========================================================================
 
 @app.route('/professional/availability', methods=['GET', 'POST'])
 @login_required
@@ -489,6 +696,17 @@ def professional_appointments():
                            professional=professional,
                            appointments=appointments)
 
+# ===== [TIGHRI_R1:NOTIFY_STUB] ==============================================
+def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
+    """
+    Stub de notifications (compte + téléphone).
+    A brancher plus tard sur SMS/WhatsApp/Email.
+    kind: 'accepted' | 'refused' | 'reminder' | 'pending'
+    """
+    app.logger.info("[NOTIFY] user=%s kind=%s ap_id=%s brand=%s",
+                    user_id, kind, getattr(ap, 'id', None), BRAND_NAME)
+# ===========================================================================
+
 @app.route('/professional/appointment/<int:appointment_id>/<action>', methods=['POST'])
 @login_required
 def professional_appointment_action(appointment_id, action):
@@ -508,12 +726,15 @@ def professional_appointment_action(appointment_id, action):
 
     if action == 'accept':
         appointment.status = 'confirme'
+        db.session.commit()
+        notify_user_account_and_phone(user_id=appointment.patient_id, kind='accepted', ap=appointment)
         flash('Rendez-vous accepté!')
     elif action == 'reject':
         appointment.status = 'annule'
+        db.session.commit()
+        notify_user_account_and_phone(user_id=appointment.patient_id, kind='refused', ap=appointment)
         flash('Rendez-vous refusé!')
 
-    db.session.commit()
     return redirect(url_for('professional_appointments'))
 
 # ======================
@@ -670,7 +891,7 @@ def book_appointment(professional_id):
             flash("Ce créneau est marqué comme indisponible.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Créer RDV
+        # Créer RDV (statut EN ATTENTE de validation par le pro)
         appointment = Appointment(
             patient_id=current_user.id,
             professional_id=professional_id,
@@ -681,6 +902,9 @@ def book_appointment(professional_id):
         )
         db.session.add(appointment)
         db.session.commit()
+
+        # Notification compte + (plus tard) téléphone/WhatsApp
+        notify_user_account_and_phone(user_id=current_user.id, kind='pending', ap=appointment)
 
         flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
         return redirect(url_for('my_appointments'))
@@ -714,6 +938,33 @@ def my_appointments():
         appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
     return render_template('my_appointments.html', appointments=appointments)
 
+# ===== [TIGHRI_R1:CRON_REMINDER] ============================================
+@app.get('/cron/send-reminders-24h')
+def cron_send_reminders_24h():
+    """
+    Endpoint de cron sécurisé (Render/worker) :
+    appeler /cron/send-reminders-24h?token=XXX
+    où XXX = os.environ['CRON_TOKEN'].
+    """
+    token = request.args.get('token', '')
+    if token != os.environ.get('CRON_TOKEN', 'dev'):
+        return jsonify({'ok': False, 'error': 'unauthorized'}), 403
+
+    now = datetime.utcnow()
+    start = now + timedelta(hours=24)
+    end = now + timedelta(hours=25)
+
+    rows = (db.session.query(Appointment)
+            .filter(Appointment.status == 'confirme')
+            .filter(Appointment.appointment_date >= start,
+                    Appointment.appointment_date < end)
+            .all())
+    for ap in rows:
+        notify_user_account_and_phone(user_id=ap.patient_id, kind='reminder', ap=ap)
+
+    return jsonify({'ok': True, 'reminders_sent': len(rows)})
+# ===========================================================================
+
 # ======================
 # Site Status
 # ======================
@@ -729,6 +980,5 @@ def site_status():
         'admin_port': 8080
     }
     return render_template('site_status.html', status=status, stats=stats)
-
 
 # Pas de bloc __main__ pour Render (gunicorn utilise app:app)
