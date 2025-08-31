@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+
+      <div class="card shadow-sm">
+        <div class="card-header">
+          <h5 class="mb-0">Photo de profil</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            Formats autorisés : <strong>JPG, JPEG, PNG, GIF</strong> — Taille max : <strong>5&nbsp;Mo</strong>.<br>
+            L’image sera automatiquement <strong>recadrée en carré 512×512</strong> et les métadonnées seront supprimées.
+          </p>
+
+          <form method="post" enctype="multipart/form-data" action="{{ url_for('professional_upload_photo') }}">
+            <div class="mb-3">
+              <label for="photoInput" class="form-label">Sélectionner une image</label>
+              <input class="form-control" type="file" id="photoInput" name="photo" accept=".jpg,.jpeg,.png,.gif" required>
+              <div class="form-text">Choisissez une image nette, visage centré si possible.</div>
+            </div>
+
+            <div class="mb-3 text-center">
+              <img
+                id="preview"
+                src="{{ current_photo_url or url_for('static', filename='img/avatar_default.jpg') }}"
+                alt="Aperçu de la photo"
+                style="max-width: 220px; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 50%;"
+              >
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary">Enregistrer la photo</button>
+              <a href="{{ url_for('professional_dashboard') }}" class="btn btn-outline-secondary">Annuler</a>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="alert alert-info mt-3 small" role="alert">
+        Astuce : des images carrées (ex. 1024×1024) donnent de meilleurs résultats après recadrage en 512×512.
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const input = document.getElementById('photoInput');
+    const preview = document.getElementById('preview');
+
+    input.addEventListener('change', function (e) {
+      const [file] = e.target.files || [];
+      if (!file) return;
+      // Validation côté client (en plus du serveur)
+      const okExt = /\.(jpe?g|png|gif)$/i.test(file.name);
+      if (!okExt) {
+        alert("Format non autorisé. Choisissez un fichier JPG, JPEG, PNG ou GIF.");
+        input.value = "";
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) { // 5 Mo
+        alert("Fichier trop volumineux (max 5 Mo).");
+        input.value = "";
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+    });
+  })();
+</script>
+{% endblock %}
