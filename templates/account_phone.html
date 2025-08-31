@@ -1,0 +1,65 @@
+<!-- templates/account_phone.html -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tighri — Mon téléphone</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-expand-lg navbar-dark" style="background:linear-gradient(135deg,#6f42c1,#8e44ad);">
+  <div class="container">
+    <a class="navbar-brand fw-bold" href="{{ url_for('index') }}">Tighri</a>
+  </div>
+</nav>
+
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-7 col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header bg-white">
+          <h5 class="mb-0"><i class="bi bi-telephone"></i> Renseigner mon numéro de téléphone</h5>
+        </div>
+        <div class="card-body">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              {% for category, message in messages %}
+                <div class="alert alert-{{ category if category in ['success','info','warning','danger'] else 'info' }} alert-dismissible fade show" role="alert">
+                  {{ message }}
+                  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+                </div>
+              {% endfor %}
+            {% endif %}
+          {% endwith %}
+
+          <form method="post" action="{{ url_for('account_phone') }}">
+            {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="next" value="{{ next_url or url_for('index') }}">
+
+            <div class="mb-3">
+              <label for="phone" class="form-label">Numéro de téléphone <span class="text-danger">*</span></label>
+              <input type="tel" class="form-control" id="phone" name="phone"
+                     value="{{ current_user.phone or '' }}" required
+                     placeholder="Ex: 06 63 40 01 90">
+              <div class="form-text">
+                Format libre accepté (ex: 0663400190, +212663400190). Minimum 9 chiffres.
+              </div>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary">Enregistrer</button>
+              <a class="btn btn-outline-secondary" href="{{ next_url or url_for('index') }}">Annuler</a>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <p class="text-muted small mt-3">Votre numéro est requis pour les notifications et le rappel de rendez-vous.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
