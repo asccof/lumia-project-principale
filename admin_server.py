@@ -608,3 +608,41 @@ def admin_review_action(rid, action):
     else:
         flash('Action invalide.', 'error')
     return redirect(url_for('admin.admin_reviews_pending'))
+# ===================== AVIS (modération) =====================
+@admin_bp.route('/reviews', endpoint='admin_reviews')
+@login_required
+def admin_reviews():
+    if not current_user.is_admin:
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
+    from models import ProfessionalReview, Professional, User
+    status = request.args.get('status', 'pending')  # pending|approved|all
+    q = ProfessionalReview.query.order_by(ProfessionalReview.created_at.desc())
+    if status == 'pending':
+        q = q.filter_by(approved=False)
+    elif status == 'approved':
+        q = q.filter_by(approved=True)
+    reviews = q.all()
+    return render_template('admin_reviews.html', reviews=reviews, status=status)
+
+@admin_bp.route('/reviews/<int:review_id>/approve', methods=['POST'], endpoint='approve_review')
+@login_required
+def approve_review(review_id):
+    if not current_user.is_admin:
+        return jsonify({'success': False, 'message': 'Accès refusé'}), 403
+    from models import ProfessionalReview
+    r = ProfessionalReview.query.get_or_404(review_id)
+    r.approved = True
+    db.session.commit()
+    return jsonify({'success': True})
+
+@admin_bp.route('/reviews/<int:review_id>/reject', methods=['POST'], endpoint='reject_review')
+@login_required
+def reject_review(review_id):
+    if not current_user.is_admin:
+        return jsonify({'success': False, 'message': 'Accès refusé'}), 403
+    from models import ProfessionalReview
+    r = ProfessionalReview.query.get_or_404(review_id)
+    db.session.delete(r)
+    db.session.commit()
+    return jsonify({'success': True})
