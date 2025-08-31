@@ -51,26 +51,11 @@ except NameError:
     MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5 Mo
 # ===========================================================================
 
-# ===== [TIGHRI_P1:PHONE_VALIDATION_HELPERS] ==================================
-PHONE_MIN_DIGITS = 9
-
-def _digits_only(s: str) -> str:
-    return ''.join(ch for ch in (s or '') if ch.isdigit())
-
-def _is_valid_phone(raw: str) -> bool:
-    """
-    Validation simple : au moins 9 chiffres (ex: 0663..., 21266..., +21266...).
-    On évite d'être trop strict pour accepter divers formats.
-    """
-    return len(_digits_only(raw)) >= PHONE_MIN_DIGITS
-# ============================================================================
-
 # --- App principale ---
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = True  # Render est en HTTPS
-# Taille max d'upload (respecte la valeur si déjà définie ailleurs)
 app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
 
 # Crée le dossier d'upload si besoin (idempotent)
@@ -98,8 +83,16 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
+def _normalize_url(u: str) -> str:
+    u = (u or '').strip()
+    if not u:
+        return ''
+    if not (u.startswith('http://') or u.startswith('https://')):
+        u = 'https://' + u
+    return u
+
 # --- Config DB ---
-from models import db, User, Professional, Appointment
+from models import db, User, Professional, Appointment, ProfessionalReview
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
 if not uri:
@@ -116,7 +109,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# --- Admin en Blueprint (UNE SEULE FOIS) ---
+# --- Admin en Blueprint ---
 from admin_server import admin_bp
 app.register_blueprint(admin_bp, url_prefix='/admin')
 
@@ -149,27 +142,24 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
-# Ajoute colonnes côté DB si absentes (sans casser le modèle Python)
 with app.app_context():
     db.create_all()
     try:
-        # Professionals : adresse + géoloc
-        db.session.execute(text(
-            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"
-        ))
-        db.session.execute(text(
-            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"
-        ))
-        db.session.execute(text(
-            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"
-        ))
-        # Users : téléphone
-        db.session.execute(text(
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"
-        ))
+        # colonnes adresse/coords
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
+        # liens sociaux + flag approbation
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS facebook_url VARCHAR(255);"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS instagram_url VARCHAR(255);"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS tiktok_url VARCHAR(255);"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS youtube_url VARCHAR(255);"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;"))
+        # phone utilisateur si absent
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);"))
         db.session.commit()
     except Exception as e:
-        app.logger.warning(f"Mini-migrations: {e}")
+        app.logger.warning(f"Mini-migration (adresses/social/phone): {e}")
 
     # Seed admin si absent
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
@@ -184,7 +174,6 @@ with app.app_context():
             is_admin=True,
             user_type="professional",
         )
-        # Optionnel : u.phone = "0663400190"
         db.session.add(u)
         db.session.commit()
         app.logger.info(f"Admin '{admin_username}' créé.")
@@ -200,10 +189,6 @@ def _ext_ok(filename: str) -> bool:
     return ext in ALLOWED_IMAGE_EXT
 
 def _process_and_save_profile_image(file_storage) -> str:
-    """
-    Traite l'image de profil (vérif + carré 512 + JPEG qualité) et sauvegarde dans UPLOAD_FOLDER.
-    Retourne le nom de fichier (ex: 'a1b2c3.jpg').
-    """
     filename = getattr(file_storage, "filename", None)
     if not filename or not _ext_ok(filename):
         raise ValueError("Extension non autorisée")
@@ -214,7 +199,7 @@ def _process_and_save_profile_image(file_storage) -> str:
 
     try:
         img = Image.open(io.BytesIO(raw))
-        img.verify()  # intégrité
+        img.verify()
     except Exception:
         raise ValueError("Fichier image invalide ou corrompu")
 
@@ -222,21 +207,17 @@ def _process_and_save_profile_image(file_storage) -> str:
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
 
-    # Supprimer EXIF (recréation)
     img_no_exif = Image.new(img.mode, img.size)
     img_no_exif.putdata(list(img.getdata()))
-
     img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
     out_name = f"{uuid.uuid4().hex}.jpg"
     out_path = UPLOAD_FOLDER / out_name
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
-
     return out_name
 # ===========================================================================
 
 # ===== [TIGHRI_R1:PACK_REGISTRATION_SAFE] ===================================
-# Enregistrement tolérant du pack R1 (blueprints additionnels si présents)
 try:
     from tighri_r1 import register_tighri_r1
 except Exception as e:
@@ -253,6 +234,16 @@ else:
 # ===========================================================================
 
 # ======================
+# Constantes filtrage (P8)
+# ======================
+SPECIALTIES = [
+    "Psychologue", "Psychiatre", "Psychothérapeute", "Coach", "Coach de vie",
+    "Thérapeute familial", "Thérapeute de couple", "Hypnothérapeute",
+    "Orthophoniste", "Psychomotricien", "Kinésithérapeute", "Guérisseur",
+    "Art-thérapeute", "Neuropsychologue", "Sexologue"
+]
+
+# ======================
 # Pages publiques
 # ======================
 @app.route('/')
@@ -264,6 +255,7 @@ def index():
 def professionals():
     specialty = request.args.get('specialty', 'all')
     search_query = request.args.get('q', '')
+    city = request.args.get('city', '').strip()
 
     base_query = Professional.query.filter_by(status='valide')
 
@@ -277,18 +269,42 @@ def professionals():
         ]
         if hasattr(Professional, "address"):
             conditions.insert(2, Professional.address.ilike(like))
-        pros = base_query.filter(or_(*conditions)).all()
-    elif specialty != 'all':
-        pros = base_query.filter_by(specialty=specialty).all()
+        q = base_query.filter(or_(*conditions))
     else:
-        pros = base_query.all()
+        q = base_query
 
-    return render_template('professionals.html', professionals=pros, specialty=specialty, search_query=search_query)
+    if specialty != 'all':
+        q = q.filter(Professional.specialty == specialty)
+
+    if city:
+        city_like = f'%{city}%'
+        q = q.filter(or_(Professional.location.ilike(city_like),
+                         Professional.address.ilike(city_like) if hasattr(Professional, 'address') else False))
+
+    pros = q.all()
+    return render_template('professionals.html',
+                           professionals=pros,
+                           specialty=specialty,
+                           search_query=search_query,
+                           city=city,
+                           specialties=SPECIALTIES)
 
 @app.route('/professional/<int:professional_id>')
 def professional_detail(professional_id):
     professional = Professional.query.get_or_404(professional_id)
-    return render_template('professional_detail.html', professional=professional)
+    # Avis approuvés
+    reviews = (ProfessionalReview.query
+               .filter_by(professional_id=professional_id, approved=True)
+               .order_by(ProfessionalReview.created_at.desc())
+               .all())
+    avg = None
+    if reviews:
+        s = sum(r.rating for r in reviews)
+        avg = round(s / len(reviews), 1)
+    return render_template('professional_detail.html',
+                           professional=professional,
+                           reviews=reviews,
+                           avg_rating=avg)
 
 @app.route('/about')
 def about():
@@ -307,21 +323,18 @@ def register():
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-        phone = request.form.get('phone', '').strip()  # ← obligatoire
+        phone = request.form.get('phone', '').strip()
 
-        # Validations de base
         if not username or not email or not password or not phone:
-            flash("Tous les champs sont obligatoires (y compris le téléphone).", "danger")
-            return redirect(url_for('register'))
-        if not _is_valid_phone(phone):
-            flash("Numéro de téléphone invalide. Merci de vérifier.", "danger")
+            flash("Tous les champs (dont téléphone) sont obligatoires.")
             return redirect(url_for('register'))
 
         if User.query.filter_by(username=username).first():
-            flash("Nom d'utilisateur déjà pris", "danger")
+            flash("Nom d'utilisateur déjà pris")
             return redirect(url_for('register'))
+
         if User.query.filter_by(email=email).first():
-            flash("Email déjà enregistré", "danger")
+            flash("Email déjà enregistré")
             return redirect(url_for('register'))
 
         user = User(
@@ -334,7 +347,7 @@ def register():
         db.session.add(user)
         db.session.commit()
 
-        flash('Compte patient créé avec succès!', "success")
+        flash('Compte patient créé avec succès!')
         return redirect(url_for('login'))
 
     return render_template('register.html')
@@ -350,15 +363,7 @@ def professional_register():
         experience_raw = request.form.get('experience', '0')
         description = request.form.get('description', '').strip()
         fee_raw = request.form.get('consultation_fee', '0')
-        phone = request.form.get('phone', '').strip()  # ← obligatoire
-
-        # Validations de base
-        if not username or not email or not password or not phone:
-            flash("Tous les champs obligatoires ne sont pas remplis (y compris le téléphone).", "danger")
-            return redirect(url_for('professional_register'))
-        if not _is_valid_phone(phone):
-            flash("Numéro de téléphone invalide. Merci de vérifier.", "danger")
-            return redirect(url_for('professional_register'))
+        phone = request.form.get('phone', '').strip()
 
         try:
             experience = int(experience_raw or 0)
@@ -366,18 +371,22 @@ def professional_register():
             experience = 0
 
         try:
-            consultation_fee = float((fee_raw or '0').replace(',', '.'))
+            consultation_fee = float(fee_raw or 0)
         except ValueError:
             consultation_fee = 0.0
 
-        if User.query.filter_by(username=username).first():
-            flash("Nom d'utilisateur déjà pris", "danger")
-            return redirect(url_for('professional_register'))
-        if User.query.filter_by(email=email).first():
-            flash('Email déjà enregistré', "danger")
+        if not username or not email or not password or not phone:
+            flash("Tous les champs obligatoires (dont téléphone) ne sont pas remplis.")
             return redirect(url_for('professional_register'))
 
-        # Création du user (type professional) avec téléphone
+        if User.query.filter_by(username=username).first():
+            flash("Nom d'utilisateur déjà pris")
+            return redirect(url_for('professional_register'))
+
+        if User.query.filter_by(email=email).first():
+            flash('Email déjà enregistré')
+            return redirect(url_for('professional_register'))
+
         user = User(
             username=username,
             email=email,
@@ -388,7 +397,6 @@ def professional_register():
         db.session.add(user)
         db.session.commit()
 
-        # Création du profil pro + réplique le téléphone pour l’affichage public
         professional = Professional(
             name=username,
             description=description or "Profil en cours de complétion.",
@@ -396,13 +404,12 @@ def professional_register():
             location=city or "Casablanca",
             experience_years=experience,
             consultation_fee=consultation_fee,
-            status='en_attente',
-            phone=phone
+            status='en_attente'
         )
         db.session.add(professional)
         db.session.commit()
 
-        flash('Compte professionnel créé avec succès! Un administrateur validera votre profil.', "success")
+        flash('Compte professionnel créé avec succès! Un administrateur validera votre profil.')
         return redirect(url_for('login'))
 
     return render_template('professional_register.html')
@@ -412,21 +419,22 @@ def login():
     if request.method == 'POST':
         username_or_email = request.form.get('username', '').strip()
         password = request.form.get('password', '')
+        remember = bool(request.form.get('remember'))
 
         user = User.query.filter(
             or_(User.username == username_or_email, User.email == username_or_email.lower())
         ).first()
 
         if user and check_password_hash(user.password_hash, password):
-            login_user(user)
+            login_user(user, remember=remember)
             if user.user_type == 'professional':
-                flash('Bienvenue dans votre espace professionnel!', "success")
+                flash('Bienvenue dans votre espace professionnel!')
                 return redirect(url_for('professional_dashboard'))
             else:
-                flash('Connexion réussie!', "success")
+                flash('Connexion réussie!')
                 return redirect(url_for('index'))
 
-        flash("Nom d'utilisateur / email ou mot de passe incorrect", "danger")
+        flash("Nom d'utilisateur / email ou mot de passe incorrect")
 
     return render_template('login.html')
 
@@ -469,12 +477,12 @@ def forgot_password():
 @login_required
 def professional_dashboard():
     if current_user.user_type != 'professional':
-        flash('Accès non autorisé', 'danger')
+        flash('Accès non autorisé')
         return redirect(url_for('index'))
 
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
-        flash('Profil professionnel non trouvé', 'danger')
+        flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
 
     appointments = Appointment.query.filter_by(professional_id=professional.id) \
@@ -485,44 +493,41 @@ def professional_dashboard():
                            professional=professional,
                            appointments=appointments)
 
-# --- EDIT PROFIL PRO: adresse / lat / lng ---
 @app.route('/professional/profile', methods=['GET', 'POST'])
 @login_required
 def professional_edit_profile():
     if current_user.user_type != 'professional':
-        flash('Accès non autorisé', 'danger')
+        flash('Accès non autorisé')
         return redirect(url_for('index'))
 
     pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro:
-        flash("Profil professionnel non trouvé", 'danger')
+        flash("Profil professionnel non trouvé")
         return redirect(url_for('professional_dashboard'))
 
     if request.method == 'POST':
-        # Champs textes
         pro.name = (request.form.get('name') or pro.name).strip()
         pro.specialty = (request.form.get('specialty') or pro.specialty or '').strip()
         pro.description = (request.form.get('description') or pro.description or '').strip()
-        # Adresse exacte
+
         addr = (request.form.get('address') or '').strip()
         if hasattr(pro, "address"):
             pro.address = addr
-        # Conserver 'location' pour compat/fallback
         loc = (request.form.get('location') or '').strip()
         if loc:
             pro.location = loc
-        # Lat/Lng
+
         lat = (request.form.get('latitude') or '').strip()
         lng = (request.form.get('longitude') or '').strip()
         try:
             val_lat = float(lat) if lat else None
         except ValueError:
-            flash("Latitude invalide", "danger")
+            flash("Latitude invalide", "error")
             return redirect(url_for('professional_edit_profile'))
         try:
             val_lng = float(lng) if lng else None
         except ValueError:
-            flash("Longitude invalide", "danger")
+            flash("Longitude invalide", "error")
             return redirect(url_for('professional_edit_profile'))
 
         if hasattr(pro, "latitude"):
@@ -530,29 +535,41 @@ def professional_edit_profile():
         if hasattr(pro, "longitude"):
             pro.longitude = val_lng
 
+        # Liens sociaux -> revalidation si modifiés
+        old_links = (
+            (pro.facebook_url or ''), (pro.instagram_url or ''),
+            (pro.tiktok_url or ''), (pro.youtube_url or '')
+        )
+        pro.facebook_url = _normalize_url(request.form.get('facebook_url', ''))
+        pro.instagram_url = _normalize_url(request.form.get('instagram_url', ''))
+        pro.tiktok_url   = _normalize_url(request.form.get('tiktok_url', ''))
+        pro.youtube_url  = _normalize_url(request.form.get('youtube_url', ''))
+        new_links = (pro.facebook_url or '', pro.instagram_url or '', pro.tiktok_url or '', pro.youtube_url or '')
+
+        if new_links != old_links:
+            pro.social_links_approved = False
+
         db.session.commit()
-        flash("Profil mis à jour avec succès!", "success")
+        flash("Profil mis à jour avec succès! (liens sociaux en attente de validation admin)")
         return redirect(url_for('professional_dashboard'))
 
     return render_template('professional_edit_profile.html', professional=pro)
 
 # ===== [TIGHRI_R1:PROFILE_PHOTO_UPLOAD] =====================================
-# Route média pour servir les photos locales
 @app.route('/media/profiles/<path:filename>')
 def profile_media(filename):
     return send_from_directory(str(UPLOAD_FOLDER), filename, as_attachment=False, max_age=31536000)
 
-# Upload de photo de profil (fichier, pas lien)
 @app.route('/professional/profile/photo', methods=['GET', 'POST'])
 @login_required
 def professional_upload_photo():
     if current_user.user_type != 'professional':
-        flash('Accès non autorisé', 'danger')
+        flash('Accès non autorisé')
         return redirect(url_for('index'))
 
     pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro:
-        flash("Profil professionnel non trouvé", 'danger')
+        flash("Profil professionnel non trouvé")
         return redirect(url_for('professional_dashboard'))
 
     if request.method == 'POST':
@@ -562,7 +579,6 @@ def professional_upload_photo():
             return redirect(url_for('professional_upload_photo'))
         try:
             saved_name = _process_and_save_profile_image(file)
-            # Conserver compatibilité : on stocke l'URL locale dans image_url
             pro.image_url = f"/media/profiles/{saved_name}"
             db.session.commit()
             flash("Photo de profil mise à jour avec succès.", "success")
@@ -580,131 +596,74 @@ def professional_upload_photo():
     return render_template('upload_photo.html')
 # ===========================================================================
 
-@app.route('/professional/availability', methods=['GET', 'POST'])
+# ===== [P4: Avis] ===========================================================
+@app.post('/professional/<int:professional_id>/reviews')
 @login_required
-def professional_availability():
-    if current_user.user_type != 'professional':
-        flash('Accès non autorisé', 'danger')
-        return redirect(url_for('index'))
+def add_review(professional_id):
+    # Patients uniquement (les pros ne s'auto-notent pas)
+    if current_user.user_type not in ('patient',):
+        flash("Seuls les patients peuvent laisser un avis.")
+        return redirect(url_for('professional_detail', professional_id=professional_id))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
-    if not professional:
-        flash('Profil professionnel non trouvé', 'danger')
-        return redirect(url_for('index'))
+    professional = Professional.query.get_or_404(professional_id)
+    rating_raw = request.form.get('rating', '').strip()
+    comment = (request.form.get('comment') or '').strip()
 
-    if request.method == 'POST':
-        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
+    try:
+        rating = int(rating_raw)
+    except ValueError:
+        rating = 0
 
-        for day in range(7):
-            start_time = request.form.get(f'start_time_{day}', '').strip()
-            end_time = request.form.get(f'end_time_{day}', '').strip()
-            is_available = request.form.get(f'available_{day}') == 'on'
+    if rating < 1 or rating > 5 or not comment:
+        flash("Note invalide (1 à 5) et commentaire requis.", "danger")
+        return redirect(url_for('professional_detail', professional_id=professional_id))
 
-            if is_available and start_time and end_time:
-                av = ProfessionalAvailability(
-                    professional_id=professional.id,
-                    day_of_week=day,
-                    start_time=start_time,
-                    end_time=end_time,
-                    is_available=True
-                )
-                db.session.add(av)
-
-        db.session.commit()
-        flash('Disponibilités mises à jour avec succès!', "success")
-        return redirect(url_for('professional_availability'))
-
-    availabilities = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
-    availability_dict = {av.day_of_week: av for av in availabilities}
-
-    return render_template('professional_availability.html',
-                           professional=professional,
-                           availabilities=availability_dict)
-
-@app.route('/professional/unavailable-slots', methods=['GET', 'POST'])
-@login_required
-def professional_unavailable_slots():
-    if current_user.user_type != 'professional':
-        flash('Accès non autorisé', 'danger')
-        return redirect(url_for('index'))
-
-    professional = Professional.query.filter_by(name=current_user.username).first()
-    if not professional:
-        flash('Profil professionnel non trouvé', 'danger')
-        return redirect(url_for('index'))
-
-    if request.method == 'POST':
-        date_str = request.form.get('date', '')
-        start_time = request.form.get('start_time', '')
-        end_time = request.form.get('end_time', '')
-        reason = request.form.get('reason', '').strip()
-
+    # Option: éviter le spam (un avis par 24h)
+    last = (ProfessionalReview.query
+            .filter_by(professional_id=professional.id, user_id=current_user.id)
+            .order_by(ProfessionalReview.created_at.desc()).first())
+    if last:
         try:
-            slot_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            flash('Format de date invalide', "danger")
-            return redirect(url_for('professional_unavailable_slots'))
+            delta = datetime.utcnow() - last.created_at
+            if delta.total_seconds() < 3600:  # 1h anti-spam
+                flash("Merci d'attendre un peu avant de poster un nouvel avis.", "warning")
+                return redirect(url_for('professional_detail', professional_id=professional_id))
+        except Exception:
+            pass
 
-        if slot_date < date.today():
-            flash('Vous ne pouvez pas bloquer une date dans le passé', "danger")
-            return redirect(url_for('professional_unavailable_slots'))
-
-        if not start_time or not end_time:
-            flash("Heure de début et de fin obligatoires.", "danger")
-            return redirect(url_for('professional_unavailable_slots'))
-
-        slot = UnavailableSlot(
-            professional_id=professional.id,
-            date=slot_date,
-            start_time=start_time,
-            end_time=end_time,
-            reason=reason
-        )
-        db.session.add(slot)
-        db.session.commit()
-
-        flash('Créneau indisponible ajouté avec succès!', "success")
-        return redirect(url_for('professional_unavailable_slots'))
-
-    unavailable_slots = UnavailableSlot.query.filter_by(professional_id=professional.id) \
-                                             .order_by(UnavailableSlot.date.desc()) \
-                                             .all()
-    return render_template('professional_unavailable_slots.html',
-                           professional=professional,
-                           unavailable_slots=unavailable_slots)
-
-@app.route('/professional/unavailable-slots/<int:slot_id>/delete', methods=['POST'])
-@login_required
-def delete_unavailable_slot(slot_id):
-    if current_user.user_type != 'professional':
-        flash('Accès non autorisé', 'danger')
-        return redirect(url_for('index'))
-
-    professional = Professional.query.filter_by(name=current_user.username).first()
-    if not professional:
-        flash('Profil professionnel non trouvé', 'danger')
-        return redirect(url_for('index'))
-
-    slot = UnavailableSlot.query.get_or_404(slot_id)
-    if slot.professional_id != professional.id:
-        flash('Accès non autorisé', 'danger')
-        return redirect(url_for('professional_unavailable_slots'))
-
-    db.session.delete(slot)
+    r = ProfessionalReview(
+        professional_id=professional.id,
+        user_id=current_user.id,
+        rating=rating,
+        comment=comment,
+        approved=False
+    )
+    db.session.add(r)
     db.session.commit()
-    flash('Créneau indisponible supprimé!', "success")
-    return redirect(url_for('professional_unavailable_slots'))
+    flash("Merci ! Votre avis sera visible après validation.", "success")
+    return redirect(url_for('professional_detail', professional_id=professional_id))
+# ===========================================================================
+
+# ===== [TIGHRI_R1:NOTIFY_STUB] ==============================================
+def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
+    """
+    Stub de notifications (compte + téléphone).
+    kind: 'accepted' | 'refused' | 'reminder' | 'pending'
+    """
+    app.logger.info("[NOTIFY] user=%s kind=%s ap_id=%s brand=%s",
+                    user_id, kind, getattr(ap, 'id', None), BRAND_NAME)
+# ===========================================================================
 
 @app.route('/professional/appointments')
 @login_required
 def professional_appointments():
     if current_user.user_type != 'professional':
-        flash('Accès non autorisé', 'danger')
+        flash('Accès non autorisé')
         return redirect(url_for('index'))
 
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
-        flash('Profil professionnel non trouvé', 'danger')
+        flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
 
     appointments = Appointment.query.filter_by(professional_id=professional.id) \
@@ -714,49 +673,38 @@ def professional_appointments():
                            professional=professional,
                            appointments=appointments)
 
-# ===== [TIGHRI_R1:NOTIFY_STUB] ==============================================
-def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
-    """
-    Stub de notifications (compte + téléphone).
-    A brancher plus tard sur SMS/WhatsApp/Email.
-    kind: 'accepted' | 'refused' | 'reminder' | 'pending'
-    """
-    app.logger.info("[NOTIFY] user=%s kind=%s ap_id=%s brand=%s",
-                    user_id, kind, getattr(ap, 'id', None), BRAND_NAME)
-# ===========================================================================
-
 @app.route('/professional/appointment/<int:appointment_id>/<action>', methods=['POST'])
 @login_required
 def professional_appointment_action(appointment_id, action):
     if current_user.user_type != 'professional':
-        flash('Accès non autorisé', 'danger')
+        flash('Accès non autorisé')
         return redirect(url_for('index'))
 
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
-        flash('Profil professionnel non trouvé', 'danger')
+        flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
 
     appointment = Appointment.query.get_or_404(appointment_id)
     if appointment.professional_id != professional.id:
-        flash('Accès non autorisé', 'danger')
+        flash('Accès non autorisé')
         return redirect(url_for('professional_appointments'))
 
     if action == 'accept':
         appointment.status = 'confirme'
         db.session.commit()
         notify_user_account_and_phone(user_id=appointment.patient_id, kind='accepted', ap=appointment)
-        flash('Rendez-vous accepté!', "success")
+        flash('Rendez-vous accepté!')
     elif action == 'reject':
         appointment.status = 'annule'
         db.session.commit()
         notify_user_account_and_phone(user_id=appointment.patient_id, kind='refused', ap=appointment)
-        flash('Rendez-vous refusé!', "success")
+        flash('Rendez-vous refusé!')
 
     return redirect(url_for('professional_appointments'))
 
 # ======================
-# API REST
+# API REST (slots)
 # ======================
 @app.route('/api/professionals')
 def api_professionals():
@@ -832,8 +780,6 @@ def api_available_slots(professional_id):
                     'end_time': slot_end.strftime('%H:%M'),
                     'available': True
                 })
-
-            # avance de 30 min
             current = slot_end
 
     return jsonify({
@@ -851,14 +797,13 @@ def book_appointment(professional_id):
     professional = Professional.query.get_or_404(professional_id)
 
     if professional.status != 'valide':
-        flash("Ce professionnel n'est pas encore validé par l'administration.", "warning")
+        flash("Ce professionnel n'est pas encore validé par l'administration.")
         return redirect(url_for('professionals'))
 
-    # BLOQUANT : le patient doit avoir un téléphone renseigné
-    if not getattr(current_user, 'phone', None) or not _is_valid_phone(current_user.phone):
-        flash("Veuillez renseigner votre numéro de téléphone avant de réserver un rendez-vous.", "warning")
-        nxt = url_for('book_appointment', professional_id=professional_id)
-        return redirect(url_for('account_phone', next=nxt))
+    # Téléphone obligatoire pour réserver
+    if not getattr(current_user, 'phone', None):
+        flash("Votre numéro de téléphone est requis pour réserver un rendez-vous. Merci de compléter votre compte (ou recréez un compte).", "warning")
+        return redirect(url_for('index'))
 
     if request.method == 'POST':
         appointment_date = request.form.get('appointment_date', '')
@@ -869,11 +814,11 @@ def book_appointment(professional_id):
         try:
             appointment_date_obj = datetime.strptime(appointment_date, '%Y-%m-%d').date()
         except ValueError:
-            flash("Format de date invalide.", "danger")
+            flash("Format de date invalide.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
         if appointment_date_obj < date.today():
-            flash("Impossible de réserver un rendez-vous dans le passé.", "danger")
+            flash("Impossible de réserver un rendez-vous dans le passé.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
         try:
@@ -881,10 +826,9 @@ def book_appointment(professional_id):
                 f"{appointment_date} {appointment_time}", "%Y-%m-%d %H:%M"
             )
         except ValueError:
-            flash("Format de date/heure invalide.", "danger")
+            flash("Format de date/heure invalide.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Vérifier disponibilités
         day_of_week = appointment_datetime.weekday()
         availabilities = ProfessionalAvailability.query.filter_by(
             professional_id=professional_id,
@@ -893,29 +837,26 @@ def book_appointment(professional_id):
         ).all()
 
         if not any(av.start_time <= appointment_time <= av.end_time for av in availabilities):
-            flash("Cette heure n'est pas disponible pour ce professionnel.", "danger")
+            flash("Cette heure n'est pas disponible pour ce professionnel.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Déjà réservé ?
         existing = Appointment.query.filter_by(
             professional_id=professional_id,
             appointment_date=appointment_datetime,
             status='confirme'
         ).first()
         if existing:
-            flash("Ce créneau est déjà réservé.", "danger")
+            flash("Ce créneau est déjà réservé.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Indisponibilités
         slots = UnavailableSlot.query.filter_by(
             professional_id=professional_id,
             date=appointment_date_obj
         ).all()
         if any(s.start_time <= appointment_time <= s.end_time for s in slots):
-            flash("Ce créneau est marqué comme indisponible.", "danger")
+            flash("Ce créneau est marqué comme indisponible.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Créer RDV (statut EN ATTENTE de validation par le pro)
         appointment = Appointment(
             patient_id=current_user.id,
             professional_id=professional_id,
@@ -927,13 +868,11 @@ def book_appointment(professional_id):
         db.session.add(appointment)
         db.session.commit()
 
-        # Notification compte + (plus tard) SMS/WhatsApp
         notify_user_account_and_phone(user_id=current_user.id, kind='pending', ap=appointment)
 
-        flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.", "success")
+        flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
         return redirect(url_for('my_appointments'))
 
-    # Affichage
     availabilities = ProfessionalAvailability.query.filter_by(
         professional_id=professional_id, is_available=True
     ).all()
@@ -962,43 +901,9 @@ def my_appointments():
         appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
     return render_template('my_appointments.html', appointments=appointments)
 
-# ===== [TIGHRI_P1:ACCOUNT_PHONE_UPDATE] =====================================
-@app.route('/account/phone', methods=['GET', 'POST'])
-@login_required
-def account_phone():
-    next_url = request.args.get('next') or request.form.get('next') or url_for('index')
-
-    if request.method == 'POST':
-        phone = (request.form.get('phone') or '').strip()
-        if not phone:
-            flash("Le numéro de téléphone est obligatoire.", "danger")
-            return redirect(url_for('account_phone', next=next_url))
-        if not _is_valid_phone(phone):
-            flash("Numéro de téléphone invalide. Merci de vérifier.", "danger")
-            return redirect(url_for('account_phone', next=next_url))
-
-        try:
-            current_user.phone = phone
-            db.session.commit()
-            flash("Numéro de téléphone mis à jour.", "success")
-            return redirect(next_url)
-        except Exception:
-            db.session.rollback()
-            flash("Erreur lors de la mise à jour du téléphone.", "danger")
-            return redirect(url_for('account_phone', next=next_url))
-
-    # GET
-    return render_template('account_phone.html', next_url=next_url)
-# ============================================================================
-
 # ===== [TIGHRI_R1:CRON_REMINDER] ============================================
 @app.get('/cron/send-reminders-24h')
 def cron_send_reminders_24h():
-    """
-    Endpoint de cron sécurisé (Render/worker) :
-    appeler /cron/send-reminders-24h?token=XXX
-    où XXX = os.environ['CRON_TOKEN'].
-    """
     token = request.args.get('token', '')
     if token != os.environ.get('CRON_TOKEN', 'dev'):
         return jsonify({'ok': False, 'error': 'unauthorized'}), 403
@@ -1028,10 +933,9 @@ def site_status():
         'total_professionals': Professional.query.count(),
         'total_users': User.query.count(),
         'total_appointments': Appointment.query.count(),
-        'database_file': 'tighri.db',  # compat UI
+        'database_file': 'tighri.db',
         'server_port': 5000,
         'admin_port': 8080
     }
     return render_template('site_status.html', status=status, stats=stats)
-
-# Pas de bloc __main__ pour Render (gunicorn utilise app:app)
+# Pas de bloc __main__ (gunicorn: app:app)
