@@ -1,65 +1,109 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Tighri — Connexion</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+  <style>
+    :root{ --primary:#6f42c1; --secondary:#8e44ad; --light:#f8f5ff; --ink:#2d1a47 }
+    body{ background:var(--light); color:var(--ink) }
+    .navbar{ background:linear-gradient(135deg,var(--primary),var(--secondary)) }
+    .card{ border:0; border-radius:16px; box-shadow:0 10px 24px rgba(111,66,193,.12) }
+    .form-control{ border-radius:10px }
+    .muted{ color:#6b7280 }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-dark">
+  <div class="container">
+    <a class="navbar-brand fw-bold" href="{{ url_for('index') }}"><i class="fa-solid fa-brain me-2"></i>Tighri</a>
+  </div>
+</nav>
 
-{% block title %}Connexion - Lumia{% endblock %}
+<div class="container py-5">
+  {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-3">
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ _cats.get(cat,'info') }} alert-dismissible fade show" role="alert">
+            <i class="fa-solid fa-circle-info me-2"></i>{{ msg }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
 
-{% block content %}
-<section class="py-5" style="background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); min-height: 100vh; display: flex; align-items: center;">
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-lg-5 col-md-7">
-                <div class="card shadow-lg border-0">
-                    <div class="card-body p-5">
-                        <div class="text-center mb-4">
-                            <i class="fas fa-mobile-alt fa-3x text-primary mb-3"></i>
-                            <h2 class="fw-bold">Connexion</h2>
-                            <p class="text-muted">Connectez-vous à votre compte Lumia</p>
-                        </div>
-                        
-                        <form method="POST">
-                            <div class="mb-3">
-                                <label for="username" class="form-label">
-                                    <i class="fas fa-user me-2"></i>Nom d'utilisateur
-                                </label>
-                                <input type="text" class="form-control" id="username" name="username" required>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="password" class="form-label">
-                                    <i class="fas fa-lock me-2"></i>Mot de passe
-                                </label>
-                                <input type="password" class="form-control" id="password" name="password" required>
-                            </div>
-                            
-                            <div class="mb-3 form-check">
-                                <input type="checkbox" class="form-check-input" id="remember">
-                                <label class="form-check-label" for="remember">
-                                    Se souvenir de moi
-                                </label>
-                            </div>
-                            
-                            <div class="d-grid mb-3">
-                                <button type="submit" class="btn btn-primary btn-lg">
-                                    <i class="fas fa-sign-in-alt me-2"></i>Se connecter
-                                </button>
-                            </div>
-                        </form>
-                        
-                        <div class="text-center">
-                            <a href="#" class="text-decoration-none">Mot de passe oublié ?</a>
-                        </div>
-                        
-                        <hr class="my-4">
-                        
-                        <div class="text-center">
-                            <p class="text-muted mb-3">Pas encore de compte ?</p>
-                            <a href="{{ url_for('register') }}" class="btn btn-outline-primary">
-                                <i class="fas fa-user-plus me-2"></i>Créer un compte
-                            </a>
-                        </div>
-                    </div>
-                </div>
+  <div class="row justify-content-center">
+    <div class="col-md-7 col-lg-5">
+      <div class="card">
+        <div class="card-body p-4 p-md-5">
+          <h1 class="h4 mb-3"><i class="fa-solid fa-right-to-bracket text-primary me-2"></i>Connexion</h1>
+          <p class="text-muted mb-4">Connectez-vous avec votre <strong>email</strong> ou <strong>nom d’utilisateur</strong>.</p>
+
+          <form method="post" action="{{ url_for('login') }}" novalidate>
+            {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+
+            <div class="mb-3">
+              <label class="form-label">Email ou nom d’utilisateur</label>
+              <input type="text" class="form-control" name="username" required autocomplete="username"
+                     value="{{ request.form.get('username','') if request else '' }}">
             </div>
+
+            <div class="mb-3">
+              <label class="form-label">Mot de passe</label>
+              <div class="input-group">
+                <input type="password" class="form-control" name="password" id="pw" required autocomplete="current-password">
+                <button class="btn btn-outline-secondary" type="button" onclick="togglePw('pw', this)"><i class="fa-regular fa-eye"></i></button>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="remember" name="remember" value="1">
+                <label class="form-check-label" for="remember">Se souvenir de moi</label>
+              </div>
+              <div class="d-flex gap-3">
+                <a href="{{ url_for('forgot_password') }}">Mot de passe oublié</a>
+                <a href="{{ url_for('change_password') }}">Changer mot de passe</a>
+              </div>
+            </div>
+
+            <div class="d-grid">
+              <button class="btn btn-primary btn-lg" type="submit">
+                <i class="fa-solid fa-right-to-bracket me-2"></i>Se connecter
+              </button>
+            </div>
+          </form>
+
+          <div class="text-center mt-4">
+            <div class="muted mb-2">Pas encore de compte ?</div>
+            <a class="btn btn-outline-primary btn-sm me-2" href="{{ url_for('register') }}">
+              <i class="fa-regular fa-user me-1"></i>Créer un compte patient
+            </a>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('professional_register') }}">
+              <i class="fa-solid fa-user-doctor me-1"></i>Créer un compte professionnel
+            </a>
+          </div>
         </div>
+      </div>
+      <div class="text-center mt-3">
+        <a href="{{ url_for('index') }}" class="text-decoration-none"><i class="fa-solid fa-arrow-left-long me-1"></i>Retour à l’accueil</a>
+      </div>
     </div>
-</section>
-{% endblock %} 
+  </div>
+</div>
+
+<script>
+function togglePw(id, btn){
+  const el=document.getElementById(id); if(!el) return;
+  el.type = el.type === 'password' ? 'text' : 'password';
+  btn.querySelector('i').classList.toggle('fa-eye'); btn.querySelector('i').classList.toggle('fa-eye-slash');
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
