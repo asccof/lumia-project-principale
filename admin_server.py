@@ -5,6 +5,28 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from models import db, User, Professional, Appointment
 
+# =============== NOUVEAUX MODÈLES (conformes aux ajouts R1) =================
+# On déclare ici pour que db.create_all() (appelé dans app.py) crée les tables.
+class SocialLink(db.Model):
+    __tablename__ = 'social_links'
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False, index=True)
+    platform = db.Column(db.String(30), nullable=False)  # facebook/instagram/tiktok/youtube/other
+    url = db.Column(db.String(500), nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending | approved | rejected
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+    updated_at = db.Column(db.DateTime, server_default=db.func.now(), onupdate=db.func.now())
+
+class Review(db.Model):
+    __tablename__ = 'reviews'
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    rating = db.Column(db.Integer, nullable=False)  # 1..5
+    comment = db.Column(db.Text)
+    status = db.Column(db.String(20), default='pending')  # pending | approved | rejected
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
 # IMPORTANT : on déclare un Blueprint. Pas de Flask(__name__), pas de db.init_app ici.
 admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
 
@@ -54,6 +76,11 @@ def admin_dashboard():
         if a.status == 'confirme' and a.professional
     )
 
+    # Compteurs pour les nouveaux écrans (liens/avis en attente + pros en attente)
+    pending_links = SocialLink.query.filter_by(status='pending').count()
+    pending_reviews = Review.query.filter_by(status='pending').count()
+    pending_pros = Professional.query.filter_by(status='en_attente').count()
+
     return render_template(
         'admin_dashboard.html',
         professionals=professionals,
@@ -62,7 +89,10 @@ def admin_dashboard():
         total_professionals=total_professionals,
         total_users=total_users,
         total_appointments=total_appointments,
-        total_revenue=total_revenue
+        total_revenue=total_revenue,
+        pending_links=pending_links,
+        pending_reviews=pending_reviews,
+        pending_pros=pending_pros,
     )
 
 # ===================== PROFESSIONNELS (liste type "products") =====================
@@ -515,3 +545,61 @@ def pending_professionals():
         return redirect(url_for('admin.admin_login'))
     pending_professionals = Professional.query.filter_by(status='en_attente').all()
     return render_template('pending_professionals.html', professionals=pending_professionals)
+
+# ===================== NOUVEAU : MODÉRATION LIENS SOCIAUX =====================
+@admin_bp.route('/social-pending', endpoint='admin_social_pending')
+@login_required
+def admin_social_pending():
+    if not current_user.is_admin:
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
+    links = SocialLink.query.filter_by(status='pending').order_by(SocialLink.created_at.asc()).all()
+    return render_template('admin_social_pending.html', links=links)
+
+@admin_bp.route('/social/<int:link_id>/<action>', methods=['POST'], endpoint='admin_social_action')
+@login_required
+def admin_social_action(link_id, action):
+    if not current_user.is_admin:
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
+    link = SocialLink.query.get_or_404(link_id)
+    if action == 'approve':
+        link.status = 'approved'
+        db.session.commit()
+        flash('Lien social approuvé.', 'success')
+    elif action == 'reject':
+        link.status = 'rejected'
+        db.session.commit()
+        flash('Lien social rejeté.', 'warning')
+    else:
+        flash('Action invalide.', 'error')
+    return redirect(url_for('admin.admin_social_pending'))
+
+# ===================== NOUVEAU : MODÉRATION AVIS (REVIEWS) ===================
+@admin_bp.route('/reviews-pending', endpoint='admin_reviews_pending')
+@login_required
+def admin_reviews_pending():
+    if not current_user.is_admin:
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
+    reviews = Review.query.filter_by(status='pending').order_by(Review.created_at.asc()).all()
+    return render_template('admin_reviews_pending.html', reviews=reviews)
+
+@admin_bp.route('/reviews/<int:rid>/<action>', methods=['POST'], endpoint='admin_review_action')
+@login_required
+def admin_review_action(rid, action):
+    if not current_user.is_admin:
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
+    r = Review.query.get_or_404(rid)
+    if action == 'approve':
+        r.status = 'approved'
+        db.session.commit()
+        flash('Avis approuvé.', 'success')
+    elif action == 'reject':
+        r.status = 'rejected'
+        db.session.commit()
+        flash('Avis rejeté.', 'warning')
+    else:
+        flash('Action invalide.', 'error')
+    return redirect(url_for('admin.admin_reviews_pending'))
