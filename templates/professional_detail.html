@@ -1,3 +1,4 @@
+<!-- templates/professional_detail.html -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -5,12 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{{ professional.name }} - Fiche professionnelle</title>
 
-  <!-- UI libs -->
+  <!-- Librairies UI -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
   <style>
-    :root{ --primary:#6f42c1; --light:#f8f5ff; --ink:#1f1430; }
+    :root{ --primary:#6f42c1; --primary-2:#8b5cf6; --light:#f8f5ff; --ink:#1f1430; }
     body{ background:var(--light); color:var(--ink); }
 
     .pro-header{
@@ -18,26 +19,28 @@
       box-shadow:0 10px 25px rgba(111,66,193,.08);
     }
 
-    /* Avatar: carré responsive, cover, fond neutre en attente */
-    .avatar-wrap{
+    /* ========= Avatar 100%-compatible (sans aspect-ratio, sans JS) ========= */
+    .avatar-box{
+      position:relative;
       width:100%;
       max-width:320px;
       margin-inline:auto;
-      position:relative; /* requis pour le fallback @supports */
+    }
+    /* Carré 1:1 via padding-top — marche partout, iOS/Android anciens inclus */
+    .avatar-box::before{
+      content:"";
+      display:block;
+      padding-top:100%;
     }
     .avatar{
-      display:block; width:100%;
-      aspect-ratio: 1 / 1;             /* navigateurs modernes */
-      object-fit: cover;
+      position:absolute; inset:0;
+      width:100%; height:100%;
+      object-fit:cover; /* recadrage propre */
       border-radius:16px;
       background: radial-gradient(ellipse at 50% 45%, #faf8ff 0 60%, #eee 61% 100%);
       box-shadow:0 10px 25px rgba(0,0,0,.06);
       image-rendering:auto;
-    }
-    /* Fallback anciens navigateurs sans aspect-ratio */
-    @supports not (aspect-ratio: 1 / 1){
-      .avatar-wrap::before{ content:""; display:block; padding-top:100%; }
-      .avatar{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+      -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
     }
 
     .badge-chip{
@@ -58,16 +61,17 @@
       width:44px; height:44px; border-radius:50%;
       background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.08);
       margin-right:.5rem; border:1px solid #eee;
+      color:#444;
     }
-    .socials a:hover{ transform: translateY(-2px); }
+    .socials a:hover{ transform: translateY(-2px); color:var(--primary-2); }
 
     /* Petits écrans */
     @media (max-width: 480px){
-      .avatar-wrap{ max-width: 260px; }
+      .avatar-box{ max-width: 260px; }
     }
   </style>
 
-  <!-- Ta feuille mobile spécifique (déjà en place dans ton projet) -->
+  <!-- Ta feuille mobile spécifique (déjà ajoutée côté projet) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 </head>
 <body>
@@ -92,17 +96,14 @@
     <div class="row g-4 align-items-start">
       <!-- Photo -->
       <div class="col-lg-4 text-center">
-        <div class="avatar-wrap">
+        <div class="avatar-box">
           <img
-            id="proAvatar"
             class="avatar"
             alt="Photo de {{ professional.name }}"
             loading="lazy"
             decoding="async"
-            referrerpolicy="no-referrer"
-            crossorigin="anonymous"
             src="{% set img=(professional.image_url or '')|trim %}{{ img if img else 'https://placehold.co/600x600?text=Photo' }}"
-            onerror="window.__proImgFallback && window.__proImgFallback(this)"
+            onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=Photo';"
           >
         </div>
       </div>
@@ -275,38 +276,6 @@
     </div>
   </div>
 </div>
-
-<script>
-/* Fallback image robuste (évite mixed content, query protégé, hotlink referer) */
-window.__proImgFallback = function(img){
-  try{
-    const attempt = Number(img.dataset.attempt||0);
-
-    if(attempt === 0){
-      img.dataset.attempt = "1";
-      const u = img.src;
-      if(/^http:\/\//i.test(u)){ img.src = u.replace(/^http:\/\//i,'https://'); return; }
-      // sinon on rejoue tel quel (parfois l'erreur est transitoire)
-    }else if(attempt === 1){
-      img.dataset.attempt = "2";
-      try{
-        const url = new URL(img.src, window.location.origin);
-        url.search = ""; url.hash = "";
-        img.src = url.toString();
-        return;
-      }catch(e){}
-    }
-
-    // Dernier recours
-    img.dataset.attempt = "3";
-    img.removeAttribute('crossorigin');
-    img.setAttribute('referrerpolicy','no-referrer');
-    img.src = 'https://placehold.co/600x600?text=Photo';
-  }catch(e){
-    img.src = 'https://placehold.co/600x600?text=Photo';
-  }
-};
-</script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
