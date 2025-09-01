@@ -109,12 +109,10 @@
             .section-title h2 { font-size: 2rem; }
         }
 
-        /* === AJOUTS TIGHRI : burger mobile pour A propos / Services / Contact uniquement === */
-        /* On garde tout le reste du header intact. */
+        /* ===== Ajout minimal : burger mobile isolé pour À propos & Contact ===== */
         .tgh-burger{
             display:none; align-items:center; justify-content:center;
-            background:#ffffff; color:#ffffff; /* texte non visible, on s'appuie sur l'icône */
-            border:1px solid rgba(255,255,255,0.35);
+            background:transparent; border:1px solid rgba(255,255,255,0.35);
             border-radius:10px; padding:.45rem .55rem; margin-left:.5rem;
         }
         .tgh-burger svg{ display:block; }
@@ -130,13 +128,12 @@
         }
         .tgh-mobile-panel a:hover{ background:#f7fafc; }
 
-        /* Ciblage précis : on cache uniquement ces liens du header sur mobile (pour éviter les doublons) */
+        /* On cache uniquement ces liens dans la barre Bootstrap sur mobile (pour éviter le chevauchement) */
         @media (max-width: 767.98px){
-            .nav-item.only-desktop { display:none !important; }
+            .nav-item.tgh-only-desktop { display:none !important; }
             .tgh-burger { display:inline-flex; }
         }
 
-        /* Animation accessible */
         @media (prefers-reduced-motion: no-preference){
             .tgh-mobile-panel{ transition:opacity .18s ease, transform .18s ease; }
             .tgh-mobile-panel[data-open="true"]{ opacity:1; transform:translateY(0); }
@@ -148,46 +145,58 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container position-relative">
             <div class="d-flex align-items-center">
                 <a class="navbar-brand" href="{{ url_for('index') }}">
                     <i class="fas fa-heart me-2"></i>Tighri
                 </a>
 
-                <!-- Burger mobile Tighri : ne concerne que A propos / Services / Contact -->
+                <!-- Burger mobile indépendant (n'affecte que A propos & Contact) -->
                 <button class="tgh-burger" type="button" aria-label="Ouvrir le menu secondaire"
                         aria-controls="tgh-mobile-menu" aria-expanded="false">
                     <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M3 6h18M3 12h18M3 18h18" stroke="rgba(255,255,255,0.95)" stroke-width="2" stroke-linecap="round"/>
                     </svg>
                 </button>
+
+                <!-- Panneau mobile (À propos & Contact) -->
+                <div id="tgh-mobile-menu" class="tgh-mobile-panel" hidden>
+                    <a href="{{ url_for('about') }}">À propos</a>
+                    <a href="{{ url_for('contact') }}">Contact</a>
+                </div>
             </div>
 
-            <!-- On garde une barre simple non-collapsée pour le reste des liens -->
-            <div class="d-flex align-items-center">
-                <ul class="navbar-nav me-3 flex-row">
-                    <li class="nav-item me-2">
+            <!-- Toggler Bootstrap (inchangé) -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Basculer la navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            
+            <!-- Menu collapsible Bootstrap (inchangé) -->
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('index') }}">Accueil</a>
                     </li>
-                    <li class="nav-item me-2">
+                    <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('professionals') }}">Professionnels</a>
                     </li>
-                    <!-- Ces deux liens passent dans le burger sur mobile -->
-                    <li class="nav-item me-2 only-desktop">
+                    <!-- Ces deux liens sont visibles desktop, masqués mobile (puis accessibles via le burger ci-dessus) -->
+                    <li class="nav-item tgh-only-desktop">
                         <a class="nav-link" href="{{ url_for('about') }}">À propos</a>
                     </li>
-                    <li class="nav-item me-2">
+                    <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('site_status') }}">
                             <i class="fas fa-server me-1"></i>Statut
                         </a>
                     </li>
-                    <li class="nav-item me-2 only-desktop">
+                    <li class="nav-item tgh-only-desktop">
                         <a class="nav-link" href="{{ url_for('contact') }}">Contact</a>
                     </li>
                 </ul>
-
-                <ul class="navbar-nav flex-row">
+                
+                <ul class="navbar-nav">
                     {% if current_user.is_authenticated %}
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
@@ -201,7 +210,7 @@
                             </ul>
                         </li>
                     {% else %}
-                        <li class="nav-item me-2">
+                        <li class="nav-item">
                             <a class="nav-link" href="{{ url_for('login') }}">
                                 <i class="fas fa-sign-in-alt me-1"></i>Connexion
                             </a>
@@ -213,13 +222,6 @@
                         </li>
                     {% endif %}
                 </ul>
-            </div>
-
-            <!-- Panneau mobile (à propos / services / contact) -->
-            <div id="tgh-mobile-menu" class="tgh-mobile-panel" hidden>
-                <a href="{{ url_for('about') }}">À propos</a>
-                <a href="{{ url_for('professionals') }}">Services</a>
-                <a href="{{ url_for('contact') }}">Contact</a>
             </div>
         </div>
     </nav>
@@ -370,7 +372,7 @@
         notification.querySelector('.btn-close').addEventListener('click', () => notification.remove());
     }
 
-    // === JS du burger mobile Tighri (A propos / Services / Contact uniquement) ===
+    // === Burger mobile isolé (À propos & Contact) — n'affecte rien d'autre ===
     (function(){
         const container = document.querySelector('.navbar .container');
         const btn = container.querySelector('.tgh-burger');
