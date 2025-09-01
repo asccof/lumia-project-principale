@@ -7,7 +7,6 @@
   <title>Tighri - Prendre rendez-vous avec un professionnel</title>
 
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
-  <!-- CSS mobile spécifique (ne pas mettre ce <link> dans <style>) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 
   <style>
@@ -46,7 +45,6 @@
     .professionals{display:flex;flex-wrap:wrap;gap:2rem;justify-content:center}
 
     .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);padding:1.5rem;min-width:280px;max-width:320px;flex:1 1 280px;display:flex;flex-direction:column;align-items:center;text-align:center}
-    /* Avatar cercle (cadrage conservé) */
     .avatar-circle{width:96px;height:96px;border-radius:50%;border:3px solid #8B5CF6;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-bottom:1rem;background:linear-gradient(#eee,#ddd)}
     .avatar-img{width:100%;height:100%;object-fit:cover}
     .professional-card h4{margin:.5rem 0 .2rem;color:#6D28D9}
@@ -86,7 +84,6 @@
       .sections{flex-direction:column;align-items:center}
       .contact-info{flex-direction:column;gap:1.5rem}
     }
-    /* Téléphones ≤ 480px : pas de chevauchement */
     @media(max-width:480px){
       .nav-container{padding:.6rem 1rem;gap:.5rem}
       header{padding:5.5rem 1rem 1.5rem;margin-top:64px}
@@ -142,16 +139,12 @@
     <h3>Professionnels en vedette</h3>
     <div class="professionals">
       {% for professional in professionals %}
-        {% set img_url = (professional.image_url or '')|trim %}
-        {% set placeholder = 'https://placehold.co/300x300?text=Photo' %}
         <div class="professional-card">
           <div class="avatar-circle">
             <img class="avatar-img"
-                 src="{{ img_url or placeholder }}"
+                 src="{{ url_for('profile_photo', professional_id=professional.id) }}"
                  alt="Photo de {{ professional.name }}"
-                 referrerpolicy="no-referrer"
-                 loading="eager" fetchpriority="high"
-                 onerror="this.onerror=null;this.src='{{ placeholder }}';">
+                 loading="eager" fetchpriority="high">
           </div>
           <h4>{{ professional.name }}</h4>
           <p>{{ professional.specialty }}</p>
@@ -161,28 +154,6 @@
       {% endfor %}
     </div>
   </div>
-
-  <section id="about" class="about-section">
-    <div class="about-container">
-      <h2>À propos de Tighri</h2>
-      <p>Tighri est la première plateforme marocaine dédiée à la santé mentale et au bien-être. Nous connectons patients et professionnels de la psychologie pour faciliter l'accès aux soins psychologiques de qualité.</p>
-      <p>Notre mission est de démocratiser l'accès aux services de santé mentale au Maroc en mettant en relation des professionnels certifiés avec des patients dans un environnement de confiance et de sécurité.</p>
-    </div>
-  </section>
-
-  <section id="services" class="services-section">
-    <div class="services-container">
-      <h2>Nos Services</h2>
-      <div class="services-grid">
-        <div class="service-card"><h3>Consultations en Cabinet</h3><p>Prenez rendez-vous avec des professionnels dans leur cabinet pour des consultations en face à face.</p></div>
-        <div class="service-card"><h3>Consultations à Domicile</h3><p>Certains professionnels se déplacent à votre domicile pour plus de confort et de discrétion.</p></div>
-        <div class="service-card"><h3>Consultations en Vidéo</h3><p>Consultez en ligne depuis chez vous grâce à nos outils de visioconférence sécurisés.</p></div>
-        <div class="service-card"><h3>Gestion de Planning</h3><p>Réservez vos créneaux en ligne et recevez des rappels automatiques de vos rendez-vous.</p></div>
-        <div class="service-card"><h3>Profils Vérifiés</h3><p>Tous nos professionnels sont certifiés et leurs diplômes sont vérifiés par notre équipe.</p></div>
-        <div class="service-card"><h3>Support 24/7</h3><p>Notre équipe est disponible pour vous accompagner à tout moment dans votre parcours.</p></div>
-      </div>
-    </div>
-  </section>
 
   {% include 'contact_section.html' ignore missing %}
 
