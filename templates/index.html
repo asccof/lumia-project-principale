@@ -2,163 +2,198 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="referrer" content="no-referrer" />
-  <title>Tighri - Prendre rendez-vous avec un professionnel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tighri – Plateforme de rendez-vous</title>
 
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
   <style>
-    body{font-family:'Montserrat',Arial,sans-serif;background:#f7f5fa;margin:0;color:#2d1a47}
-    .navbar{background:rgba(255,255,255,.95);backdrop-filter:blur(10px);position:fixed;top:0;width:100%;z-index:1000;box-shadow:0 2px 10px rgba(139,92,246,.1)}
-    .nav-container{max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;padding:1rem 2rem}
-    .nav-logo{color:#8B5CF6;font-size:1.8rem;font-weight:700;text-decoration:none}
-    .nav-menu{display:flex;list-style:none;margin:0;padding:0;gap:2rem}
-    .nav-menu a{color:#4B3869;text-decoration:none;font-weight:600;transition:color .2s}
-    .nav-menu a:hover{color:#8B5CF6}
-    .nav-auth{display:flex;gap:1rem}
-    .nav-auth a{padding:.5rem 1rem;border-radius:20px;text-decoration:none;font-weight:600;transition:all .2s}
-    .nav-login{color:#8B5CF6;border:2px solid #8B5CF6}
-    .nav-login:hover{background:#8B5CF6;color:#fff}
-    .nav-register{background:#8B5CF6;color:#fff}
-    .nav-register:hover{background:#6D28D9}
-
-    header{background:linear-gradient(90deg,#8B5CF6 0%,#6D28D9 100%);color:#fff;padding:8rem 0 2rem;text-align:center;margin-top:70px}
-    header h1{margin:0 0 .5rem;font-size:3rem;font-weight:700}
-    header p{margin:0 0 1.5rem;font-size:1.3rem;max-width:600px;margin-left:auto;margin-right:auto}
-
-    .search-bar{display:flex;justify-content:center;margin:2rem 0 1rem}
-    .search-bar input{width:400px;padding:1rem 1.5rem;border:1px solid #8B5CF6;border-radius:30px 0 0 30px;font-size:1rem;outline:none}
-    .search-bar button{padding:1rem 2rem;border:none;background:#8B5CF6;color:#fff;font-size:1rem;border-radius:0 30px 30px 0;cursor:pointer;font-weight:700;transition:background .2s}
-    .search-bar button:hover{background:#6D28D9}
-
-    .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
-    .section{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08);padding:2.5rem;min-width:320px;max-width:400px;flex:1 1 320px;display:flex;flex-direction:column;align-items:center;text-align:center}
-    .section h2{color:#8B5CF6;margin-bottom:1rem;font-size:1.5rem}
-    .section p{margin-bottom:2rem;color:#4B3869;line-height:1.6}
-    .section a{display:inline-block;background:#8B5CF6;color:#fff;padding:1rem 2rem;border-radius:30px;text-decoration:none;font-weight:700;font-size:1.1rem;transition:background .2s}
-    .section a:hover{background:#6D28D9}
-
-    .featured{max-width:1200px;margin:0 auto 4rem;padding:0 2rem}
-    .featured h3{color:#6D28D9;margin-bottom:2rem;text-align:center;font-size:2rem}
-    .professionals{display:flex;flex-wrap:wrap;gap:2rem;justify-content:center}
-
-    .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);padding:1.5rem;min-width:280px;max-width:320px;flex:1 1 280px;display:flex;flex-direction:column;align-items:center;text-align:center}
-    .avatar-circle{width:96px;height:96px;border-radius:50%;border:3px solid #8B5CF6;display:flex;align-items:center;justify-content:center;overflow:hidden;margin-bottom:1rem;background:linear-gradient(#eee,#ddd)}
-    .avatar-img{width:100%;height:100%;object-fit:cover}
-    .professional-card h4{margin:.5rem 0 .2rem;color:#6D28D9}
-    .professional-card p{color:#4B3869;font-size:.95rem;margin-bottom:1rem}
-    .professional-card a{color:#8B5CF6;text-decoration:none;font-weight:600}
-    .professional-card a:hover{text-decoration:underline}
-
-    .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
-    .about-container{max-width:1200px;margin:0 auto;text-align:center}
-    .about-section h2{color:#8B5CF6;font-size:2.5rem;margin-bottom:1rem}
-    .about-section p{color:#4B3869;font-size:1.1rem;line-height:1.8;max-width:800px;margin:0 auto 2rem}
-
-    .services-section{padding:4rem 2rem;background:#f7f5fa}
-    .services-container{max-width:1200px;margin:0 auto}
-    .services-section h2{color:#8B5CF6;font-size:2.5rem;text-align:center;margin-bottom:3rem}
-    .services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2rem}
-    .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);text-align:center}
-    .service-card h3{color:#6D28D9;margin-bottom:1rem}
-    .service-card p{color:#4B3869;line-height:1.6}
-
-    .contact-section{background:#8B5CF6;color:#fff;padding:4rem 2rem;text-align:center}
-    .contact-container{max-width:800px;margin:0 auto}
-    .contact-section h2{font-size:2.5rem;margin-bottom:1rem}
-    .contact-section p{font-size:1.1rem;margin-bottom:2rem;opacity:.9}
-    .contact-info{display:flex;justify-content:center;gap:3rem;flex-wrap:wrap}
-    .contact-item{display:flex;flex-direction:column;align-items:center;gap:.5rem}
-    .contact-item strong{font-size:1.1rem}
-
-    footer{background:#2d1a47;color:#fff;text-align:center;padding:2rem}
-
-    @media(max-width:768px){
-      .nav-container{flex-direction:column;gap:1rem}
-      .nav-menu{flex-direction:column;gap:1rem}
-      header{padding:6rem 0 2rem}
-      header h1{font-size:2rem}
-      .search-bar input{width:250px}
-      .sections{flex-direction:column;align-items:center}
-      .contact-info{flex-direction:column;gap:1.5rem}
+    :root{
+      --tgh-primary:#6f42c1;
+      --tgh-soft:#f8f5ff;
+      --tgh-ink:#1f1430;
+      --tgh-line:#e7e1fb;
     }
-    @media(max-width:480px){
-      .nav-container{padding:.6rem 1rem;gap:.5rem}
-      header{padding:5.5rem 1rem 1.5rem;margin-top:64px}
-      .search-bar{flex-direction:column;align-items:stretch;padding:0 1rem;gap:.5rem}
-      .search-bar input,.search-bar button{width:100%;border-radius:12px}
-      .sections{padding:0 1rem;gap:1rem;margin:2rem 0}
-      .section{min-width:0;width:100%;max-width:100%;padding:1.25rem}
-      .featured{padding:0 1rem}
-      .professional-card{max-width:100%}
+
+    body{ background:var(--tgh-soft); color:var(--tgh-ink); font-family:sans-serif; }
+
+    /* ===== HEADER ===== */
+    .tgh-header{ background:#fff; border-bottom:1px solid var(--tgh-line); }
+    .tgh-header .tgh-container{
+      max-width:1100px; margin:0 auto; padding:10px 16px;
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+    }
+    .tgh-brand{ display:flex; align-items:center; gap:10px; text-decoration:none; }
+    .tgh-logo-circle{
+      display:inline-grid; place-items:center;
+      width:34px; height:34px; border-radius:50%;
+      background:var(--tgh-soft); color:var(--tgh-primary); font-weight:700;
+      border:1px solid var(--tgh-line);
+    }
+    .tgh-brand-text{ font-weight:800; font-size:22px; color:var(--tgh-primary); }
+
+    /* Nav desktop */
+    .tgh-nav{ position:relative; display:flex; align-items:center; gap:10px; }
+    .tgh-nav-desktop{ list-style:none; display:flex; gap:20px; margin:0; padding:0; }
+    .tgh-nav-desktop a{ color:var(--tgh-ink); text-decoration:none; font-weight:500; }
+    .tgh-nav-desktop a:hover{ color:var(--tgh-primary); text-decoration:underline; }
+
+    /* Burger */
+    .tgh-burger{
+      display:none; background:#fff; border:1px solid var(--tgh-line);
+      border-radius:10px; padding:8px; color:var(--tgh-primary); cursor:pointer;
+    }
+
+    /* Menu mobile */
+    .tgh-nav-mobile{
+      position:absolute; top:115%; right:0; z-index:1000; width:240px;
+      background:#fff; border:1px solid var(--tgh-line); border-radius:12px;
+      box-shadow:0 12px 34px rgba(111,66,193,.15); padding:8px;
+    }
+    .tgh-nav-mobile a{
+      display:block; padding:10px 12px; border-radius:8px;
+      color:var(--tgh-ink); text-decoration:none; font-weight:500;
+    }
+    .tgh-nav-mobile a:hover{ background:var(--tgh-soft); }
+
+    /* Actions */
+    .tgh-actions{ display:flex; gap:10px; align-items:center; }
+    .tgh-btn{
+      display:inline-flex; align-items:center; justify-content:center;
+      padding:10px 14px; border-radius:12px; text-decoration:none; font-weight:600;
+      border:1px solid transparent; white-space:nowrap;
+    }
+    .tgh-btn-ghost{ color:var(--tgh-primary); background:#fff; border-color:var(--tgh-line); }
+    .tgh-btn-ghost:hover{ background:var(--tgh-soft); }
+    .tgh-btn-primary{ background:var(--tgh-primary); color:#fff; }
+    .tgh-btn-primary:hover{ filter:brightness(.96); }
+
+    /* ===== HERO ===== */
+    .tgh-hero{
+      text-align:center; padding:40px 16px;
+      background:linear-gradient(135deg, var(--tgh-primary), #8b5cf6); color:#fff;
+    }
+    .tgh-hero h1{ font-size:22px; font-weight:600; margin-bottom:16px; }
+
+    .tgh-search{
+      max-width:500px; margin:20px auto; display:flex; gap:10px; flex-wrap:wrap;
+    }
+    .tgh-search input{
+      flex:1; border:1px solid var(--tgh-line); border-radius:12px; padding:10px;
+    }
+    .tgh-search button{
+      border:none; background:#fff; color:var(--tgh-primary);
+      padding:10px 16px; border-radius:12px; font-weight:600;
+    }
+
+    /* ===== PATIENT ===== */
+    .tgh-patient{
+      background:#fff; border-radius:16px; padding:30px 20px;
+      margin:30px auto; max-width:600px; text-align:center;
+      box-shadow:0 10px 25px rgba(111,66,193,.08);
+    }
+    .tgh-patient h2{ font-size:20px; font-weight:700; margin-bottom:12px; }
+    .tgh-patient p{ font-size:15px; margin-bottom:20px; }
+    .tgh-patient a{
+      display:inline-block; background:var(--tgh-primary); color:#fff;
+      padding:12px 20px; border-radius:12px; font-weight:600; text-decoration:none;
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 767.98px){
+      .tgh-nav-desktop{ display:none; }
+      .tgh-burger{ display:inline-flex; }
+      .tgh-brand-text{ font-size:20px; }
+      .tgh-actions .tgh-btn{ padding:8px 12px; border-radius:10px; }
+    }
+
+    @media (prefers-reduced-motion: no-preference){
+      .tgh-nav-mobile{ transition:opacity .18s ease, transform .18s ease; }
+      .tgh-nav-mobile[data-open="true"]{ opacity:1; transform:translateY(0); }
+      .tgh-nav-mobile[data-open="false"]{ opacity:0; transform:translateY(-6px); }
     }
   </style>
 </head>
 <body>
-  <nav class="navbar">
-    <div class="nav-container">
-      <a href="/" class="nav-logo">Tighri</a>
-      <ul class="nav-menu">
-        <li><a href="#about">À propos</a></li>
-        <li><a href="#services">Services</a></li>
-        <li><a href="#contact">Contact</a></li>
-      </ul>
-      <div class="nav-auth">
-        <a href="/login" class="nav-login">Se connecter</a>
-        <a href="/register" class="nav-register">S'inscrire</a>
+
+  <!-- ===== HEADER ===== -->
+  <header class="tgh-header" role="banner">
+    <div class="tgh-container">
+      <a class="tgh-brand" href="/" aria-label="Accueil Tighri">
+        <span class="tgh-logo-circle">T</span>
+        <span class="tgh-brand-text">Tighri</span>
+      </a>
+
+      <nav class="tgh-nav" aria-label="Navigation principale">
+        <ul class="tgh-nav-desktop">
+          <li><a href="#a-propos">À propos</a></li>
+          <li><a href="#services">Services</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+
+        <button class="tgh-burger" aria-label="Ouvrir le menu" aria-controls="tgh-mobile-menu" aria-expanded="false">
+          <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+
+        <div id="tgh-mobile-menu" class="tgh-nav-mobile" hidden>
+          <a href="#a-propos">À propos</a>
+          <a href="#services">Services</a>
+          <a href="#contact">Contact</a>
+        </div>
+      </nav>
+
+      <div class="tgh-actions">
+        <a class="tgh-btn tgh-btn-ghost" href="/login">Se connecter</a>
+        <a class="tgh-btn tgh-btn-primary" href="/signup">S’inscrire</a>
       </div>
     </div>
-  </nav>
-
-  <header>
-    <h1>Tighri</h1>
-    <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
   </header>
 
-  <form class="search-bar" method="get" action="/professionals">
-    <input type="text" name="q" placeholder="Rechercher un professionnel, une spécialité, une ville...">
-    <button type="submit">Rechercher</button>
-  </form>
+  <!-- ===== HERO ===== -->
+  <section class="tgh-hero">
+    <h1>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coaches certifiés</h1>
+    <form class="tgh-search" role="search">
+      <input type="text" placeholder="Rechercher un professionnel, une spécialité, une ville..." aria-label="Recherche">
+      <button type="submit">Rechercher</button>
+    </form>
+  </section>
 
-  <div class="sections">
-    <div class="section">
-      <h2>Espace Patient</h2>
-      <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
-      <a href="/register">Je suis patient</a>
-    </div>
-    <div class="section">
-      <h2>Espace Professionnel</h2>
-      <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
-      <a href="/professional_register">Je suis professionnel</a>
-    </div>
-  </div>
+  <!-- ===== PATIENT ===== -->
+  <section class="tgh-patient">
+    <h2>Espace Patient</h2>
+    <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
+    <a href="/patients">Je suis patient</a>
+  </section>
 
-  <div class="featured">
-    <h3>Professionnels en vedette</h3>
-    <div class="professionals">
-      {% for professional in professionals %}
-        <div class="professional-card">
-          <div class="avatar-circle">
-            <img class="avatar-img"
-                 src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-                 alt="Photo de {{ professional.name }}"
-                 loading="eager" fetchpriority="high">
-          </div>
-          <h4>{{ professional.name }}</h4>
-          <p>{{ professional.specialty }}</p>
-          <p>{{ professional.description[:80] }}{% if professional.description|length > 80 %}...{% endif %}</p>
-          <a href="/professional/{{ professional.id }}">Voir le profil</a>
-        </div>
-      {% endfor %}
-    </div>
-  </div>
+  <script>
+    (function(){
+      const header = document.querySelector('.tgh-header');
+      const btn = header.querySelector('.tgh-burger');
+      const panel = header.querySelector('#tgh-mobile-menu');
+      if(!btn || !panel) return;
 
-  {% include 'contact_section.html' ignore missing %}
+      function openMenu(open){
+        btn.setAttribute('aria-expanded', String(open));
+        panel.hidden = !open;
+        panel.dataset.open = open ? 'true' : 'false';
+      }
 
-  <footer>
-    <p>&copy; 2024 Tighri. Tous droits réservés. | Plateforme de santé mentale au Maroc</p>
-  </footer>
+      btn.addEventListener('click', ()=>{
+        const isOpen = btn.getAttribute('aria-expanded') === 'true';
+        openMenu(!isOpen);
+      });
+
+      document.addEventListener('click', (e)=>{
+        if(!panel.hidden && !header.contains(e.target)){ openMenu(false); }
+      });
+
+      document.addEventListener('keydown', (e)=>{
+        if(e.key === 'Escape'){ openMenu(false); }
+      });
+    })();
+  </script>
 </body>
 </html>
