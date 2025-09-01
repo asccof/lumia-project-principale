@@ -1,234 +1,160 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Tighri — Admin · Éditer le professionnel</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Éditer le professionnel | Tighri</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
   <style>
-    :root{ --primary:#6f42c1; --secondary:#8e44ad; --light:#f8f5ff; --ink:#2d1a47 }
-    body{ background:var(--light); color:var(--ink) }
-    .navbar{ background:linear-gradient(135deg,var(--primary),var(--secondary)) }
-    .brand{ font-weight:800 }
-    .card{ border:0; border-radius:16px; box-shadow:0 10px 24px rgba(111,66,193,.12) }
-    .form-control, .form-select{ border-radius:10px }
-    .help{ color:#6b7280; font-size:.9rem }
-    .avatar{ width:100%; max-width:220px; border-radius:12px; object-fit:cover; aspect-ratio:1/1; }
-    .small-mono{ font-family: ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    body{background:#f6f7fb}
+    .card{border:0; box-shadow:0 10px 25px rgba(0,0,0,.06); border-radius:16px;}
+    .preview{width:120px;height:120px;border-radius:12px;object-fit:cover;border:1px solid #eee}
+    .form-text{opacity:.8}
+    .badge-chip{background:#eef2ff;color:#4f46e5;border-radius:999px;padding:.25rem .6rem}
   </style>
 </head>
 <body>
-<nav class="navbar navbar-dark">
-  <div class="container">
-    <a class="navbar-brand brand" href="{{ url_for('admin.admin_dashboard') }}">
-      <i class="fa-solid fa-shield-halved me-2"></i>Tighri — Administration
-    </a>
-    <div class="d-flex align-items-center gap-2">
-      <a class="btn btn-light btn-sm" href="{{ url_for('change_password') }}">
-        <i class="fa-solid fa-key me-1"></i>Changer mot de passe
-      </a>
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin.admin_logout') }}">
-        <i class="fa-solid fa-right-from-bracket me-1"></i>Déconnexion
-      </a>
+<div class="container py-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h4 mb-0">Modifier le professionnel #{{ professional.id }}</h1>
+    <div>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.admin_products') }}">Liste</a>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('admin.admin_dashboard') }}">Dashboard</a>
     </div>
   </div>
-</nav>
 
-<div class="container py-4">
   {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      <div class="mb-3">
-        {% for cat, msg in messages %}
-          <div class="alert alert-{{ _cats.get(cat,'info') }} alert-dismissible fade show" role="alert">
-            <i class="fa-solid fa-circle-info me-2"></i>{{ msg }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
-          </div>
-        {% endfor %}
-      </div>
+      {% for category, message in messages %}
+        <div class="alert alert-{{ _cats.get(category,'info') }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
     {% endif %}
   {% endwith %}
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <div>
-      <h1 class="h4 mb-0">
-        <i class="fa-solid fa-user-doctor text-primary me-2"></i>
-        Éditer le professionnel
-        {% if professional %}<span class="small text-muted small-mono">#{{ professional.id }}</span>{% endif %}
-      </h1>
-      {% if professional and professional.status %}
-        <div class="small text-muted">Statut actuel : <strong>{{ professional.status }}</strong></div>
-      {% endif %}
-    </div>
-    <div class="d-flex gap-2">
-      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">
-        <i class="fa-solid fa-arrow-left-long me-1"></i>Retour
-      </a>
-      <a class="btn btn-outline-primary" href="{{ url_for('admin.view_professional', professional_id=professional.id) }}">
-        <i class="fa-solid fa-eye me-1"></i>Voir la fiche
-      </a>
-    </div>
-  </div>
-
-  <form method="post" action="{{ url_for('admin.admin_edit_product', product_id=professional.id) }}">
+  <form class="card p-4" method="post" action="{{ url_for('admin.admin_edit_product', product_id=professional.id) }}">
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
 
-    <div class="row g-3">
-      <!-- Colonne gauche -->
-      <div class="col-lg-8">
-        <div class="card mb-3">
-          <div class="card-body">
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label">Nom</label>
-                <input name="name" class="form-control" value="{{ professional.name or '' }}">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Spécialité</label>
-                <input name="specialty" class="form-control"
-                  value="{{ professional.specialty or '' }}" placeholder="Psychologue, Thérapeute, Coach…">
-                <div class="help">Compat : <code>category</code> accepté en POST.</div>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Ville</label>
-                <input name="location" class="form-control" value="{{ professional.location or '' }}">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Téléphone</label>
-                <input name="phone" class="form-control" value="{{ professional.phone or '' }}">
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Adresse (complète)</label>
-                <input name="address" class="form-control" value="{{ professional.address or '' }}">
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Latitude</label>
-                <input name="latitude" class="form-control" type="number" step="any"
-                       value="{{ professional.latitude if professional.latitude is not none }}">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Longitude</label>
-                <input name="longitude" class="form-control" type="number" step="any"
-                       value="{{ professional.longitude if professional.longitude is not none }}">
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Tarif (MAD)</label>
-                <input name="consultation_fee" class="form-control" type="number" min="0" step="1"
-                       value="{{ '%.0f'|format(professional.consultation_fee or 0) }}">
-                <div class="help">Compat : <code>price</code> accepté.</div>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Années d’expérience</label>
-                <input name="experience_years" class="form-control" type="number" min="0" step="1"
-                       value="{{ professional.experience_years or 0 }}">
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Disponibilité</label>
-                <select name="availability" class="form-select">
-                  {% set avail = professional.availability or 'disponible' %}
-                  <option value="disponible"  {{ 'selected' if avail=='disponible'  else '' }}>Disponible</option>
-                  <option value="indisponible"{{ 'selected' if avail=='indisponible'else '' }}>Indisponible</option>
-                </select>
-                <div class="help">Compat : <code>stock</code> (1/0) pris en compte si fourni.</div>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Types de consultation</label>
-                {% set types = (professional.consultation_types or '') %}
-                {% set has = lambda v: (v in types) %}
-                <select name="consultation_types" class="form-select" multiple>
-                  <option value="cabinet"  {{ 'selected' if 'cabinet'   in types else '' }}>Cabinet</option>
-                  <option value="domicile" {{ 'selected' if 'domicile'  in types else '' }}>Domicile</option>
-                  <option value="en_ligne" {{ 'selected' if 'en_ligne'  in types or 'video' in types or 'vidéo' in types else '' }}>En ligne / Vidéo</option>
-                </select>
-                <div class="help">Tu peux aussi cocher (fallback) :</div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="checkbox" name="office_consultation" id="ct_cabinet"
-                         {{ 'checked' if 'cabinet' in types else '' }}>
-                  <label class="form-check-label" for="ct_cabinet">Cabinet</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="checkbox" name="home_consultation" id="ct_domicile"
-                         {{ 'checked' if 'domicile' in types else '' }}>
-                  <label class="form-check-label" for="ct_domicile">Domicile</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="checkbox" name="online_consultation" id="ct_enligne"
-                         {{ 'checked' if ('en_ligne' in types or 'video' in types or 'vidéo' in types) else '' }}>
-                  <label class="form-check-label" for="ct_enligne">En ligne</label>
-                </div>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Description</label>
-                <textarea name="description" class="form-control" rows="5">{{ professional.description or '' }}</textarea>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <label class="form-label">Nom</label>
+        <input type="text" name="name" class="form-control" value="{{ professional.name or '' }}" required>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Spécialité</label>
+        <input type="text" name="specialty" class="form-control" value="{{ professional.specialty or '' }}" list="sp-list" required>
+        <datalist id="sp-list">
+          <option>Psychologue</option><option>Psychiatre</option><option>Psychothérapeute</option>
+          <option>Coach</option><option>Coach de vie</option><option>Thérapeute familial</option>
+          <option>Thérapeute de couple</option><option>Hypnothérapeute</option>
+          <option>Orthophoniste</option><option>Psychomotricien</option><option>Kinésithérapeute</option>
+          <option>Guérisseur</option><option>Art-thérapeute</option><option>Neuropsychologue</option>
+          <option>Sexologue</option>
+        </datalist>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Ville</label>
+        <input type="text" name="location" class="form-control" value="{{ professional.location or '' }}">
       </div>
 
-      <!-- Colonne droite -->
-      <div class="col-lg-4">
-        <div class="card mb-3">
-          <div class="card-body">
-            <label class="form-label">Image (URL)</label>
-            <input name="image_url" id="imageUrl" class="form-control"
-                   value="{{ professional.image_url or '' }}"
-                   placeholder="/media/profiles/xxx.jpg ou https://…">
-            <div class="help">Si la photo est stockée localement, utilise <code>/media/profiles/…</code>.</div>
-            <div class="text-center mt-3">
-              <img id="imgPreview" class="avatar"
-                   src="{{ (professional.image_url or '')|trim or 'https://placehold.co/400x400?text=Photo' }}"
-                   onerror="this.onerror=null;this.src='https://placehold.co/400x400?text=Photo';" alt="">
-            </div>
-          </div>
-        </div>
-
-        <div class="card mb-3">
-          <div class="card-body">
-            <label class="form-label">Statut</label>
-            {% set st = professional.status or 'en_attente' %}
-            <select name="status" class="form-select">
-              <option value="valide"      {{ 'selected' if st=='valide' else '' }}>Validé</option>
-              <option value="en_attente"  {{ 'selected' if st=='en_attente' else '' }}>En attente</option>
-              <option value="rejete"      {{ 'selected' if st=='rejete' else '' }}>Rejeté</option>
-            </select>
-            <div class="help">Tu peux valider/rejeter ici sans passer par la liste.</div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-body d-grid gap-2">
-            <button class="btn btn-primary btn-lg">
-              <i class="fa-solid fa-floppy-disk me-2"></i>Enregistrer les modifications
-            </button>
-            <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">Annuler</a>
-          </div>
-        </div>
+      <div class="col-12">
+        <label class="form-label">Description</label>
+        <textarea name="description" class="form-control" rows="3">{{ professional.description or '' }}</textarea>
       </div>
+
+      <div class="col-lg-3">
+        <label class="form-label">Tarif (MAD)</label>
+        <input type="number" step="0.01" name="consultation_fee" class="form-control" value="{{ professional.consultation_fee or '' }}">
+        <div class="form-text">Compatible aussi avec <code>price</code>.</div>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Années d’expérience</label>
+        <input type="number" name="experience_years" class="form-control" min="0" value="{{ professional.experience_years or 0 }}">
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Téléphone</label>
+        <input type="text" name="phone" class="form-control" value="{{ professional.phone or '' }}">
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Disponibilité</label>
+        <select name="availability" class="form-select">
+          <option value="disponible" {% if professional.availability=='disponible' %}selected{% endif %}>Disponible</option>
+          <option value="indisponible" {% if professional.availability=='indisponible' %}selected{% endif %}>Indisponible</option>
+        </select>
+      </div>
+
+      <div class="col-lg-6">
+        <label class="form-label">Image (URL)</label>
+        <input type="url" name="image_url" class="form-control" id="imgurl" value="{{ professional.image_url or '' }}" placeholder="https://...">
+        <div class="form-text">Aperçu ci-contre si disponible.</div>
+      </div>
+      <div class="col-lg-6 d-flex align-items-end">
+        <img id="preview" class="preview ms-lg-3" src="{{ professional.image_url or 'https://placehold.co/120x120?text=Image' }}" alt="preview"
+             onerror="this.src='https://placehold.co/120x120?text=Image'">
+      </div>
+
+      <div class="col-lg-6">
+        <label class="form-label">Adresse exacte</label>
+        <input type="text" name="address" class="form-control" value="{{ professional.address or '' }}">
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Latitude</label>
+        <input type="number" step="any" name="latitude" class="form-control" value="{{ professional.latitude if professional.latitude is not none else '' }}">
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Longitude</label>
+        <input type="number" step="any" name="longitude" class="form-control" value="{{ professional.longitude if professional.longitude is not none else '' }}">
+      </div>
+
+      <div class="col-lg-6">
+        <label class="form-label d-block">Types de consultation</label>
+        {% set ct = (professional.consultation_types or '') %}
+        {% set has_cab = 'cabinet' in ct %}
+        {% set has_dom = 'domicile' in ct %}
+        {% set has_onl = 'en_ligne' in ct or 'video' in ct or 'vidéo' in ct %}
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="ct_cab" name="office_consultation" {% if has_cab %}checked{% endif %}>
+          <label class="form-check-label" for="ct_cab">Cabinet</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="ct_dom" name="home_consultation" {% if has_dom %}checked{% endif %}>
+          <label class="form-check-label" for="ct_dom">Domicile</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="ct_online" name="online_consultation" {% if has_onl %}checked{% endif %}>
+          <label class="form-check-label" for="ct_online">En ligne</label>
+        </div>
+        <div class="form-text">Le backend convertit en <span class="badge-chip">cabinet,domicile,en_ligne</span>.</div>
+      </div>
+
+      <div class="col-lg-3">
+        <label class="form-label">Statut</label>
+        <select name="status" class="form-select">
+          <option value="">(inchangé)</option>
+          <option value="valide" {% if professional.status=='valide' %}selected{% endif %}>Validé</option>
+          <option value="en_attente" {% if professional.status=='en_attente' %}selected{% endif %}>En attente</option>
+          <option value="rejete" {% if professional.status=='rejete' %}selected{% endif %}>Rejeté</option>
+        </select>
+        <div class="form-text">Contrôle la visibilité et la prise de RDV.</div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4">
+      <button class="btn btn-primary">Enregistrer</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">Annuler</a>
     </div>
   </form>
 </div>
 
 <script>
-  (function(){
-    const url = document.getElementById('imageUrl');
-    const img = document.getElementById('imgPreview');
-    if(url && img){
-      url.addEventListener('input', ()=> {
-        const v = url.value.trim();
-        img.src = v || 'https://placehold.co/400x400?text=Photo';
-      });
-      img.onerror = ()=> { img.src = 'https://placehold.co/400x400?text=Photo'; };
-    }
-  })();
+document.getElementById('imgurl').addEventListener('input', function(){
+  const v = this.value || '';
+  const p = document.getElementById('preview');
+  if(v.startsWith('http')) p.src = v; else p.src = 'https://placehold.co/120x120?text=Image';
+});
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
