@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="referrer" content="no-referrer" />
   <title>{{ professional.name }} - Fiche professionnelle</title>
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -14,22 +15,27 @@
     body{ background:var(--light); color:var(--ink); }
     .pro-header{ background:#fff; border-radius:16px; box-shadow:0 10px 25px rgba(111,66,193,.08); }
 
-    /* Avatar robuste (desktop + mobiles récalcitrants) */
-    .avatar-box{ position:relative; width:100%; max-width:320px; margin-inline:auto; border-radius:16px; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,.06); }
+    /* Avatar robuste (desktop + mobiles) */
+    .avatar-box{
+      position:relative; width:100%; max-width:320px; margin-inline:auto;
+      border-radius:16px; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,.06);
+      background:#f3f3f8;
+    }
     .avatar-box::before{ content:""; display:block; padding-top:100%; } /* carré 1:1 */
-    .avatar-bg{ position:absolute; inset:0; background:#faf8ff; background-size:cover; background-position:center; }
-    .avatar{ position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:cover; background:transparent; }
+    .avatar{
+      position:absolute; inset:0; display:block; width:100%; height:100%;
+      object-fit:cover; object-position:center center; background:transparent;
+    }
 
     .badge-chip{ background:rgba(111,66,193,.1); color:var(--primary); border-radius:999px; padding:.35rem .75rem; display:inline-flex; align-items:center; gap:.4rem; margin:.15rem .25rem .15rem 0; white-space:nowrap; }
     .price{ font-size:1.6rem; font-weight:700; color:var(--primary); }
     .cta a{ min-width:220px; }
     .socials a{ display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.08); margin-right:.5rem; border:1px solid #eee; color:#444; }
     .socials a:hover{ transform: translateY(-2px); color:var(--primary-2); }
-
     @media (max-width:480px){ .avatar-box{ max-width:260px; } }
   </style>
 
-  <!-- ta feuille mobile spécifique -->
+  <!-- feuille mobile spécifique -->
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 </head>
 <body>
@@ -50,43 +56,36 @@
     </div>
   {% endif %}
 
-  {# --------- URLs d'image (HTTPS, fallback relatif, cache-buster) --------- #}
-  {% set raw = (professional.image_url or '')|trim %}
-  {% if raw.startswith('/media/profiles/') %}
-    {% set fname = raw.split('/media/profiles/')[1] %}
-    {% set abs_https = url_for('profile_media', filename=fname, _external=True, _scheme='https') %}
-    {% set rel_path = raw %}
-  {% elif raw.startswith('http://') %}
-    {% set abs_https = 'https://' ~ raw[7:] %}
-    {% set rel_path = raw %}
-  {% elif raw.startswith('https://') %}
-    {% set abs_https = raw %}
-    {% set rel_path = raw %}
-  {% elif raw %}
-    {# Ex: chemin relatif ancien #}
-    {% set abs_https = url_for('static', filename=raw.lstrip('/'), _external=True, _scheme='https') %}
-    {% set rel_path = url_for('static', filename=raw.lstrip('/')) %}
+  {# --- Prépare les URLs d’image: proxy principal + fallback local + placeholder --- #}
+  {% set placeholder = 'https://placehold.co/600x600?text=Photo+indisponible' %}
+  {% set primary_src = url_for('profile_photo', professional_id=professional.id) %}
+  {% if professional.image_url and professional.image_url.startswith('/media/profiles/') %}
+    {% set local_fname = professional.image_url.split('/media/profiles/')[1] %}
+    {% set fallback_local = url_for('profile_media', filename=local_fname) %}
   {% else %}
-    {% set abs_https = 'https://placehold.co/600x600?text=Photo' %}
-    {% set rel_path  = abs_https %}
+    {% set fallback_local = None %}
   {% endif %}
-  {% set v = '?v=' ~ professional.id %}
-  {% set src1 = abs_https ~ v %}
-  {% set src2 = rel_path ~ v %}
-  {% set placeholder = 'https://placehold.co/600x600?text=Photo' %}
 
   <div class="pro-header p-4 p-lg-5">
     <div class="row g-4 align-items-start">
       <!-- Photo -->
       <div class="col-lg-4 text-center">
         <div class="avatar-box">
-          <div class="avatar-bg" style="background-image:url('{{ src2|e }}');"></div>
           <img
             class="avatar"
             alt="Photo de {{ professional.name }}"
-            src="{{ src1 }}"
-            onerror="if(this.dataset.step!=='1'){this.dataset.step='1';this.src='{{ src2 }}';}else{this.onerror=null;this.src='{{ placeholder }}';}"
-          >
+            src="{{ primary_src }}"
+            referrerpolicy="no-referrer"
+            loading="eager"
+            decoding="async"
+            width="600" height="600"
+            onerror="
+              if (this.dataset.step!=='1' && '{{ fallback_local|default('') }}' !== '') {
+                this.dataset.step='1'; this.src='{{ fallback_local }}';
+              } else if (this.dataset.step!=='2') {
+                this.dataset.step='2'; this.src='{{ placeholder }}';
+              } else { this.onerror=null; }
+            ">
         </div>
       </div>
 
