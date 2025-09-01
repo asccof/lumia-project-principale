@@ -1,14 +1,17 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
+from flask import (
+    Flask, render_template, request, redirect, url_for, flash, jsonify,
+    send_from_directory, Response
+)
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime, date, timedelta
 from sqlalchemy import or_, text
-import os
+from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+import os, uuid, io, requests
 
 # === [TIGHRI_R1:CONFIG_INLINE_SAFE] =========================================
-from pathlib import Path
-import uuid, io
 try:
     from PIL import Image, ImageOps
     _PIL_OK = True
@@ -56,6 +59,9 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = True  # Render est en HTTPS
+app.config['PREFERRED_URL_SCHEME'] = 'https'  # URLs absolues en https
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # respecte X-Forwarded-Proto/Host
+
 # Taille max d'upload (respecte la valeur si déjà définie ailleurs)
 app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
 
@@ -135,7 +141,6 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 # ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
-# Ajoute colonnes côté DB si absentes (sans casser le modèle Python)
 with app.app_context():
     db.create_all()
     try:
@@ -143,7 +148,7 @@ with app.app_context():
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
-        # users: téléphone obligatoire
+        # users: téléphone
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"))
         db.session.commit()
     except Exception as e:
@@ -215,7 +220,6 @@ def _process_and_save_profile_image(file_storage) -> str:
 # ===========================================================================
 
 # ===== [TIGHRI_R1:PACK_REGISTRATION_SAFE] ===================================
-# Enregistrement tolérant du pack R1 (blueprints additionnels si présents)
 try:
     from tighri_r1 import register_tighri_r1
 except Exception as e:
@@ -382,13 +386,14 @@ def login():
     if request.method == 'POST':
         username_or_email = request.form.get('username', '').strip()
         password = request.form.get('password', '')
+        remember = bool(request.form.get('remember'))
 
         user = User.query.filter(
             or_(User.username == username_or_email, User.email == username_or_email.lower())
         ).first()
 
         if user and check_password_hash(user.password_hash, password):
-            login_user(user)
+            login_user(user, remember=remember)
             if user.user_type == 'professional':
                 flash('Bienvenue dans votre espace professionnel!')
                 return redirect(url_for('professional_dashboard'))
@@ -688,7 +693,6 @@ def professional_appointments():
 def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
     """
     Stub de notifications (compte + téléphone).
-    A brancher plus tard sur SMS/WhatsApp/Email.
     kind: 'accepted' | 'refused' | 'reminder' | 'pending'
     """
     app.logger.info("[NOTIFY] user=%s kind=%s ap_id=%s brand=%s",
@@ -879,7 +883,7 @@ def book_appointment(professional_id):
             flash("Ce créneau est marqué comme indisponible.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Créer RDV (statut EN ATTENTE de validation par le pro)
+        # Créer RDV (statut EN ATTENTE)
         appointment = Appointment(
             patient_id=current_user.id,
             professional_id=professional_id,
@@ -891,7 +895,7 @@ def book_appointment(professional_id):
         db.session.add(appointment)
         db.session.commit()
 
-        # Notification compte + (plus tard) téléphone/WhatsApp
+        # Notification (stub)
         notify_user_account_and_phone(user_id=current_user.id, kind='pending', ap=appointment)
 
         flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
@@ -930,7 +934,7 @@ def my_appointments():
 @app.get('/cron/send-reminders-24h', endpoint='cron_send_reminders_24h')
 def cron_send_reminders_24h():
     """
-    Endpoint de cron sécurisé (Render/worker) :
+    Endpoint de cron sécurisé :
     appeler /cron/send-reminders-24h?token=XXX
     où XXX = os.environ['CRON_TOKEN'].
     """
@@ -968,28 +972,29 @@ def site_status():
         'admin_port': 8080
     }
     return render_template('site_status.html', status=status, stats=stats)
-# ===== Proxy d’images pour photos de profils =====
-# Permet d’afficher les images même si l’hébergeur externe bloque le hotlink sur mobile.
-import requests
-from urllib.parse import urlparse
-from flask import Response, redirect
 
+# ===== Proxy d’images pour photos de profils =====
 PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
 
-@app.route("/media/profile/<int:professional_id>")
+@app.route("/media/profile/<int:professional_id>", endpoint='profile_photo')
 def profile_photo(professional_id):
     pro = Professional.query.get_or_404(professional_id)
     raw_url = (pro.image_url or "").strip()
+
+    # Si on a déjà un fichier local : rediriger vers le service local (HTTPS absolu)
+    if raw_url.startswith("/media/profiles/"):
+        fname = raw_url.split("/media/profiles/")[-1]
+        return redirect(url_for('profile_media', filename=fname, _external=True, _scheme='https'))
 
     # Pas d’URL => placeholder
     if not raw_url:
         return redirect(PHOTO_PLACEHOLDER)
 
-    # Normalisation http -> https (évite le mixed-content bloqué sur mobile)
+    # Normalisation http -> https (évite mixed content)
     if raw_url.startswith("http://"):
         raw_url = "https://" + raw_url[len("http://"):]
 
-    # Sécurité: on n’autorise que http(s)
+    # Sécurité: n’autorise que http(s)
     parsed = urlparse(raw_url)
     if parsed.scheme not in ("http", "https"):
         return redirect(PHOTO_PLACEHOLDER)
