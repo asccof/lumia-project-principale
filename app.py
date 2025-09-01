@@ -144,12 +144,20 @@ def load_user(user_id):
 with app.app_context():
     db.create_all()
     try:
-        # professionals: adresse + géoloc
+        # professionals: adresse + géoloc + téléphone + réseaux sociaux
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS facebook_url TEXT;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS instagram_url TEXT;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS tiktok_url TEXT;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS youtube_url TEXT;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;"))
+
         # users: téléphone
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"))
+
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
@@ -172,7 +180,6 @@ with app.app_context():
         db.session.add(u)
         db.session.commit()
         app.logger.info(f"Admin '{admin_username}' créé.")
-# ===========================================================================
 
 # ===== [TIGHRI_R1:IMAGES_INLINE_FALLBACK] ===================================
 TARGET_SIZE = (512, 512)
