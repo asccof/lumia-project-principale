@@ -6,82 +6,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{{ professional.name }} - Fiche professionnelle</title>
 
-  <!-- UI libs -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
   <style>
     :root{ --primary:#6f42c1; --primary-2:#8b5cf6; --light:#f8f5ff; --ink:#1f1430; }
     body{ background:var(--light); color:var(--ink); }
+    .pro-header{ background:#fff; border-radius:16px; box-shadow:0 10px 25px rgba(111,66,193,.08); }
 
-    .pro-header{
-      background:#fff; border-radius:16px;
-      box-shadow:0 10px 25px rgba(111,66,193,.08);
-    }
+    /* Avatar robuste (desktop + mobiles récalcitrants) */
+    .avatar-box{ position:relative; width:100%; max-width:320px; margin-inline:auto; border-radius:16px; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,.06); }
+    .avatar-box::before{ content:""; display:block; padding-top:100%; } /* carré 1:1 */
+    .avatar-bg{ position:absolute; inset:0; background:#faf8ff; background-size:cover; background-position:center; }
+    .avatar{ position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:cover; background:transparent; }
 
-    /* --- Avatar ultra-safe (fonctionne iOS/Android anciens & desktop) --- */
-    .avatar-box{
-      position:relative;
-      width:100%;
-      max-width:320px;
-      margin-inline:auto;
-      border-radius:16px;
-      overflow:hidden;
-      box-shadow:0 10px 25px rgba(0,0,0,.06);
-      isolation:isolate; /* pour que l'image et le bg ne débordent pas */
-    }
-    /* carré 1:1 via padding-top (compat universelle) */
-    .avatar-box::before{ content:""; display:block; padding-top:100%; }
-
-    /* calque background-image = filet de sécurité si <img> ne peint pas */
-    .avatar-bg{
-      position:absolute; inset:0;
-      background: radial-gradient(ellipse at 50% 45%, #faf8ff 0 60%, #eee 61% 100%);
-      background-size: cover;
-      background-position: center;
-      filter: none;
-      will-change: transform;
-    }
-
-    /* <img> réelle par-dessus */
-    .avatar{
-      position:absolute; inset:0;
-      display:block;
-      width:100%; height:100%;
-      object-fit:cover;
-      background: transparent; /* rien derrière, on utilise .avatar-bg */
-      image-rendering:auto;
-      -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
-    }
-
-    .badge-chip{
-      background: rgba(111,66,193,.1);
-      color: var(--primary);
-      border-radius: 999px;
-      padding:.35rem .75rem;
-      display:inline-flex; align-items:center; gap:.4rem;
-      margin:.15rem .25rem .15rem 0;
-      white-space:nowrap;
-    }
-
+    .badge-chip{ background:rgba(111,66,193,.1); color:var(--primary); border-radius:999px; padding:.35rem .75rem; display:inline-flex; align-items:center; gap:.4rem; margin:.15rem .25rem .15rem 0; white-space:nowrap; }
     .price{ font-size:1.6rem; font-weight:700; color:var(--primary); }
-    .cta a{ min-width: 220px; }
-
-    .socials a{
-      display:inline-flex; align-items:center; justify-content:center;
-      width:44px; height:44px; border-radius:50%;
-      background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.08);
-      margin-right:.5rem; border:1px solid #eee;
-      color:#444;
-    }
+    .cta a{ min-width:220px; }
+    .socials a{ display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.08); margin-right:.5rem; border:1px solid #eee; color:#444; }
     .socials a:hover{ transform: translateY(-2px); color:var(--primary-2); }
 
-    @media (max-width: 480px){
-      .avatar-box{ max-width: 260px; }
-    }
+    @media (max-width:480px){ .avatar-box{ max-width:260px; } }
   </style>
 
-  <!-- ta feuille mobile spécifique (conserve le rendu PC) -->
+  <!-- ta feuille mobile spécifique -->
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 </head>
 <body>
@@ -102,32 +50,42 @@
     </div>
   {% endif %}
 
-  {# ------- Construction d'une URL d'image ABSOLUE + cache-buster ------- #}
+  {# --------- URLs d'image (HTTPS, fallback relatif, cache-buster) --------- #}
   {% set raw = (professional.image_url or '')|trim %}
   {% if raw.startswith('/media/profiles/') %}
     {% set fname = raw.split('/media/profiles/')[1] %}
-    {% set base_url = url_for('profile_media', filename=fname, _external=True) %}
-  {% elif raw.startswith('http') %}
-    {% set base_url = raw %}
+    {% set abs_https = url_for('profile_media', filename=fname, _external=True, _scheme='https') %}
+    {% set rel_path = raw %}
+  {% elif raw.startswith('http://') %}
+    {% set abs_https = 'https://' ~ raw[7:] %}
+    {% set rel_path = raw %}
+  {% elif raw.startswith('https://') %}
+    {% set abs_https = raw %}
+    {% set rel_path = raw %}
   {% elif raw %}
-    {# au cas où une ancienne valeur relative ait été stockée #}
-    {% set base_url = url_for('static', filename=raw.lstrip('/'), _external=True) %}
+    {# Ex: chemin relatif ancien #}
+    {% set abs_https = url_for('static', filename=raw.lstrip('/'), _external=True, _scheme='https') %}
+    {% set rel_path = url_for('static', filename=raw.lstrip('/')) %}
   {% else %}
-    {% set base_url = 'https://placehold.co/600x600?text=Photo' %}
+    {% set abs_https = 'https://placehold.co/600x600?text=Photo' %}
+    {% set rel_path  = abs_https %}
   {% endif %}
-  {% set img_url = base_url ~ '?v=' ~ professional.id %}
+  {% set v = '?v=' ~ professional.id %}
+  {% set src1 = abs_https ~ v %}
+  {% set src2 = rel_path ~ v %}
+  {% set placeholder = 'https://placehold.co/600x600?text=Photo' %}
 
   <div class="pro-header p-4 p-lg-5">
     <div class="row g-4 align-items-start">
       <!-- Photo -->
       <div class="col-lg-4 text-center">
-        <div class="avatar-box" style="--avatar-url:url('{{ img_url|e }}')">
-          <div class="avatar-bg" style="background-image:var(--avatar-url);"></div>
+        <div class="avatar-box">
+          <div class="avatar-bg" style="background-image:url('{{ src2|e }}');"></div>
           <img
             class="avatar"
             alt="Photo de {{ professional.name }}"
-            src="{{ img_url }}"
-            onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=Photo';"
+            src="{{ src1 }}"
+            onerror="if(this.dataset.step!=='1'){this.dataset.step='1';this.src='{{ src2 }}';}else{this.onerror=null;this.src='{{ placeholder }}';}"
           >
         </div>
       </div>
@@ -193,18 +151,10 @@
         {% if has_socials %}
           {% if professional.social_links_approved %}
             <div class="socials mb-3">
-              {% if professional.facebook_url %}
-                <a href="{{ professional.facebook_url }}" target="_blank" rel="noopener" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
-              {% endif %}
-              {% if professional.instagram_url %}
-                <a href="{{ professional.instagram_url }}" target="_blank" rel="noopener" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
-              {% endif %}
-              {% if professional.tiktok_url %}
-                <a href="{{ professional.tiktok_url }}" target="_blank" rel="noopener" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
-              {% endif %}
-              {% if professional.youtube_url %}
-                <a href="{{ professional.youtube_url }}" target="_blank" rel="noopener" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
-              {% endif %}
+              {% if professional.facebook_url %}<a href="{{ professional.facebook_url }}" target="_blank" rel="noopener" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>{% endif %}
+              {% if professional.instagram_url %}<a href="{{ professional.instagram_url }}" target="_blank" rel="noopener" aria-label="Instagram"><i class="fab fa-instagram"></i></a>{% endif %}
+              {% if professional.tiktok_url %}<a href="{{ professional.tiktok_url }}" target="_blank" rel="noopener" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>{% endif %}
+              {% if professional.youtube_url %}<a href="{{ professional.youtube_url }}" target="_blank" rel="noopener" aria-label="YouTube"><i class="fab fa-youtube"></i></a>{% endif %}
             </div>
           {% else %}
             <div class="alert alert-info py-2 mb-3"><i class="fa-solid fa-hourglass-half me-2"></i>Les liens réseaux sociaux sont en attente de validation.</div>
@@ -213,9 +163,7 @@
 
         <div class="cta d-flex flex-wrap gap-2 mt-3">
           {% if professional.status == 'valide' %}
-            <a class="btn btn-primary" href="{{ url_for('book_appointment', professional_id=professional.id) }}">
-              <i class="fas fa-calendar-plus me-2"></i>Prendre rendez-vous
-            </a>
+            <a class="btn btn-primary" href="{{ url_for('book_appointment', professional_id=professional.id) }}"><i class="fas fa-calendar-plus me-2"></i>Prendre rendez-vous</a>
           {% else %}
             <button class="btn btn-secondary" disabled><i class="fas fa-lock me-2"></i>Prendre rendez-vous (profil non validé)</button>
           {% endif %}
