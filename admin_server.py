@@ -5,42 +5,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from models import db, User, Professional, Appointment
 
-# IMPORTANT : on déclare un Blueprint. Pas de Flask(__name__), pas de db.init_app ici.
 admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
 
-# ======================================================================
-# Utils internes
-# ======================================================================
-
-def _admin_required_redirect():
-    """Retourne un redirect vers la page de login admin si non-admin."""
-    flash('Accès refusé', 'error')
-    return redirect(url_for('admin.admin_login'))
-
-def _get_social_value(form, key_base: str):
-    """
-    Récupère une valeur de réseau social depuis le formulaire :
-    - accepte 'facebook' ou 'facebook_url' (idem pour instagram/tiktok/youtube)
-    - trim() et renvoie '' si absent
-    """
-    return (form.get(f'{key_base}_url') or form.get(key_base) or '').strip()
-
-def _set_social_attribute(pro: Professional, attr_base: str, value: str):
-    """
-    Assigne la valeur dans le champ existant :
-    - priorité au champ '<base>_url' s'il existe dans le modèle
-    - sinon, essaie '<base>'
-    """
-    url_attr = f'{attr_base}_url'
-    if hasattr(pro, url_attr):
-        setattr(pro, url_attr, value or None)
-    elif hasattr(pro, attr_base):
-        setattr(pro, attr_base, value or None)
-
-# ======================================================================
-# AUTH ADMIN
-# ======================================================================
-
+# --------------------- AUTH ADMIN ---------------------
 @admin_bp.route('/login', methods=['GET', 'POST'], endpoint='admin_login')
 def admin_login():
     if request.method == 'POST':
@@ -52,10 +19,8 @@ def admin_login():
         ).first()
 
         if user and user.is_admin and check_password_hash(user.password_hash, password):
-            # REMEMBER-ME activé si la case est cochée
             remember = bool(request.form.get('remember'))
             login_user(user, remember=remember)
-
             next_url = (request.form.get('next') or '').strip()
             return redirect(next_url or url_for('admin.admin_dashboard'))
         else:
@@ -69,19 +34,17 @@ def admin_logout():
     logout_user()
     return redirect(url_for('admin.admin_login'))
 
-# ======================================================================
-# DASHBOARD
-# ======================================================================
-
+# --------------------- DASHBOARD ---------------------
 @admin_bp.route('/', endpoint='admin_dashboard')
 @login_required
 def admin_dashboard():
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
 
-    professionals = Professional.query.all()
-    users = User.query.all()
-    appointments = Appointment.query.all()
+    professionals = Professional.query.order_by(Professional.id.desc()).all()
+    users = User.query.order_by(User.id.desc()).all()
+    appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
 
     total_professionals = len(professionals)
     total_users = len(users)
@@ -103,15 +66,13 @@ def admin_dashboard():
         total_revenue=total_revenue
     )
 
-# ======================================================================
-# PROFESSIONNELS (liste type "products")
-# ======================================================================
-
+# --------------------- PROFESSIONNELS (liste type "products") ---------------------
 @admin_bp.route('/products', endpoint='admin_products')
 @login_required
 def admin_products():
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
     professionals = Professional.query.order_by(Professional.id.desc()).all()
     return render_template('admin_products.html', professionals=professionals)
 
@@ -119,18 +80,17 @@ def admin_products():
 @login_required
 def admin_add_product():
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
 
     if request.method == 'POST':
-        # Champs texte de base
         name = (request.form.get('name') or '').strip()
         description = (request.form.get('description') or '').strip()
         specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
-        city_or_location = (request.form.get('location') or '').strip()  # compat ancien champ
+        city_or_location = (request.form.get('location') or '').strip()
         image_url = (request.form.get('image_url') or '').strip()
         phone = (request.form.get('phone') or '').strip()
 
-        # Adresse exacte + lat/lng
         address = (request.form.get('address') or '').strip()
         lat_raw = (request.form.get('latitude') or '').strip()
         lng_raw = (request.form.get('longitude') or '').strip()
@@ -145,21 +105,18 @@ def admin_add_product():
             longitude = None
             flash("Longitude invalide", "error")
 
-        # Tarif
         fee_raw = (request.form.get('price') or request.form.get('consultation_fee') or '0').replace(',', '.')
         try:
             consultation_fee = float(fee_raw)
         except ValueError:
             consultation_fee = 0.0
 
-        # Expérience
         exp_raw = request.form.get('experience_years') or '0'
         try:
             experience_years = int(exp_raw)
         except ValueError:
             experience_years = 0
 
-        # Disponibilité
         availability = request.form.get('availability')
         if availability is None:
             stock = (request.form.get('stock') or '').strip().lower()
@@ -174,14 +131,13 @@ def admin_add_product():
             if request.form.get('online_consultation'): types_list.append('en_ligne')
         consultation_types = ','.join(types_list) if types_list else 'cabinet'
 
-        # Réseaux sociaux (accepte *et normalise* les deux variantes)
-        facebook_val = _get_social_value(request.form, 'facebook')
-        instagram_val = _get_social_value(request.form, 'instagram')
-        tiktok_val = _get_social_value(request.form, 'tiktok')
-        youtube_val = _get_social_value(request.form, 'youtube')
-        social_links_approved = ('social_links_approved' in request.form)
+        # Réseaux sociaux (URLs + approbation)
+        facebook_url  = (request.form.get('facebook_url')  or '').strip()
+        instagram_url = (request.form.get('instagram_url') or '').strip()
+        tiktok_url    = (request.form.get('tiktok_url')    or '').strip()
+        youtube_url   = (request.form.get('youtube_url')   or '').strip()
+        social_links_approved = bool(request.form.get('social_links_approved'))
 
-        # Validations minimales
         if not name or not description or not specialty:
             flash("Nom, description et spécialité sont obligatoires.", "error")
             return redirect(url_for('admin.admin_add_product'))
@@ -197,25 +153,16 @@ def admin_add_product():
             location=city_or_location or 'Casablanca',
             phone=phone or None,
             experience_years=experience_years,
+            address=address or None,
+            latitude=latitude,
+            longitude=longitude,
+            facebook_url=facebook_url or None,
+            instagram_url=instagram_url or None,
+            tiktok_url=tiktok_url or None,
+            youtube_url=youtube_url or None,
+            social_links_approved=social_links_approved,
             status='en_attente'
         )
-
-        # Colonnes optionnelles (selon migration)
-        if hasattr(professional, 'address'):
-            professional.address = address
-        if hasattr(professional, 'latitude'):
-            professional.latitude = latitude
-        if hasattr(professional, 'longitude'):
-            professional.longitude = longitude
-
-        # Réseaux sociaux (pose sur *_url si dispo, sinon fallback sans suffixe)
-        _set_social_attribute(professional, 'facebook', facebook_val)
-        _set_social_attribute(professional, 'instagram', instagram_val)
-        _set_social_attribute(professional, 'tiktok', tiktok_val)
-        _set_social_attribute(professional, 'youtube', youtube_val)
-        if hasattr(professional, 'social_links_approved'):
-            professional.social_links_approved = bool(social_links_approved)
-
         db.session.add(professional)
         db.session.commit()
         flash('Professionnel ajouté avec succès!')
@@ -227,7 +174,8 @@ def admin_add_product():
 @login_required
 def admin_edit_product(product_id):
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
 
     professional = Professional.query.get_or_404(product_id)
 
@@ -247,34 +195,28 @@ def admin_edit_product(product_id):
         professional.location = (request.form.get('location') or professional.location or '').strip()
         professional.phone = (request.form.get('phone') or professional.phone or '').strip()
 
-        # Adresse exacte + lat/lng
         address = (request.form.get('address') or '').strip()
         lat_raw = (request.form.get('latitude') or '').strip()
         lng_raw = (request.form.get('longitude') or '').strip()
         try:
-            latitude = float(lat_raw) if lat_raw else None
+            latitude = float(lat_raw) if lat_raw else getattr(professional, 'latitude', None)
         except ValueError:
             latitude = getattr(professional, 'latitude', None)
             flash("Latitude invalide", "error")
         try:
-            longitude = float(lng_raw) if lng_raw else None
+            longitude = float(lng_raw) if lng_raw else getattr(professional, 'longitude', None)
         except ValueError:
             longitude = getattr(professional, 'longitude', None)
             flash("Longitude invalide", "error")
 
-        if hasattr(professional, 'address'):
-            professional.address = address
-        if hasattr(professional, 'latitude'):
-            professional.latitude = latitude
-        if hasattr(professional, 'longitude'):
-            professional.longitude = longitude
+        professional.address = address or None
+        professional.latitude = latitude
+        professional.longitude = longitude
 
-        # statut si fourni
         status_val = (request.form.get('status') or '').strip()
         if status_val:
             professional.status = status_val
 
-        # availability depuis 'stock' si présent, sinon 'availability'
         stock = request.form.get('stock')
         if stock is not None:
             professional.availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
@@ -283,7 +225,6 @@ def admin_edit_product(product_id):
             if availability:
                 professional.availability = availability
 
-        # types de consultation si présents
         types_list = request.form.getlist('consultation_types')
         if types_list or any(request.form.get(k) for k in ['home_consultation', 'office_consultation', 'online_consultation']):
             t = []
@@ -295,21 +236,13 @@ def admin_edit_product(product_id):
             if t:
                 professional.consultation_types = ','.join(t)
 
-        # Réseaux sociaux (lecture multi-clés + écriture souple)
-        facebook_val = _get_social_value(request.form, 'facebook')
-        instagram_val = _get_social_value(request.form, 'instagram')
-        tiktok_val = _get_social_value(request.form, 'tiktok')
-        youtube_val = _get_social_value(request.form, 'youtube')
-        social_links_approved = ('social_links_approved' in request.form)
+        # Réseaux sociaux
+        professional.facebook_url  = (request.form.get('facebook_url')  or '').strip() or None
+        professional.instagram_url = (request.form.get('instagram_url') or '').strip() or None
+        professional.tiktok_url    = (request.form.get('tiktok_url')    or '').strip() or None
+        professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
+        professional.social_links_approved = bool(request.form.get('social_links_approved'))
 
-        _set_social_attribute(professional, 'facebook', facebook_val)
-        _set_social_attribute(professional, 'instagram', instagram_val)
-        _set_social_attribute(professional, 'tiktok', tiktok_val)
-        _set_social_attribute(professional, 'youtube', youtube_val)
-        if hasattr(professional, 'social_links_approved'):
-            professional.social_links_approved = bool(social_links_approved)
-
-        # expérience si fourni
         exp_raw = request.form.get('experience_years')
         if exp_raw:
             try:
@@ -333,39 +266,30 @@ def admin_delete_product(product_id):
     db.session.commit()
     return jsonify({'success': True, 'message': 'Professionnel supprimé avec succès'})
 
-# ======================================================================
 # Variante CRUD /professionals
-# ======================================================================
-
 @admin_bp.route('/professionals', endpoint='admin_professionals')
 @login_required
 def admin_professionals():
     if not current_user.is_admin:
-        return _admin_required_redirect()
-    professionals = Professional.query.all()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
+    professionals = Professional.query.order_by(Professional.id.desc()).all()
     return render_template('admin_professionals.html', professionals=professionals)
 
 @admin_bp.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'], endpoint='edit_professional')
 @login_required
 def edit_professional(professional_id):
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
 
     professional = Professional.query.get_or_404(professional_id)
 
     if request.method == 'POST':
-        name = (request.form.get('name') or '').strip()
-        description = (request.form.get('description') or '').strip()
-        specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
-        image_url = (request.form.get('image_url') or '').strip()
-
-        if name:
-            professional.name = name
-        if description:
-            professional.description = description
-        if specialty:
-            professional.specialty = specialty
-        professional.image_url = image_url
+        professional.name = (request.form.get('name') or professional.name).strip()
+        professional.description = (request.form.get('description') or professional.description).strip()
+        professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
+        professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
 
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.').strip()
         if fee_raw != '':
@@ -379,19 +303,28 @@ def edit_professional(professional_id):
         if status in ('valide', 'en_attente', 'rejete'):
             professional.status = status
 
-        # Réseaux sociaux (optionnels)
-        facebook_val = _get_social_value(request.form, 'facebook')
-        instagram_val = _get_social_value(request.form, 'instagram')
-        tiktok_val = _get_social_value(request.form, 'tiktok')
-        youtube_val = _get_social_value(request.form, 'youtube')
-        social_links_approved = ('social_links_approved' in request.form)
+        # Téléphone / Adresse
+        professional.phone = (request.form.get('phone') or professional.phone or '').strip() or None
+        professional.location = (request.form.get('location') or professional.location or '').strip()
+        professional.address = (request.form.get('address') or professional.address or '').strip() or None
 
-        _set_social_attribute(professional, 'facebook', facebook_val)
-        _set_social_attribute(professional, 'instagram', instagram_val)
-        _set_social_attribute(professional, 'tiktok', tiktok_val)
-        _set_social_attribute(professional, 'youtube', youtube_val)
-        if hasattr(professional, 'social_links_approved'):
-            professional.social_links_approved = bool(social_links_approved)
+        lat_raw = (request.form.get('latitude') or '').strip()
+        lng_raw = (request.form.get('longitude') or '').strip()
+        try:
+            professional.latitude = float(lat_raw) if lat_raw else professional.latitude
+        except ValueError:
+            flash("Latitude invalide", "error")
+        try:
+            professional.longitude = float(lng_raw) if lng_raw else professional.longitude
+        except ValueError:
+            flash("Longitude invalide", "error")
+
+        # Réseaux sociaux
+        professional.facebook_url  = (request.form.get('facebook_url')  or '').strip() or None
+        professional.instagram_url = (request.form.get('instagram_url') or '').strip() or None
+        professional.tiktok_url    = (request.form.get('tiktok_url')    or '').strip() or None
+        professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
+        professional.social_links_approved = bool(request.form.get('social_links_approved'))
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
@@ -403,7 +336,8 @@ def edit_professional(professional_id):
 @login_required
 def delete_professional(professional_id):
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
     professional = Professional.query.get_or_404(professional_id)
     db.session.delete(professional)
     db.session.commit()
@@ -414,20 +348,19 @@ def delete_professional(professional_id):
 @login_required
 def view_professional(professional_id):
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
     professional = Professional.query.get_or_404(professional_id)
-    appointments = Appointment.query.filter_by(professional_id=professional_id).all()
+    appointments = Appointment.query.filter_by(professional_id=professional_id).order_by(Appointment.appointment_date.desc()).all()
     return render_template('view_professional.html', professional=professional, appointments=appointments)
 
-# ======================================================================
-# UTILISATEURS
-# ======================================================================
-
+# --------------------- UTILISATEURS ---------------------
 @admin_bp.route('/users', endpoint='admin_users')
 @login_required
 def admin_users():
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
     users = User.query.order_by(User.id.desc()).all()
     return render_template('admin_users.html', users=users)
 
@@ -435,7 +368,8 @@ def admin_users():
 @login_required
 def add_user():
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
 
     if request.method == 'POST':
         username = (request.form.get('username') or '').strip()
@@ -446,7 +380,7 @@ def add_user():
         phone = (request.form.get('phone') or '').strip()
 
         if not username or not email or not password:
-            flash("Tous les champs obligatoires ne sont pas remplis")
+            flash("Tous les champs sont obligatoires")
             return redirect(url_for('admin.add_user'))
 
         if User.query.filter_by(username=username).first():
@@ -475,7 +409,8 @@ def add_user():
 @login_required
 def edit_user(user_id):
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
     user = User.query.get_or_404(user_id)
 
     if request.method == 'POST':
@@ -512,30 +447,21 @@ def edit_user(user_id):
 @login_required
 def delete_user(user_id):
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
     user = User.query.get_or_404(user_id)
     db.session.delete(user)
     db.session.commit()
     flash('Utilisateur supprimé avec succès!')
     return redirect(url_for('admin.admin_users'))
 
-# ======================================================================
-# RDV / COMMANDES
-# ======================================================================
-
-@admin_bp.route('/orders', endpoint='admin_orders')
-@login_required
-def admin_orders():
-    if not current_user.is_admin:
-        return _admin_required_redirect()
-    appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
-    return render_template('admin_orders.html', appointments=appointments)
-
+# --------------------- RDV / COMMANDES ---------------------
 @admin_bp.route('/appointments', endpoint='admin_appointments')
 @login_required
 def admin_appointments():
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_appointments.html', appointments=appointments)
 
@@ -557,10 +483,7 @@ def update_appointment_status(appointment_id):
         db.session.rollback()
         return jsonify({'success': False, 'message': str(e)}), 500
 
-# ======================================================================
-# API STATS & VALIDATION PRO
-# ======================================================================
-
+# --------------------- API STATS & VALIDATION PRO ---------------------
 @admin_bp.route('/api/stats', endpoint='api_stats')
 @login_required
 def api_stats():
@@ -610,13 +533,10 @@ def reject_professional(professional_id):
 @login_required
 def pending_professionals():
     if not current_user.is_admin:
-        return _admin_required_redirect()
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
     pending_professionals = Professional.query.filter_by(status='en_attente').all()
     return render_template('pending_professionals.html', professionals=pending_professionals)
-
-# ======================================================================
-# Validation des liens sociaux (approbation admin)
-# ======================================================================
 
 @admin_bp.route('/professionals/<int:professional_id>/social-approval', methods=['POST'], endpoint='social_approval')
 @login_required
@@ -626,7 +546,6 @@ def social_approval(professional_id):
     professional = Professional.query.get_or_404(professional_id)
     data = request.get_json(silent=True) or {}
     approved = bool(data.get('approved', False))
-    # Applique uniquement si la colonne existe dans le modèle
     if hasattr(professional, 'social_links_approved'):
         professional.social_links_approved = approved
         db.session.commit()
