@@ -1,484 +1,258 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tighri - Prendre rendez-vous avec un professionnel</title>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tighri - Prendre rendez-vous avec un professionnel</title>
 
-    <!-- Styles de base (desktop) -->
-    <style>
-        body {
-            font-family: 'Montserrat', Arial, sans-serif;
-            background: #f7f5fa;
-            margin: 0;
-            color: #2d1a47;
-        }
-        .navbar {
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
-            position: fixed;
-            top: 0;
-            width: 100%;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(139,92,246,0.1);
-        }
-        .nav-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 2rem;
-        }
-        .nav-logo {
-            color: #8B5CF6;
-            font-size: 1.8rem;
-            font-weight: 700;
-            text-decoration: none;
-        }
-        .nav-menu {
-            display: flex;
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            gap: 2rem;
-        }
-        .nav-menu a {
-            color: #4B3869;
-            text-decoration: none;
-            font-weight: 600;
-            transition: color 0.2s;
-        }
-        .nav-menu a:hover {
-            color: #8B5CF6;
-        }
-        .nav-auth {
-            display: flex;
-            gap: 1rem;
-        }
-        .nav-auth a {
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.2s;
-        }
-        .nav-login {
-            color: #8B5CF6;
-            border: 2px solid #8B5CF6;
-        }
-        .nav-login:hover {
-            background: #8B5CF6;
-            color: #fff;
-        }
-        .nav-register {
-            background: #8B5CF6;
-            color: #fff;
-        }
-        .nav-register:hover {
-            background: #6D28D9;
-        }
-        header {
-            background: linear-gradient(90deg, #8B5CF6 0%, #6D28D9 100%);
-            color: #fff;
-            padding: 8rem 0 2rem 0;
-            text-align: center;
-            margin-top: 70px; /* pour compenser la navbar fixe (desktop) */
-        }
-        header h1 {
-            margin: 0 0 0.5rem 0;
-            font-size: 3rem;
-            font-weight: 700;
-        }
-        header p {
-            margin: 0 0 1.5rem 0;
-            font-size: 1.3rem;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        .search-bar {
-            display: flex;
-            justify-content: center;
-            margin: 2rem 0 1rem 0;
-        }
-        .search-bar input {
-            width: 400px;
-            padding: 1rem 1.5rem;
-            border: 1px solid #8B5CF6;
-            border-radius: 30px 0 0 30px;
-            font-size: 1rem;
-            outline: none;
-        }
-        .search-bar button {
-            padding: 1rem 2rem;
-            border: none;
-            background: #8B5CF6;
-            color: #fff;
-            font-size: 1rem;
-            border-radius: 0 30px 30px 0;
-            cursor: pointer;
-            font-weight: 700;
-            transition: background 0.2s;
-        }
-        .search-bar button:hover {
-            background: #6D28D9;
-        }
-        .sections {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 2rem;
-            margin: 3rem 0;
-            padding: 0 2rem;
-        }
-        .section {
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
-            padding: 2.5rem;
-            min-width: 320px;
-            max-width: 400px;
-            flex: 1 1 320px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-        .section h2 {
-            color: #8B5CF6;
-            margin-bottom: 1rem;
-            font-size: 1.5rem;
-        }
-        .section p {
-            margin-bottom: 2rem;
-            color: #4B3869;
-            line-height: 1.6;
-        }
-        .section a {
-            display: inline-block;
-            background: #8B5CF6;
-            color: #fff;
-            padding: 1rem 2rem;
-            border-radius: 30px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 1.1rem;
-            transition: background 0.2s;
-        }
-        .section a:hover {
-            background: #6D28D9;
-        }
-        .featured {
-            max-width: 1200px;
-            margin: 0 auto 4rem auto;
-            padding: 0 2rem;
-        }
-        .featured h3 {
-            color: #6D28D9;
-            margin-bottom: 2rem;
-            text-align: center;
-            font-size: 2rem;
-        }
-        .professionals {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 2rem;
-            justify-content: center;
-        }
-        .professional-card {
-            background: #fff;
-            border-radius: 14px;
-            box-shadow: 0 2px 8px rgba(139,92,246,0.08);
-            padding: 1.5rem;
-            min-width: 280px;
-            max-width: 320px;
-            flex: 1 1 280px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-        .professional-card img {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            object-fit: cover;
-            margin-bottom: 1rem;
-            border: 3px solid #8B5CF6;
-        }
-        .professional-card h4 {
-            margin: 0.5rem 0 0.2rem 0;
-            color: #6D28D9;
-        }
-        .professional-card p {
-            color: #4B3869;
-            font-size: 0.95rem;
-            margin-bottom: 1rem;
-        }
-        .professional-card a {
-            color: #8B5CF6;
-            text-decoration: none;
-            font-weight: 600;
-        }
-        .professional-card a:hover {
-            text-decoration: underline;
-        }
-        .about-section {
-            background: #fff;
-            padding: 4rem 2rem;
-            margin: 3rem 0;
-        }
-        .about-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            text-align: center;
-        }
-        .about-section h2 {
-            color: #8B5CF6;
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-        }
-        .about-section p {
-            color: #4B3869;
-            font-size: 1.1rem;
-            line-height: 1.8;
-            max-width: 800px;
-            margin: 0 auto 2rem auto;
-        }
-        .services-section {
-            padding: 4rem 2rem;
-            background: #f7f5fa;
-        }
-        .services-container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        .services-section h2 {
-            color: #8B5CF6;
-            font-size: 2.5rem;
-            text-align: center;
-            margin-bottom: 3rem;
-        }
-        .services-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-        }
-        .service-card {
-            background: #fff;
-            padding: 2rem;
-            border-radius: 14px;
-            box-shadow: 0 2px 8px rgba(139,92,246,0.08);
-            text-align: center;
-        }
-        .service-card h3 {
-            color: #6D28D9;
-            margin-bottom: 1rem;
-        }
-        .service-card p {
-            color: #4B3869;
-            line-height: 1.6;
-        }
-        .contact-section {
-            background: #8B5CF6;
-            color: #fff;
-            padding: 4rem 2rem;
-            text-align: center;
-        }
-        .contact-container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        .contact-section h2 {
-            font-size: 2.5rem;
-            margin-bottom: 1rem;
-        }
-        .contact-section p {
-            font-size: 1.1rem;
-            margin-bottom: 2rem;
-            opacity: 0.9;
-        }
-        .contact-info {
-            display: flex;
-            justify-content: center;
-            gap: 3rem;
-            flex-wrap: wrap;
-        }
-        .contact-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .contact-item strong {
-            font-size: 1.1rem;
-        }
-        footer {
-            background: #2d1a47;
-            color: #fff;
-            text-align: center;
-            padding: 2rem;
-        }
-    </style>
+  <!-- Police -->
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
 
-    <!-- Correctif mobile dédié (ne touche pas le desktop) -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+  <!-- CSS mobile-only (doit rester dans <head>) -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+
+  <style>
+    :root{ --ink:#2d1a47; --bg:#f7f5fa; --primary:#8B5CF6; --primary-dark:#6D28D9; }
+
+    *{ box-sizing:border-box; }
+    html,body{ margin:0; padding:0; }
+    body{
+      font-family:'Montserrat', Arial, sans-serif;
+      background:var(--bg);
+      color:var(--ink);
+      /* La vraie valeur est fixée par JS, ceci est un fallback */
+      padding-top:72px;
+    }
+
+    /* NAV */
+    .navbar{
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(10px);
+      position: fixed; top:0; left:0; right:0;
+      z-index: 1000;
+      box-shadow: 0 2px 10px rgba(139,92,246,0.1);
+    }
+    .nav-container{
+      max-width: 1200px; margin: 0 auto;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 1rem 2rem; gap: 1rem; flex-wrap: nowrap;
+    }
+    .nav-logo{
+      color: var(--primary); font-size: 1.8rem; font-weight: 700; text-decoration: none;
+    }
+    .nav-menu{ display:flex; list-style:none; margin:0; padding:0; gap:2rem; }
+    .nav-menu a{ color:#4B3869; text-decoration:none; font-weight:600; transition:color .2s; }
+    .nav-menu a:hover{ color:var(--primary); }
+    .nav-auth{ display:flex; gap:1rem; }
+    .nav-auth a{
+      padding:.5rem 1rem; border-radius:20px; text-decoration:none; font-weight:600; transition:.2s;
+    }
+    .nav-login{ color:var(--primary); border:2px solid var(--primary); }
+    .nav-login:hover{ background:var(--primary); color:#fff; }
+    .nav-register{ background:var(--primary); color:#fff; }
+    .nav-register:hover{ background:var(--primary-dark); }
+
+    /* HEADER */
+    header{
+      background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
+      color:#fff; padding: 8rem 1rem 2rem 1rem; text-align:center;
+    }
+    header h1{ margin:0 0 .5rem 0; font-size:3rem; font-weight:700; }
+    header p{ margin:0 auto 1.5rem auto; font-size:1.3rem; max-width:600px; }
+
+    /* SEARCH */
+    .search-bar{ display:flex; justify-content:center; gap:0; margin: 2rem 0 1rem; padding: 0 1rem; }
+    .search-bar input{
+      width: 400px; padding: 1rem 1.5rem; border: 1px solid var(--primary);
+      border-radius: 30px 0 0 30px; font-size:1rem; outline:none;
+    }
+    .search-bar button{
+      padding: 1rem 2rem; border: none; background: var(--primary); color:#fff; font-size:1rem;
+      border-radius: 0 30px 30px 0; cursor:pointer; font-weight:700; transition:background .2s;
+    }
+    .search-bar button:hover{ background: var(--primary-dark); }
+
+    /* SECTIONS */
+    .sections{
+      display:flex; flex-wrap:wrap; justify-content:center; gap:2rem; margin:3rem 0; padding:0 2rem;
+    }
+    .section{
+      background:#fff; border-radius:18px; box-shadow:0 2px 12px rgba(139,92,246,0.08);
+      padding:2.5rem; min-width:320px; max-width:400px; flex:1 1 320px;
+      display:flex; flex-direction:column; align-items:center; text-align:center;
+    }
+    .section h2{ color:var(--primary); margin-bottom:1rem; font-size:1.5rem; }
+    .section p{ margin-bottom:2rem; color:#4B3869; line-height:1.6; }
+    .section a{
+      display:inline-block; background:var(--primary); color:#fff; padding:1rem 2rem;
+      border-radius:30px; text-decoration:none; font-weight:700; font-size:1.1rem; transition:background .2s;
+    }
+    .section a:hover{ background:var(--primary-dark); }
+
+    /* FEATURED */
+    .featured{ max-width:1200px; margin:0 auto 4rem auto; padding:0 2rem; }
+    .featured h3{ color:var(--primary-dark); margin-bottom:2rem; text-align:center; font-size:2rem; }
+    .professionals{ display:flex; flex-wrap:wrap; gap:2rem; justify-content:center; }
+    .professional-card{
+      background:#fff; border-radius:14px; box-shadow:0 2px 8px rgba(139,92,246,0.08);
+      padding:1.5rem; min-width:280px; max-width:320px; flex:1 1 280px;
+      display:flex; flex-direction:column; align-items:center; text-align:center;
+    }
+    .professional-card img{
+      width: 80px; height: 80px; border-radius: 50%; object-fit: cover;
+      margin-bottom: 1rem; border: 3px solid var(--primary);
+    }
+    .professional-card h4{ margin:.5rem 0 .2rem 0; color: var(--primary-dark); }
+    .professional-card p{ color:#4B3869; font-size:.95rem; margin-bottom:1rem; }
+    .professional-card a{ color:var(--primary); text-decoration:none; font-weight:600; }
+    .professional-card a:hover{ text-decoration:underline; }
+
+    /* ABOUT / SERVICES / CONTACT / FOOTER */
+    .about-section{ background:#fff; padding:4rem 2rem; margin:3rem 0; }
+    .about-container{ max-width:1200px; margin:0 auto; text-align:center; }
+    .about-section h2{ color:var(--primary); font-size:2.5rem; margin-bottom:1rem; }
+    .about-section p{ color:#4B3869; font-size:1.1rem; line-height:1.8; max-width:800px; margin:0 auto 2rem; }
+
+    .services-section{ padding:4rem 2rem; background:#f7f5fa; }
+    .services-container{ max-width:1200px; margin:0 auto; }
+    .services-section h2{ color:var(--primary); font-size:2.5rem; text-align:center; margin-bottom:3rem; }
+    .services-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:2rem; }
+    .service-card{ background:#fff; padding:2rem; border-radius:14px; box-shadow:0 2px 8px rgba(139,92,246,0.08); text-align:center; }
+    .service-card h3{ color:var(--primary-dark); margin-bottom:1rem; }
+    .service-card p{ color:#4B3869; line-height:1.6; }
+
+    .contact-section{ background: var(--primary); color:#fff; padding:4rem 2rem; text-align:center; }
+    .contact-container{ max-width: 800px; margin: 0 auto; }
+    .contact-section h2{ font-size:2.5rem; margin-bottom:1rem; }
+    .contact-section p{ font-size:1.1rem; margin-bottom:2rem; opacity:.9; }
+    .contact-info{ display:flex; justify-content:center; gap:3rem; flex-wrap:wrap; }
+    .contact-item{ display:flex; flex-direction:column; align-items:center; gap:.5rem; }
+    .contact-item strong{ font-size:1.1rem; }
+
+    footer{ background:#2d1a47; color:#fff; text-align:center; padding:2rem; }
+
+    /* Ajustements tablette */
+    @media (max-width: 900px){
+      .nav-container{ flex-wrap: wrap; }
+    }
+  </style>
 </head>
 <body>
-    <nav class="navbar">
-        <div class="nav-container">
-            <a href="/" class="nav-logo">Tighri</a>
-            <ul class="nav-menu">
-                <li><a href="#about">À propos</a></li>
-                <li><a href="#services">Services</a></li>
-                <li><a href="#contact">Contact</a></li>
-            </ul>
-            <div class="nav-auth">
-                <a href="/login" class="nav-login">Se connecter</a>
-                <a href="/register" class="nav-register">S'inscrire</a>
-            </div>
-        </div>
-    </nav>
-
-    <header>
-        <h1>Tighri</h1>
-        <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
-    </header>
-
-    <form class="search-bar" method="get" action="/professionals">
-        <input type="text" name="q" placeholder="Rechercher un professionnel, une spécialité, une ville...">
-        <button type="submit">Rechercher</button>
-    </form>
-
-    <div class="sections">
-        <div class="section">
-            <h2>Espace Patient</h2>
-            <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
-            <a href="/register">Je suis patient</a>
-        </div>
-        <div class="section">
-            <h2>Espace Professionnel</h2>
-            <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
-            <a href="/professional_register">Je suis professionnel</a>
-        </div>
-    </div>
-
-    <div class="featured">
-        <h3>Professionnels en vedette</h3>
-        <div class="professionals">
-            {% for professional in professionals %}
-            <div class="professional-card">
-                <img src="{{ professional.image_url or 'https://via.placeholder.com/80x80/8B5CF6/FFFFFF?text=Pro' }}" alt="{{ professional.name }}">
-                <h4>{{ professional.name }}</h4>
-                <p>{{ professional.specialty }}</p>
-                <p>{{ professional.description[:80] }}{% if professional.description|length > 80 %}...{% endif %}</p>
-                <a href="/professional/{{ professional.id }}">Voir le profil</a>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-
-    <section id="about" class="about-section">
-        <div class="about-container">
-            <h2>À propos de Tighri</h2>
-            <p>Tighri est la première plateforme marocaine dédiée à la santé mentale et au bien-être. Nous connectons patients et professionnels de la psychologie pour faciliter l'accès aux soins psychologiques de qualité.</p>
-            <p>Notre mission est de démocratiser l'accès aux services de santé mentale au Maroc en mettant en relation des professionnels certifiés avec des patients dans un environnement de confiance et de sécurité.</p>
-        </div>
-    </section>
-
-    <section id="services" class="services-section">
-        <div class="services-container">
-            <h2>Nos Services</h2>
-            <div class="services-grid">
-                <div class="service-card">
-                    <h3>Consultations en Cabinet</h3>
-                    <p>Prenez rendez-vous avec des professionnels dans leur cabinet pour des consultations en face à face.</p>
-                </div>
-                <div class="service-card">
-                    <h3>Consultations à Domicile</h3>
-                    <p>Certains professionnels se déplacent à votre domicile pour plus de confort et de discrétion.</p>
-                </div>
-                <div class="service-card">
-                    <h3>Consultations en Vidéo</h3>
-                    <p>Consultez en ligne depuis chez vous grâce à nos outils de visioconférence sécurisés.</p>
-                </div>
-                <div class="service-card">
-                    <h3>Gestion de Planning</h3>
-                    <p>Réservez vos créneaux en ligne et recevez des rappels automatiques de vos rendez-vous.</p>
-                </div>
-                <div class="service-card">
-                    <h3>Profils Vérifiés</h3>
-                    <p>Tous nos professionnels sont certifiés et leurs diplômes sont vérifiés par notre équipe.</p>
-                </div>
-                <div class="service-card">
-                    <h3>Support 24/7</h3>
-                    <p>Notre équipe est disponible pour vous accompagner à tout moment dans votre parcours.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- SECTION CONTACT améliorée -->
-    <section id="contact" class="contact-section">
-      <style>
-        /* Styles locaux aux boutons de contact (scopés à cette section) */
-        .contact-actions{
-          display:flex; gap:1rem; flex-wrap:wrap; justify-content:center; margin-top:1.25rem;
-        }
-        .contact-btn{
-          display:inline-flex; align-items:center; gap:.5rem;
-          background:#ffffff; color:#6D28D9; border:2px solid #ffffff;
-          padding:.8rem 1.2rem; border-radius:999px; text-decoration:none; font-weight:700;
-          box-shadow:0 2px 8px rgba(139,92,246,0.18); transition:all .2s;
-        }
-        .contact-btn:hover{ transform:translateY(-2px); background:#f1e9ff; border-color:#8B5CF6; }
-        .contact-badge{
-          display:inline-block; font-weight:700; padding:.3rem .7rem; border-radius:999px;
-          background:#ffffff20; border:1px solid #ffffff50;
-        }
-      </style>
-
-      <div class="contact-container">
-        <h2>Nous contacter</h2>
-        <p>
-          <strong>Bienvenue au Centre d'écoute et de conseil Tighri.</strong><br>
-          Si vous avez besoin d'aide et de conseils gratuits, n'hésitez pas à nous contacter.
-        </p>
-
-        <div class="contact-info" style="margin-top:1rem;">
-          <div class="contact-item">
-            <strong>Email</strong>
-            <span>contact@tighri.ma</span>
-          </div>
-          <div class="contact-item">
-            <strong>Téléphone</strong>
-            <span>06 63 40 01 90</span>
-          </div>
-          <div class="contact-item">
-            <strong>WhatsApp</strong>
-            <span class="contact-badge">Disponible</span>
-          </div>
-        </div>
-
-        <div class="contact-actions">
-          <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">
-            ✉️ Contacter par e-mail
-          </a>
-          <a class="contact-btn" href="tel:+212663400190">
-            📞 Appeler le <span>06 63 40 01 90</span>
-          </a>
-          <a class="contact-btn" target="_blank" rel="noopener"
-             href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">
-            💬 WhatsApp direct
-          </a>
-        </div>
+  <nav class="navbar" id="nav">
+    <div class="nav-container">
+      <a href="/" class="nav-logo">Tighri</a>
+      <ul class="nav-menu">
+        <li><a href="#about">À propos</a></li>
+        <li><a href="#services">Services</a></li>
+        <li><a href="#contact">Contact</a></li>
+      </ul>
+      <div class="nav-auth">
+        <a href="/login" class="nav-login">Se connecter</a>
+        <a href="/register" class="nav-register">S'inscrire</a>
       </div>
-    </section>
+    </div>
+  </nav>
 
-    <footer>
-        <p>&copy; 2024 Tighri. Tous droits réservés. | Plateforme de santé mentale au Maroc</p>
-    </footer>
+  <header>
+    <h1>Tighri</h1>
+    <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
+  </header>
+
+  <form class="search-bar" method="get" action="/professionals">
+    <input type="text" name="q" placeholder="Rechercher un professionnel, une spécialité, une ville...">
+    <button type="submit">Rechercher</button>
+  </form>
+
+  <div class="sections">
+    <div class="section">
+      <h2>Espace Patient</h2>
+      <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
+      <a href="/register">Je suis patient</a>
+    </div>
+    <div class="section">
+      <h2>Espace Professionnel</h2>
+      <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
+      <a href="/professional_register">Je suis professionnel</a>
+    </div>
+  </div>
+
+  <div class="featured">
+    <h3>Professionnels en vedette</h3>
+    <div class="professionals">
+      {% for professional in professionals %}
+      <div class="professional-card">
+        <img
+          src="{{ ((professional.image_url or '')|trim) or 'https://via.placeholder.com/80x80/8B5CF6/FFFFFF?text=Pro' }}"
+          alt="{{ professional.name }}"
+          loading="lazy" decoding="async"
+          onerror="this.onerror=null;this.src='https://via.placeholder.com/80x80/8B5CF6/FFFFFF?text=Pro';"
+          width="80" height="80"
+        >
+        <h4>{{ professional.name }}</h4>
+        <p>{{ professional.specialty }}</p>
+        <p>{{ professional.description[:80] }}{% if professional.description|length > 80 %}...{% endif %}</p>
+        <a href="/professional/{{ professional.id }}">Voir le profil</a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- SECTION CONTACT améliorée (inchangée) -->
+  <section id="contact" class="contact-section">
+    <style>
+      .contact-actions{ display:flex; gap:1rem; flex-wrap:wrap; justify-content:center; margin-top:1.25rem; }
+      .contact-btn{
+        display:inline-flex; align-items:center; gap:.5rem;
+        background:#ffffff; color:#6D28D9; border:2px solid #ffffff;
+        padding:.8rem 1.2rem; border-radius:999px; text-decoration:none; font-weight:700;
+        box-shadow:0 2px 8px rgba(139,92,246,0.18); transition:all .2s;
+      }
+      .contact-btn:hover{ transform:translateY(-2px); background:#f1e9ff; border-color:#8B5CF6; }
+      .contact-badge{
+        display:inline-block; font-weight:700; padding:.3rem .7rem; border-radius:999px;
+        background:#ffffff20; border:1px solid #ffffff50;
+      }
+    </style>
+
+    <div class="contact-container">
+      <h2>Nous contacter</h2>
+      <p>
+        <strong>Bienvenue au Centre d'écoute et de conseil Tighri.</strong><br>
+        Si vous avez besoin d'aide et de conseils gratuits, n'hésitez pas à nous contacter.
+      </p>
+
+      <div class="contact-info" style="margin-top:1rem;">
+        <div class="contact-item"><strong>Email</strong><span>contact@tighri.ma</span></div>
+        <div class="contact-item"><strong>Téléphone</strong><span>06 63 40 01 90</span></div>
+        <div class="contact-item"><strong>WhatsApp</strong><span class="contact-badge">Disponible</span></div>
+      </div>
+
+      <div class="contact-actions">
+        <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">✉️ Contacter par e-mail</a>
+        <a class="contact-btn" href="tel:+212663400190">📞 Appeler le <span>06 63 40 01 90</span></a>
+        <a class="contact-btn" target="_blank" rel="noopener" href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">💬 WhatsApp direct</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>&copy; 2024 Tighri. Tous droits réservés. | Plateforme de santé mentale au Maroc</p>
+  </footer>
+
+  <script>
+    // Fix chevauchement : calcule la hauteur réelle de la navbar et l’applique au body
+    (function(){
+      function applyNavHeight(){
+        var nav = document.getElementById('nav');
+        if(!nav) return;
+        var h = nav.getBoundingClientRect().height;
+        document.body.style.paddingTop = Math.ceil(h) + 'px';
+      }
+      window.addEventListener('load', applyNavHeight, {once:true});
+      window.addEventListener('resize', function(){ applyNavHeight(); }, {passive:true});
+      // petite sécurité si les webfonts changent la hauteur
+      setTimeout(applyNavHeight, 400);
+    })();
+  </script>
 </body>
 </html>
