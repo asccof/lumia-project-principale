@@ -3,81 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Admin — Ajouter un professionnel | Tighri</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body{background:#f6f7fb}
-    .card{border:0; box-shadow:0 10px 25px rgba(0,0,0,.06); border-radius:16px;}
-    .form-text{opacity:.8}
-    .badge-chip{background:#eef2ff;color:#4f46e5;border-radius:999px;padding:.25rem .6rem}
-  </style>
+  <title>Admin · Ajouter un professionnel</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body>
+<body class="bg-light">
 <div class="container py-4">
-  <div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h4 mb-0">Ajouter un professionnel</h1>
-    <div>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.admin_products') }}">Liste</a>
-      <a class="btn btn-primary btn-sm" href="{{ url_for('admin.admin_dashboard') }}">Dashboard</a>
-    </div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">← Retour</a>
   </div>
 
-  {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ _cats.get(category,'info') }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
-
-  <form class="card p-4" method="post" action="{{ url_for('admin.admin_add_product') }}">
+  <form method="post">
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+    <div class="row g-3">
 
-    <div class="row g-4">
-      <div class="col-lg-6">
-        <label class="form-label">Nom <span class="text-danger">*</span></label>
-        <input type="text" name="name" class="form-control" required placeholder="Nom et prénom">
+      <div class="col-md-6">
+        <label class="form-label">Nom</label>
+        <input name="name" class="form-control" required>
       </div>
-      <div class="col-lg-3">
-        <label class="form-label">Spécialité <span class="text-danger">*</span></label>
-        <input type="text" name="specialty" class="form-control" list="sp-list" required placeholder="Ex: Psychologue">
-        <datalist id="sp-list">
-          <option>Psychologue</option><option>Psychiatre</option><option>Psychothérapeute</option>
-          <option>Coach</option><option>Coach de vie</option><option>Thérapeute familial</option>
-          <option>Thérapeute de couple</option><option>Hypnothérapeute</option>
-          <option>Orthophoniste</option><option>Psychomotricien</option><option>Kinésithérapeute</option>
-          <option>Guérisseur</option><option>Art-thérapeute</option><option>Neuropsychologue</option>
-          <option>Sexologue</option>
-        </datalist>
+
+      <div class="col-md-6">
+        <label class="form-label">Spécialité</label>
+        <input name="specialty" class="form-control" required placeholder="Psychologue, Thérapeute, Coach…">
       </div>
-      <div class="col-lg-3">
+
+      <div class="col-md-6">
         <label class="form-label">Ville</label>
-        <input type="text" name="location" class="form-control" placeholder="Ex: Casablanca">
+        <input name="location" class="form-control" placeholder="Casablanca">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Téléphone</label>
+        <input name="phone" class="form-control" placeholder="06 12 34 56 78">
       </div>
 
       <div class="col-12">
-        <label class="form-label">Description <span class="text-danger">*</span></label>
-        <textarea name="description" class="form-control" rows="3" required placeholder="Présentation courte du professionnel"></textarea>
+        <label class="form-label">Adresse précise</label>
+        <input name="address" class="form-control" placeholder="N°, rue, quartier…">
       </div>
 
-      <div class="col-lg-3">
+      <div class="col-md-6">
+        <label class="form-label">Latitude</label>
+        <input name="latitude" class="form-control" placeholder="33.5">
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Longitude</label>
+        <input name="longitude" class="form-control" placeholder="-7.6">
+      </div>
+
+      <div class="col-md-6">
         <label class="form-label">Tarif (MAD)</label>
-        <input type="number" step="0.01" name="price" class="form-control" placeholder="Ex: 300">
-        <div class="form-text">Champ compatible avec <code>consultation_fee</code>.</div>
+        <input name="consultation_fee" type="number" step="0.01" class="form-control" placeholder="300">
       </div>
-      <div class="col-lg-3">
+
+      <div class="col-md-6">
         <label class="form-label">Années d’expérience</label>
-        <input type="number" name="experience_years" class="form-control" min="0" placeholder="Ex: 5">
+        <input name="experience_years" type="number" min="0" class="form-control" placeholder="0">
       </div>
-      <div class="col-lg-3">
-        <label class="form-label">Téléphone</label>
-        <input type="text" name="phone" class="form-control" placeholder="+212 ... / 06 ...">
+
+      <div class="col-12">
+        <label class="form-label">Description</label>
+        <textarea name="description" rows="3" class="form-control" placeholder="Présentation du professionnel…"></textarea>
       </div>
-      <div class="col-lg-3">
+
+      <div class="col-12">
+        <label class="form-label">Image URL</label>
+        <input name="image_url" class="form-control" placeholder="https://… (ou laissez vide si photo locale via tableau de bord pro)">
+      </div>
+
+      <div class="col-12">
+        <label class="form-label d-block">Types de consultation</label>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" id="c_cab" type="checkbox" name="consultation_types" value="cabinet" checked>
+          <label class="form-check-label" for="c_cab">Cabinet</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" id="c_dom" type="checkbox" name="consultation_types" value="domicile">
+          <label class="form-check-label" for="c_dom">Domicile</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" id="c_online" type="checkbox" name="consultation_types" value="en_ligne">
+          <label class="form-check-label" for="c_online">En ligne</label>
+        </div>
+      </div>
+
+      <div class="col-md-6">
         <label class="form-label">Disponibilité</label>
         <select name="availability" class="form-select">
           <option value="disponible" selected>Disponible</option>
@@ -85,51 +96,34 @@
         </select>
       </div>
 
-      <div class="col-lg-6">
-        <label class="form-label">Image (URL)</label>
-        <input type="url" name="image_url" class="form-control" placeholder="https://...">
-        <div class="form-text">Optionnel. Le pro peut aussi téléverser sa photo depuis son espace.</div>
+      <div class="col-12">
+        <h6 class="mt-3">Réseaux sociaux (facultatif)</h6>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Facebook</label>
+        <input name="facebook_url" type="url" class="form-control" placeholder="https://facebook.com/...">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Instagram</label>
+        <input name="instagram_url" type="url" class="form-control" placeholder="https://instagram.com/...">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">TikTok</label>
+        <input name="tiktok_url" type="url" class="form-control" placeholder="https://tiktok.com/@...">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">YouTube</label>
+        <input name="youtube_url" type="url" class="form-control" placeholder="https://youtube.com/@...">
+      </div>
+      <div class="col-12 form-check mt-1">
+        <input class="form-check-input" type="checkbox" id="sla" name="social_links_approved">
+        <label class="form-check-label" for="sla">Approuver l’affichage public des liens sociaux</label>
       </div>
 
-      <div class="col-lg-6">
-        <label class="form-label">Adresse exacte</label>
-        <input type="text" name="address" class="form-control" placeholder="Rue, quartier, ville">
-        <div class="form-text">Facultatif, s’affiche aussi sur Google Maps.</div>
-      </div>
-
-      <div class="col-lg-3">
-        <label class="form-label">Latitude</label>
-        <input type="number" step="any" name="latitude" class="form-control" placeholder="33.5">
-      </div>
-      <div class="col-lg-3">
-        <label class="form-label">Longitude</label>
-        <input type="number" step="any" name="longitude" class="form-control" placeholder="-7.6">
-      </div>
-
-      <div class="col-lg-6">
-        <label class="form-label d-block">Types de consultation</label>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="ct_cab" name="office_consultation">
-          <label class="form-check-label" for="ct_cab">Cabinet</label>
-        </div>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="ct_dom" name="home_consultation">
-          <label class="form-check-label" for="ct_dom">Domicile</label>
-        </div>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="ct_online" name="online_consultation">
-          <label class="form-check-label" for="ct_online">En ligne</label>
-        </div>
-        <div class="form-text">Le backend assemble en <span class="badge-chip">cabinet,domicile,en_ligne</span>.</div>
-      </div>
     </div>
 
-    <div class="d-flex gap-2 mt-4">
-      <button class="btn btn-primary"><i class="bi bi-plus-circle me-2"></i>Ajouter</button>
-      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">Annuler</a>
-    </div>
+    <button class="btn btn-primary mt-3">Ajouter</button>
   </form>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
