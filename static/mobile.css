@@ -1,0 +1,115 @@
+<style>
+/* =========================
+   TIGHRI — MOBILE-ONLY PATCH
+   Conserve le desktop tel quel
+   ========================= */
+
+/* Téléphones compacts ≤ 480px */
+@media (max-width: 480px) {
+  /* --- NAVBAR & TOP --- */
+  .nav-container{padding:.6rem 1rem;gap:.5rem;flex-direction:column;align-items:flex-start}
+  .nav-logo{font-size:1.4rem}
+  .nav-menu{gap:.6rem;flex-wrap:wrap}
+  .nav-auth{width:100%;display:flex;gap:.5rem}
+  .nav-auth a{flex:1 1 0;padding:.45rem .75rem;font-size:.95rem;text-align:center}
+
+  /* --- HEADER (accueil) --- */
+  header{padding:5.5rem 1rem 1.25rem;margin-top:62px}
+  header h1{font-size:1.75rem}
+  header p{font-size:1rem}
+
+  /* --- SEARCH (accueil & /professionals) --- */
+  .search-bar{flex-direction:column;align-items:stretch;gap:.6rem;padding:0 1rem}
+  .search-bar input{width:100%;border-radius:12px}
+  .search-bar button{width:100%;border-radius:12px}
+  .search-section{padding:1rem}
+  .search-form{flex-direction:column;gap:.6rem}
+  .search-input{width:100%}
+  .filters{gap:.5rem;overflow:auto;white-space:nowrap;padding-bottom:.25rem}
+  .filter-btn{display:inline-block}
+
+  /* --- ACCUEIL : sections / cartes --- */
+  .sections{padding:0 1rem;gap:1rem;margin:2rem 0}
+  .section{min-width:0;width:100%;max-width:100%;padding:1.2rem}
+  .section h2{font-size:1.25rem}
+  .section p{font-size:.98rem}
+
+  .featured{padding:0 1rem}
+  .professionals{display:grid;grid-template-columns:1fr;gap:1rem}
+  .professional-card{max-width:100%;padding:1rem}
+  .professional-card img{width:72px;height:72px}
+
+  .about-section,.services-section{padding:2rem 1rem;margin:2rem 0}
+  .about-section h2,.services-section h2{font-size:1.6rem}
+  .about-section p{font-size:1rem}
+  .services-grid{grid-template-columns:1fr;gap:1rem}
+  .service-card{padding:1.2rem}
+
+  /* --- CONTACT (accueil) --- */
+  .contact-section{padding:2rem 1rem}
+  .contact-section h2{font-size:1.6rem}
+  .contact-section p{font-size:1rem}
+  .contact-info{gap:1rem;flex-direction:column}
+  .contact-actions{gap:.6rem}
+
+  /* --- FOOTER --- */
+  footer{padding:1.25rem;font-size:.95rem}
+
+  /* --- PAGE /professionals --- */
+  .container{margin:90px auto 1.25rem;padding:0 1rem}
+  .professionals-grid{grid-template-columns:1fr;gap:1rem}
+  .professional-image{height:180px}
+  .btn-book{width:100%}
+
+  /* --- FICHE PRO (professional_detail) --- */
+  .pro-header{padding:1rem}
+  .avatar{max-width:160px;border-radius:12px}
+  .badge-chip{display:inline-block;margin-bottom:.3rem}
+  .cta a, .cta button{width:100%}
+  .price{font-size:1.35rem}
+  .card-body{padding:1rem}
+
+  /* --- DASHBOARD PRO --- */
+  .dashboard-container{padding:24px 0}
+  .welcome-card{padding:18px}
+  .stats-card{margin-bottom:10px}
+  .row .col-md-3,.row .col-lg-3{width:50%;float:left}
+  .action-card{height:auto}
+  .btn-primary-custom{width:100%;text-align:center}
+
+  /* --- TABLES (listes RDV) --- */
+  .table-responsive{overflow-x:auto}
+  table.table{font-size:.95rem}
+  .table th,.table td{white-space:nowrap}
+}
+
+/* Mobiles larges / petites tablettes 481–768px */
+@media (min-width: 481px) and (max-width: 768px) {
+  /* NAV */
+  .nav-container{padding:.8rem 1.25rem}
+  .nav-auth a{padding:.5rem .9rem}
+
+  /* HEADER + SEARCH */
+  header{padding:6rem 0 2rem}
+  .search-bar input{width:100%}
+  .search-section{padding:1.25rem}
+  .search-form{gap:.8rem}
+
+  /* ACCUEIL : cartes en 2 colonnes */
+  .featured{padding:0 1.25rem}
+  .professionals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem}
+  .sections{padding:0 1.25rem}
+  .services-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  
+  /* /professionals */
+  .container{padding:0 1.25rem}
+  .professionals-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem}
+
+  /* fiche pro */
+  .avatar{max-width:220px}
+  
+  /* dashboard pro */
+  .row .col-md-3,.row .col-lg-3{width:50%;float:left}
+  .btn-primary-custom{width:100%}
+}
+</style>
