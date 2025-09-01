@@ -77,3 +77,27 @@
     .avatar { width: 280px; height: 280px; }
   }
 }
+/* === Images robustes sur mobile (≤ 768px) === */
+@media (max-width: 768px){
+  /* évite les déformations et réservations d'espace */
+  img, picture { max-width: 100%; height: auto; display: block; }
+
+  /* Avatars ronds / carrés avec recadrage propre */
+  .pro-avatar, .avatar {
+    width: 140px;      /* taille confortable mobile */
+    height: 140px;
+    object-fit: cover;
+    border-radius: 16px;
+    background: #f3f0ff; /* fond neutre si l'image tarde */
+  }
+
+  /* Vignettes des listes */
+  .thumb {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    height: auto;      /* laisse l'aspect-ratio faire le job */
+    object-fit: cover;
+    background: #f3f0ff;
+  }
+}
+
