@@ -968,5 +968,51 @@ def site_status():
         'admin_port': 8080
     }
     return render_template('site_status.html', status=status, stats=stats)
+# ===== Proxy d’images pour photos de profils =====
+# Permet d’afficher les images même si l’hébergeur externe bloque le hotlink sur mobile.
+import requests
+from urllib.parse import urlparse
+from flask import Response, redirect
+
+PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
+
+@app.route("/media/profile/<int:professional_id>")
+def profile_photo(professional_id):
+    pro = Professional.query.get_or_404(professional_id)
+    raw_url = (pro.image_url or "").strip()
+
+    # Pas d’URL => placeholder
+    if not raw_url:
+        return redirect(PHOTO_PLACEHOLDER)
+
+    # Normalisation http -> https (évite le mixed-content bloqué sur mobile)
+    if raw_url.startswith("http://"):
+        raw_url = "https://" + raw_url[len("http://"):]
+
+    # Sécurité: on n’autorise que http(s)
+    parsed = urlparse(raw_url)
+    if parsed.scheme not in ("http", "https"):
+        return redirect(PHOTO_PLACEHOLDER)
+
+    # Requête côté serveur (contourne hotlink). Référent “tighri” + User-Agent standard.
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
+        "Referer": "https://www.tighri.com",
+    }
+    try:
+        r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
+        r.raise_for_status()
+    except Exception:
+        # En cas d’erreur (403/404/timeout...), on renvoie un placeholder
+        return redirect(PHOTO_PLACEHOLDER)
+
+    content_type = r.headers.get("Content-Type", "image/jpeg")
+    data = r.content
+
+    resp = Response(data, mimetype=content_type)
+    # Cache 24h côté navigateur/CDN
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+# ===== Fin proxy d’images =====
 
 # Pas de bloc __main__ pour Render (gunicorn utilise app:app)
