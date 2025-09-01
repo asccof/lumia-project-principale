@@ -1,85 +1,79 @@
-/* static/mobile.css
-   Mobile-only fixes qui ne touchent pas le rendu desktop.
-   ------------------------------------------------------ */
+/* static/mobile.css */
 
-/* Téléphones compacts ≤ 480px */
+/* === Téléphones ≤ 480px === */
 @media (max-width: 480px) {
-  /* --- Avatars (cartes sur la page d'accueil) --- */
+  /* Navbar : permet l’empilement propre, évite le débordement */
+  .nav-container { padding: 0.6rem 1rem; gap: 0.6rem; flex-wrap: wrap; }
+  .nav-logo { font-size: 1.5rem; }
+  .nav-menu { gap: 0.9rem; flex-wrap: wrap; font-size: 0.95rem; }
+  .nav-auth a { padding: 0.4rem 0.75rem; font-size: 0.9rem; }
+
+  /* Header plus compact (l’espace top est géré par JS dans index.html) */
+  header { padding: 5.25rem 1rem 1.5rem; }
+  header h1 { font-size: 1.8rem; }
+  header p { font-size: 1rem; }
+
+  /* Barre de recherche en pile */
+  .search-bar { flex-direction: column; align-items: stretch; gap: .5rem; padding: 0 1rem; }
+  .search-bar input { width: 100%; border-radius: 12px; }
+  .search-bar button { width: 100%; border-radius: 12px; }
+
+  /* Sections plein écran */
+  .sections { padding: 0 1rem; gap: 1rem; margin: 2rem 0; }
+  .section { min-width: 0; width: 100%; max-width: 100%; padding: 1.25rem; }
+  .section h2 { font-size: 1.25rem; }
+  .section p { font-size: .98rem; }
+
+  /* Cartes "en vedette" : 1 colonne */
+  .featured { padding: 0 1rem; }
+  .professionals { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+  .professional-card { max-width: 100%; padding: 1rem; }
+
+  /* Vignette ronde home : taille fixe + cover */
   .professional-card img {
-    width: 72px !important;
-    height: 72px !important;
+    width: 72px;
+    height: 72px;
     border-radius: 50%;
     object-fit: cover;
-    border: 3px solid #8B5CF6;
-    display: block;
-    flex-shrink: 0;
-    margin-bottom: 1rem;
   }
 
-  /* --- Avatar grand format (fiche pro) --- */
-  .avatar {
-    width: 200px !important;
-    height: 200px !important;
-    max-width: none !important;
-    object-fit: cover;
-    border-radius: 16px;
-    display: block;
-    margin: 0 auto;
-    box-shadow: 0 10px 25px rgba(0,0,0,.06);
-  }
+  /* Page liste /professionals : tuiles image */
+  .thumb { height: 160px !important; object-fit: cover; }
 
-  /* Si tu as un reset global du type img{width:100%;height:auto;}
-     on neutralise son effet pour nos images critiques. */
-  img.avatar,
-  .professional-card img {
-    width: auto; /* sera écrasé par les !important ci-dessus */
-  }
+  /* À propos / services */
+  .about-section, .services-section { padding: 2rem 1rem; margin: 2rem 0; }
+  .about-section h2, .services-section h2 { font-size: 1.6rem; }
+  .about-section p { font-size: 1rem; }
+  .services-grid { grid-template-columns: 1fr; gap: 1rem; }
+  .service-card { padding: 1.25rem; }
 
-  /* (Optionnel) Ajuste un peu la grille pour éviter les déformations */
-  .professionals {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-  .professional-card {
-    max-width: 100%;
-    padding: 1rem;
-  }
+  /* Contact & footer */
+  .contact-section { padding: 2rem 1rem; }
+  .contact-section h2 { font-size: 1.6rem; }
+  .contact-section p { font-size: 1rem; }
+  .contact-info { gap: 1rem; }
+  footer { padding: 1.25rem; font-size: .95rem; }
 }
 
-/* Mobiles larges / petites tablettes 481–768px */
+/* === Mobiles larges / petites tablettes 481–768px === */
 @media (min-width: 481px) and (max-width: 768px) {
-  .professional-card img {
-    width: 80px !important;
-    height: 80px !important;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid #8B5CF6;
-    display: block;
-    flex-shrink: 0;
-    margin-bottom: 1rem;
-  }
+  header { padding: 6rem 0 2rem; }
+  .search-bar input { width: 100%; }
+  .sections, .featured { padding: 0 1.25rem; }
+  .professionals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+  .thumb { height: 180px !important; object-fit: cover; }
+}
 
+/* === Fallback Safari iOS 13 (pas de aspect-ratio) === */
+@supports not (aspect-ratio: 1 / 1) {
+  /* Photo carré sur la fiche pro */
   .avatar {
-    width: 220px !important;
-    height: 220px !important;
-    max-width: none !important;
+    width: 260px;   /* ou 220px si tu veux plus petit */
+    height: 260px;  /* force le carré en mobile ancien Safari */
     object-fit: cover;
-    border-radius: 16px;
-    display: block;
-    margin: 0 auto;
-    box-shadow: 0 10px 25px rgba(0,0,0,.06);
-  }
-}
-
-/* Sécurité : ne PAS forcer tous les <img> à width:100% sur mobile,
-   ça casse les avatars carrés/ronds. Si tu tiens à un reset global,
-   fais-le en excluant explicitement nos images critiques : */
-/*
-@media (max-width: 768px) {
-  img:not(.avatar):not(.card-photo):not(.professional-card img) {
     max-width: 100%;
-    height: auto;
+  }
+  @media (min-width: 481px) {
+    .avatar { width: 280px; height: 280px; }
   }
 }
-*/
