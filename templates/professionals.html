@@ -10,18 +10,23 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 
   <style>
-    :root{--primary:#8B5CF6;--primary-dark:#6D28D9;--ink:#2d1a47;--muted:#4B3869;--bg:#f7f5fa;--card:#fff;--shadow:0 2px 12px rgba(139,92,246,.12);--radius:18px;--nav-h:64px}
+    :root{
+      --primary:#8B5CF6; --primary-dark:#6D28D9;
+      --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; --card:#fff;
+      --shadow:0 2px 12px rgba(139,92,246,.12); --radius:18px; --nav-h:72px;
+    }
+    @media(min-width:900px){ :root{ --nav-h:70px; } }
+
     *{box-sizing:border-box}
-    html,body{margin:0;padding:0}
+    html,body{margin:0}
     body{font-family:'Montserrat',system-ui,Segoe UI,Roboto,Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.45;padding-top:var(--nav-h)}
-    img{max-width:100%;display:block}
 
     /* NAV */
-    .navbar{position:fixed;inset:0 0 auto 0;height:var(--nav-h);background:rgba(255,255,255,.98);backdrop-filter:saturate(140%) blur(10px);border-bottom:1px solid rgba(139,92,246,.12);z-index:1000}
-    .nav-inner{height:100%;max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 .75rem}
+    .navbar{position:fixed;inset:0 0 auto 0;height:var(--nav-h);background:rgba(255,255,255,.98);
+      backdrop-filter:saturate(140%) blur(10px);border-bottom:1px solid rgba(139,92,246,.12);z-index:1000}
+    .nav-inner{height:100%;max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 .9rem}
     .brand{display:flex;align-items:center;gap:.5rem;text-decoration:none;color:var(--primary);font-weight:700;font-size:1.25rem}
     .burger{appearance:none;border:0;background:transparent;padding:.4rem .5rem;border-radius:10px}
-    .burger:focus-visible{outline:2px solid var(--primary)}
     .burger svg{width:26px;height:26px;color:var(--muted)}
     .nav-links{display:none;position:fixed;top:var(--nav-h);left:0;right:0;background:#fff;border-bottom:1px solid rgba(139,92,246,.12);box-shadow:var(--shadow)}
     .nav-links.open{display:block}
@@ -35,7 +40,6 @@
     .btn-solid{background:var(--primary);color:#fff;border:2px solid var(--primary)}
     .btn-solid:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
     @media(min-width:900px){
-      .nav-inner{padding:0 1rem}
       .nav-links{position:static;display:block;background:transparent;border:0;box-shadow:none}
       .nav-list{grid-auto-flow:column;gap:1rem;padding:0}
       .auth{display:flex;gap:.6rem;padding:0}
@@ -66,4 +70,155 @@
     @media(min-width:1024px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
     .card{background:#fff;border-radius:14px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
-    .thumb{width:100%;
+
+    /* Vignette sûre 4:3 (compatible anciens mobiles) */
+    .thumb-box{position:relative;width:100%;background:#f1f1f4}
+    .thumb-box::before{content:"";display:block;padding-top:66.666%;} /* 4:3 */
+    .thumb-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+
+    .content{padding:1rem;display:grid;gap:.4rem}
+    .name{color:var(--primary-dark);font-weight:700;font-size:1.1rem;margin:0}
+    .spec{color:var(--primary);font-weight:600;margin:0}
+    .loc{color:var(--muted);margin:.15rem 0}
+    .desc{color:var(--muted)}
+    .fee{color:var(--primary);font-weight:700;margin-top:.25rem}
+    .actions{display:flex;gap:.5rem;margin-top:.4rem}
+    .actions .btn{flex:1}
+
+    /* Empty */
+    .empty{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);text-align:center;padding:2rem}
+    .empty h3{color:var(--primary);margin:.25rem 0 .5rem}
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav class="navbar" role="navigation" aria-label="Navigation principale">
+    <div class="nav-inner">
+      <a href="{{ url_for('index') }}" class="brand" aria-label="Accueil Tighri">Tighri</a>
+      <button class="burger" aria-label="Ouvrir le menu" aria-controls="mobile-menu" aria-expanded="false" id="burger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div class="nav-links" id="mobile-menu">
+      <ul class="nav-list">
+        <li><a href="{{ url_for('index') }}">Accueil</a></li>
+        <li><a href="{{ url_for('professionals') }}">Professionnels</a></li>
+        <li><a href="#filters">Filtres</a></li>
+      </ul>
+      <div class="auth">
+        {% if current_user.is_authenticated %}
+          <a class="btn btn-outline" href="{{ url_for('my_appointments') }}">Mes rendez-vous</a>
+          <a class="btn btn-solid" href="{{ url_for('logout') }}">Déconnexion</a>
+        {% else %}
+          <a class="btn btn-outline" href="{{ url_for('login') }}">Se connecter</a>
+          <a class="btn btn-solid" href="{{ url_for('register') }}">S'inscrire</a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <!-- HEADER -->
+  <div class="container">
+    <div class="page-header">
+      <h1>Trouvez votre professionnel</h1>
+      <p>Psychologues, thérapeutes et coachs qualifiés près de chez vous</p>
+    </div>
+
+    <!-- SEARCH/FILTERS -->
+    <div class="search-card" id="filters">
+      <form class="search-form" method="GET">
+        <input class="search-input" type="text" name="q"
+               placeholder="Nom, spécialité, ville…" value="{{ search_query or '' }}" />
+        <button class="search-btn" type="submit">🔍 Rechercher</button>
+      </form>
+
+      <div class="filters" role="group" aria-label="Filtrer par spécialité">
+        <a href="?specialty=all{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+           class="chip {% if specialty == 'all' %}active{% endif %}">Toutes</a>
+        <a href="?specialty=Psychologue{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+           class="chip {% if specialty == 'Psychologue' %}active{% endif %}">Psychologue</a>
+        <a href="?specialty=Thérapeute{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+           class="chip {% if specialty == 'Thérapeute' %}active{% endif %}">Thérapeute</a>
+        <a href="?specialty=Coach{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+           class="chip {% if specialty == 'Coach' %}active{% endif %}">Coach</a>
+      </div>
+    </div>
+
+    {% if professionals %}
+      <div class="grid">
+        {% for professional in professionals %}
+          {# URL image sécurisée (HTTPS absolu) #}
+          {% set _raw = (professional.image_url or '')|trim %}
+          {% if _raw %}
+            {% if _raw.startswith('http://') or _raw.startswith('https://') %}
+              {% set img_url = _raw.replace('http://','https://') %}
+            {% elif '/media/profiles/' in _raw %}
+              {% set fn = _raw.split('/')[-1] %}
+              {% set img_url = url_for('profile_media', filename=fn, _external=True) %}
+            {% else %}
+              {% set img_url = url_for('profile_media', filename=_raw.split('/')[-1], _external=True) %}
+            {% endif %}
+          {% else %}
+            {% set img_url = '' %}
+          {% endif %}
+          {% set placeholder = 'https://placehold.co/600x450?text=Photo' %}
+
+          <article class="card">
+            <div class="thumb-box">
+              <img class="thumb-img" loading="lazy" decoding="async"
+                   src="{{ img_url or placeholder }}"
+                   alt="Photo de {{ professional.name|e }}"
+                   onerror="this.onerror=null;this.src='{{ placeholder }}';">
+            </div>
+            <div class="content">
+              <h3 class="name text-capitalize">{{ professional.name }}</h3>
+              <p class="spec">{{ professional.specialty }}</p>
+              <p class="loc">📍 {{ professional.address or professional.location or '—' }}</p>
+              <p class="desc">
+                {% set d = professional.description or '' %}
+                {{ d[:120] }}{% if d|length > 120 %}…{% endif %}
+              </p>
+              <p class="fee">{{ '%.0f'|format(professional.consultation_fee or 0) }} MAD / consultation</p>
+              <div class="actions">
+                <a class="btn btn-outline" href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
+                <a class="btn btn-solid" href="{{ url_for('book_appointment', professional_id=professional.id) }}">Prendre RDV</a>
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty">
+        <h3>Aucun professionnel trouvé</h3>
+        <p>Essayez d’élargir vos critères ou consultez toutes les spécialités.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <script>
+    // Menu mobile
+    (function(){
+      const btn = document.getElementById('burger');
+      const panel = document.getElementById('mobile-menu');
+      if(!btn || !panel) return;
+      btn.addEventListener('click', function(){
+        const open = panel.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      panel.addEventListener('click', (e)=>{
+        if(e.target.tagName === 'A'){
+          panel.classList.remove('open');
+          btn.setAttribute('aria-expanded','false');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
