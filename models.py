@@ -7,29 +7,42 @@ db = SQLAlchemy()
 
 class User(UserMixin, db.Model):
     __tablename__ = "users"
+
     id = db.Column(db.Integer, primary_key=True)
 
+    # Identité
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
 
-    # Téléphone utilisateur (obligatoire côté formulaires)
+    # Téléphone utilisateur (utilisé dans les formulaires / contact)
     phone = db.Column(db.String(30))
 
-    # 'patient' | 'professional'
+    # Rôle applicatif: 'patient' | 'professional'
     user_type = db.Column(db.String(20), default='patient')
 
-    # Admin global ?
+    # Admin global
     is_admin = db.Column(db.Boolean, default=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    __table_args__ = (
+        # Les UNIQUE créent déjà des index sur username/email.
+        db.Index('ix_users_user_type', 'user_type'),
+        db.Index('ix_users_is_admin', 'is_admin'),
+        db.Index('ix_users_created_at', 'created_at'),
+    )
+
     def get_id(self):
         return str(self.id)
+
+    def __repr__(self):
+        return f"<User id={self.id} {self.username} type={self.user_type} admin={self.is_admin}>"
 
 
 class Professional(db.Model):
     __tablename__ = "professionals"
+
     id = db.Column(db.Integer, primary_key=True)
 
     # Identité / contenu
@@ -40,11 +53,11 @@ class Professional(db.Model):
     consultation_fee = db.Column(db.Float)  # MAD
     image_url = db.Column(db.Text)
 
-    # Dispos & types de consultation
+    # Dispo & types de consultation
     availability = db.Column(db.String(50), default='disponible')
     consultation_types = db.Column(db.String(120))  # ex: "cabinet,domicile,en_ligne"
 
-    # Localisation (ville générique), adresse précise + géoloc
+    # Localisation (ville), adresse précise + géoloc
     location = db.Column(db.String(120))
     address = db.Column(db.String(255))
     latitude = db.Column(db.Float)
@@ -66,9 +79,26 @@ class Professional(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    __table_args__ = (
+        # Index utiles pour la recherche/front
+        db.Index('ix_professionals_name', 'name'),
+        db.Index('ix_professionals_specialty', 'specialty'),
+        db.Index('ix_professionals_location', 'location'),
+        db.Index('ix_professionals_address', 'address'),
+        db.Index('ix_professionals_status', 'status'),
+        db.Index('ix_professionals_availability', 'availability'),
+        db.Index('ix_professionals_created_at', 'created_at'),
+        # Index multi-colonnes pour les filtres/search (LIKE sur plusieurs champs)
+        db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
+    )
+
+    def __repr__(self):
+        return f"<Professional id={self.id} {self.name} [{self.specialty}] status={self.status}>"
+
 
 class Appointment(db.Model):
     __tablename__ = "appointments"
+
     id = db.Column(db.Integer, primary_key=True)
 
     patient_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
@@ -86,5 +116,16 @@ class Appointment(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # Relations (jointes pour éviter le N+1 dans les listes)
     patient = db.relationship('User', backref='appointments', lazy='joined')
     professional = db.relationship('Professional', backref='appointments', lazy='joined')
+
+    __table_args__ = (
+        db.Index('ix_appointments_professional_date', 'professional_id', 'appointment_date'),
+        db.Index('ix_appointments_patient', 'patient_id'),
+        db.Index('ix_appointments_status', 'status'),
+        db.Index('ix_appointments_created_at', 'created_at'),
+    )
+
+    def __repr__(self):
+        return f"<Appt id={self.id} pro={self.professional_id} patient={self.patient_id} at={self.appointment_date} status={self.status}>"
