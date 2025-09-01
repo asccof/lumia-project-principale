@@ -1,236 +1,243 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#8B5CF6" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tighri - Prendre rendez-vous avec un professionnel</title>
 
-  <!-- Fonts + CSS -->
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
-  <!-- Feuille mobile (ne pas mettre dans <style>) -->
+  <!-- CSS mobile global -->
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 
   <style>
-    body{font-family:'Montserrat',Arial,sans-serif;background:#f7f5fa;margin:0;color:#2d1a47}
-    .navbar{background:rgba(255,255,255,.95);backdrop-filter:blur(10px);position:fixed;top:0;width:100%;z-index:1000;box-shadow:0 2px 10px rgba(139,92,246,.1)}
-    .nav-container{max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;padding:1rem 2rem}
-    .nav-logo{color:#8B5CF6;font-size:1.8rem;font-weight:700;text-decoration:none}
-    .nav-menu{display:flex;list-style:none;margin:0;padding:0;gap:2rem}
-    .nav-menu a{color:#4B3869;text-decoration:none;font-weight:600;transition:color .2s}
-    .nav-menu a:hover{color:#8B5CF6}
-    .nav-auth{display:flex;gap:1rem}
-    .nav-auth a{padding:.5rem 1rem;border-radius:20px;text-decoration:none;font-weight:600;transition:all .2s}
-    .nav-login{color:#8B5CF6;border:2px solid #8B5CF6}
-    .nav-login:hover{background:#8B5CF6;color:#fff}
-    .nav-register{background:#8B5CF6;color:#fff}
-    .nav-register:hover{background:#6D28D9}
+    :root{ --primary:#8B5CF6; --primary-dark:#6D28D9; --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; --nav-h:72px; }
+    @media (min-width: 769px){ :root{ --nav-h:70px; } }
 
-    header{background:linear-gradient(90deg,#8B5CF6 0%,#6D28D9 100%);color:#fff;padding:8rem 0 2rem;text-align:center;margin-top:70px}
-    header h1{margin:0 0 .5rem;font-size:3rem;font-weight:700}
-    header p{margin:0 0 1.5rem;font-size:1.3rem;max-width:600px;margin-left:auto;margin-right:auto}
-
-    .search-bar{display:flex;justify-content:center;margin:2rem 0 1rem}
-    .search-bar input{width:400px;padding:1rem 1.5rem;border:1px solid #8B5CF6;border-radius:30px 0 0 30px;font-size:1rem;outline:none}
-    .search-bar button{padding:1rem 2rem;border:none;background:#8B5CF6;color:#fff;font-size:1rem;border-radius:0 30px 30px 0;cursor:pointer;font-weight:700;transition:background .2s}
-    .search-bar button:hover{background:#6D28D9}
-
-    .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
-    .section{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08);padding:2.5rem;min-width:320px;max-width:400px;flex:1 1 320px;display:flex;flex-direction:column;align-items:center;text-align:center}
-    .section h2{color:#8B5CF6;margin-bottom:1rem;font-size:1.5rem}
-    .section p{margin-bottom:2rem;color:#4B3869;line-height:1.6}
-    .section a{display:inline-block;background:#8B5CF6;color:#fff;padding:1rem 2rem;border-radius:30px;text-decoration:none;font-weight:700;font-size:1.1rem;transition:background .2s}
-    .section a:hover{background:#6D28D9}
-
-    .featured{max-width:1200px;margin:0 auto 4rem;padding:0 2rem}
-    .featured h3{color:#6D28D9;margin-bottom:2rem;text-align:center;font-size:2rem}
-    .professionals{display:flex;flex-wrap:wrap;gap:2rem;justify-content:center}
-
-    /* Avatar des cartes */
-    .pro-avatar{
-      width:96px;height:96px;border-radius:50%;
-      object-fit:cover;display:block;border:3px solid #8B5CF6;background:#f3f0ff;
+    *{box-sizing:border-box}
+    html,body{margin:0}
+    body{
+      font-family:'Montserrat', Arial, sans-serif;
+      background:var(--bg); color:var(--ink);
+      line-height:1.45;
+      padding-top:var(--nav-h); /* évite le chevauchement avec navbar fixe */
     }
 
-    .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);padding:1.5rem;min-width:280px;max-width:320px;flex:1 1 280px;display:flex;flex-direction:column;align-items:center;text-align:center}
-    .professional-card h4{margin:.5rem 0 .2rem;color:#6D28D9}
-    .professional-card p{color:#4B3869;font-size:.95rem;margin-bottom:1rem}
-    .professional-card a{color:#8B5CF6;text-decoration:none;font-weight:600}
-    .professional-card a:hover{text-decoration:underline}
+    /* NAVBAR */
+    .navbar{
+      position:fixed; inset:0 0 auto 0; height:var(--nav-h);
+      background:rgba(255,255,255,.96); backdrop-filter: blur(10px);
+      z-index:1000; border-bottom:1px solid rgba(139,92,246,.12);
+    }
+    .nav-container{max-width:1200px;margin:0 auto;height:100%;display:flex;align-items:center;justify-content:space-between;padding:0 1rem;gap:.75rem}
+    .nav-logo{color:var(--primary);font-size:1.7rem;font-weight:700;text-decoration:none;white-space:nowrap}
+    .nav-left{display:flex;align-items:center;gap:1rem}
+    .nav-menu{display:flex;list-style:none;margin:0;padding:0;gap:1.25rem}
+    .nav-menu a{color:#4B3869;text-decoration:none;font-weight:600}
+    .nav-menu a:hover{color:var(--primary)}
+    .nav-auth{display:flex;gap:.6rem}
+    .nav-auth a{padding:.5rem 1rem;border-radius:999px;text-decoration:none;font-weight:700}
+    .nav-login{color:var(--primary);border:2px solid var(--primary);background:#fff}
+    .nav-login:hover{background:#f4edff}
+    .nav-register{background:var(--primary);color:#fff;border:2px solid var(--primary)}
+    .nav-register:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
 
-    .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
-    .about-container{max-width:1200px;margin:0 auto;text-align:center}
-    .about-section h2{color:#8B5CF6;font-size:2.5rem;margin-bottom:1rem}
-    .about-section p{color:#4B3869;font-size:1.1rem;line-height:1.8;max-width:800px;margin:0 auto 2rem}
+    /* Burger mobile */
+    .burger{display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;padding:.4rem;border-radius:10px}
+    .burger svg{width:26px;height:26px;color:#5a4877}
+    .nav-panel{display:none;position:fixed;top:var(--nav-h);left:0;right:0;background:#fff;border-bottom:1px solid rgba(139,92,246,.12);box-shadow:0 6px 16px rgba(0,0,0,.06);z-index:999}
+    .nav-panel.open{display:block}
+    .nav-panel .nav-menu{flex-direction:column;padding:.5rem 1rem;gap:.25rem}
+    .nav-panel .nav-auth{flex-direction:column;padding:0 1rem 1rem}
 
-    .services-section{padding:4rem 2rem;background:#f7f5fa}
-    .services-container{max-width:1200px;margin:0 auto}
-    .services-section h2{color:#8B5CF6;font-size:2.5rem;text-align:center;margin-bottom:3rem}
-    .services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2rem}
-    .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);text-align:center}
-    .service-card h3{color:#6D28D9;margin-bottom:1rem}
-    .service-card p{color:#4B3869;line-height:1.6}
-
-    .contact-section{background:#8B5CF6;color:#fff;padding:4rem 2rem;text-align:center}
-    .contact-container{max-width:800px;margin:0 auto}
-    .contact-section h2{font-size:2.5rem;margin-bottom:1rem}
-    .contact-section p{font-size:1.1rem;margin-bottom:2rem;opacity:.9}
-    .contact-info{display:flex;justify-content:center;gap:3rem;flex-wrap:wrap}
-    .contact-item{display:flex;flex-direction:column;align-items:center;gap:.5rem}
-    .contact-item strong{font-size:1.1rem}
-
-    footer{background:#2d1a47;color:#fff;text-align:center;padding:2rem}
-
-    /* Mobile */
-    @media (max-width: 768px){
-      .nav-container{flex-direction:column;gap:1rem}
-      .nav-menu{flex-direction:column;gap:1rem}
-      header{padding:6rem 0 2rem}
-      header h1{font-size:2rem}
-      .search-bar input{width:250px}
-      .sections{flex-direction:column;align-items:center}
-      .contact-info{flex-direction:column;gap:1.5rem}
+    @media (min-width: 900px){
+      .burger{display:none}
+      .nav-panel{display:block;position:static;box-shadow:none;border:0}
+      .nav-panel .nav-menu{flex-direction:row;padding:0}
+      .nav-panel .nav-auth{flex-direction:row;padding:0}
     }
 
-    /* Téléphones ≤ 480px */
-    @media (max-width:480px){
-      .nav-container{padding:.6rem 1rem;gap:.5rem}
-      .nav-logo{font-size:1.4rem}
-      .nav-menu{gap:.75rem;flex-wrap:wrap;font-size:.95rem}
-      .nav-auth a{padding:.4rem .75rem;font-size:.9rem}
-
-      header{padding:5.5rem 1rem 1.5rem;margin-top:64px}
-      header h1{font-size:1.75rem}
-      header p{font-size:1rem}
-
-      .search-bar{flex-direction:column;align-items:stretch;padding:0 1rem;gap:.5rem}
-      .search-bar input,.search-bar button{width:100%;border-radius:12px}
-
-      .sections{padding:0 1rem;gap:1rem;margin:2rem 0}
-      .section{min-width:0;width:100%;max-width:100%;padding:1.25rem}
-      .section h2{font-size:1.25rem}
-      .section p{font-size:.98rem}
-
-      .featured{padding:0 1rem}
-      .about-section,.services-section{padding:2rem 1rem;margin:2rem 0}
-      .about-section h2,.services-section h2{font-size:1.6rem}
-      .about-section p{font-size:1rem}
-
-      .service-card{padding:1.25rem}
-      .contact-section{padding:2rem 1rem}
-      .contact-section h2{font-size:1.6rem}
-      footer{padding:1.25rem;font-size:.95rem}
+    /* HERO */
+    header{
+      background: linear-gradient(90deg, #8B5CF6 0%, #6D28D9 100%);
+      color:#fff; text-align:center; padding:3.5rem 1rem 2rem; /* l'espace top est assuré par body padding-top */
     }
+    header h1{margin:.25rem 0 .5rem; font-size:2.4rem; font-weight:700}
+    header p{margin:0 auto 1.25rem; font-size:1.1rem; max-width:700px; opacity:.95}
+    @media (min-width: 900px){ header{padding:4.5rem 1rem 2.5rem} header h1{font-size:3rem} header p{font-size:1.25rem} }
+
+    /* SEARCH */
+    .search-bar{display:flex;justify-content:center;gap:.5rem;margin:1.25rem auto; padding:0 1rem;max-width:720px}
+    .search-bar input{flex:1;min-width:0;padding:1rem 1.25rem;border:1.5px solid var(--primary);border-radius:12px;font-size:1rem;outline:none}
+    .search-bar button{padding:1rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:12px;font-weight:700;cursor:pointer}
+    .search-bar button:hover{background:var(--primary-dark)}
+    @media (max-width: 600px){ .search-bar{flex-direction:column} }
+
+    /* SECTIONS */
+    .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:1.25rem;margin:2rem auto; padding:0 1rem;max-width:1200px}
+    .section{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08);padding:1.75rem;min-width:280px;max-width:400px;flex:1 1 320px;text-align:center}
+    .section h2{color:var(--primary);margin:.25rem 0 1rem;font-size:1.5rem}
+    .section p{color:var(--muted);margin:0 0 1.25rem}
+    .section a{display:inline-block;background:var(--primary);color:#fff;padding:.85rem 1.5rem;border-radius:999px;text-decoration:none;font-weight:700}
+    .section a:hover{background:var(--primary-dark)}
+
+    /* FEATURED */
+    .featured{max-width:1200px;margin:0 auto 3rem; padding:0 1rem}
+    .featured h3{color:#6D28D9;text-align:center;margin:0 0 1.25rem;font-size:2rem}
+    .professionals{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+    .pro-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);padding:1.25rem;text-align:center}
+
+    /* avatar circulaire 1:1 compatible mobiles */
+    .avatar-circle{width:110px;max-width:40vw;margin:.25rem auto 1rem;position:relative;border-radius:50%;overflow:hidden;border:3px solid var(--primary);background:#f1f1f4}
+    .avatar-circle::before{content:"";display:block;padding-top:100%;}
+    .avatar-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+
+    .pro-card h4{margin:.25rem 0;color:#6D28D9}
+    .pro-card p{color:#4B3869;margin:.25rem 0 .5rem}
+    .pro-card a{color:var(--primary);font-weight:700;text-decoration:none}
+    .pro-card a:hover{text-decoration:underline}
+
+    /* CONTACT */
+    .contact-section{background:var(--primary);color:#fff;text-align:center;padding:3rem 1rem}
+    .contact-container{max-width:900px;margin:0 auto}
+    .contact-info{display:flex;justify-content:center;gap:2rem;flex-wrap:wrap}
+    .contact-item{display:flex;flex-direction:column;align-items:center;gap:.25rem}
+
+    footer{background:#2d1a47;color:#fff;text-align:center;padding:1.5rem}
   </style>
 </head>
 <body>
-  <nav class="navbar">
+
+  <!-- NAV -->
+  <nav class="navbar" role="navigation" aria-label="Navigation principale">
     <div class="nav-container">
-      <a href="/" class="nav-logo">Tighri</a>
-      <ul class="nav-menu">
-        <li><a href="#about">À propos</a></li>
-        <li><a href="#services">Services</a></li>
-        <li><a href="#contact">Contact</a></li>
-      </ul>
-      <div class="nav-auth">
-        <a href="/login" class="nav-login">Se connecter</a>
-        <a href="/register" class="nav-register">S'inscrire</a>
+      <div class="nav-left">
+        <a href="{{ url_for('index') }}" class="nav-logo">Tighri</a>
+      </div>
+
+      <button class="burger" aria-label="Ouvrir le menu" aria-controls="nav-panel" aria-expanded="false" id="burger">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+
+      <div class="nav-panel" id="nav-panel">
+        <ul class="nav-menu">
+          <li><a href="#about">À propos</a></li>
+          <li><a href="#services">Services</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+        <div class="nav-auth">
+          <a href="{{ url_for('login') }}" class="nav-login">Se connecter</a>
+          <a href="{{ url_for('register') }}" class="nav-register">S'inscrire</a>
+        </div>
       </div>
     </div>
   </nav>
 
+  <!-- HERO -->
   <header>
     <h1>Tighri</h1>
     <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
   </header>
 
-  <form class="search-bar" method="get" action="/professionals">
-    <input type="text" name="q" placeholder="Rechercher un professionnel, une spécialité, une ville...">
+  <!-- SEARCH -->
+  <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
+    <input type="text" name="q" placeholder="Rechercher un professionnel, une spécialité, une ville…">
     <button type="submit">Rechercher</button>
   </form>
 
+  <!-- SECTIONS -->
   <div class="sections">
     <div class="section">
       <h2>Espace Patient</h2>
       <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
-      <a href="/register">Je suis patient</a>
+      <a href="{{ url_for('register') }}">Je suis patient</a>
     </div>
     <div class="section">
       <h2>Espace Professionnel</h2>
-      <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
-      <a href="/professional_register">Je suis professionnel</a>
+      <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous facilement.</p>
+      <a href="{{ url_for('professional_register') }}">Je suis professionnel</a>
     </div>
   </div>
 
+  <!-- FEATURED -->
   <div class="featured">
     <h3>Professionnels en vedette</h3>
     <div class="professionals">
       {% for professional in professionals %}
-      <div class="professional-card">
-        {% set _img = (professional.image_url or '')|trim %}
-        {% if _img and (_img[0] != '/' and '://' not in _img) %}{% set _img = '/' ~ _img %}{% endif %}
-        <img
-          class="pro-avatar"
-          loading="lazy" decoding="async"
-          src="{{ _img if _img else 'https://via.placeholder.com/96x96/8B5CF6/FFFFFF?text=Pro' }}"
-          alt="{{ professional.name|e }}"
-          width="96" height="96"
-          onerror="this.onerror=null;this.src='https://via.placeholder.com/96x96/8B5CF6/FFFFFF?text=Pro';">
-        <h4>{{ professional.name }}</h4>
-        <p>{{ professional.specialty }}</p>
-        <p>{{ professional.description[:80] }}{% if professional.description|length > 80 %}...{% endif %}</p>
-        <a href="/professional/{{ professional.id }}">Voir le profil</a>
-      </div>
+        {# URL image sécurisée (HTTPS absolu + support /media/profiles) #}
+        {% set _raw = (professional.image_url or '')|trim %}
+        {% if _raw %}
+          {% if _raw.startswith('http://') or _raw.startswith('https://') %}
+            {% set img_url = _raw.replace('http://','https://') %}
+          {% elif '/media/profiles/' in _raw %}
+            {% set fn = _raw.split('/')[-1] %}
+            {% set img_url = url_for('profile_media', filename=fn, _external=True) %}
+          {% else %}
+            {% set img_url = url_for('profile_media', filename=_raw.split('/')[-1], _external=True) %}
+          {% endif %}
+        {% else %}
+          {% set img_url = '' %}
+        {% endif %}
+        {% set placeholder = 'https://placehold.co/300x300?text=Photo' %}
+
+        <article class="pro-card">
+          <div class="avatar-circle">
+            <img class="avatar-img"
+                 src="{{ img_url or placeholder }}"
+                 alt="Photo de {{ professional.name }}"
+                 loading="lazy" decoding="async"
+                 onerror="this.onerror=null;this.src='{{ placeholder }}';">
+          </div>
+          <h4 class="text-capitalize">{{ professional.name }}</h4>
+          <p>{{ professional.specialty }}</p>
+          <p>
+            {% set d = professional.description or '' %}
+            {{ d[:90] }}{% if d|length > 90 %}…{% endif %}
+          </p>
+          <a href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
+        </article>
       {% endfor %}
     </div>
   </div>
 
-  <section id="about" class="about-section">
-    <div class="about-container">
-      <h2>À propos de Tighri</h2>
-      <p>Tighri est la première plateforme marocaine dédiée à la santé mentale et au bien-être. Nous connectons patients et professionnels de la psychologie pour faciliter l'accès aux soins psychologiques de qualité.</p>
-      <p>Notre mission est de démocratiser l'accès aux services de santé mentale au Maroc en mettant en relation des professionnels certifiés avec des patients dans un environnement de confiance et de sécurité.</p>
-    </div>
-  </section>
-
-  <section id="services" class="services-section">
-    <div class="services-container">
-      <h2>Nos Services</h2>
-      <div class="services-grid">
-        <div class="service-card"><h3>Consultations en Cabinet</h3><p>Prenez rendez-vous avec des professionnels dans leur cabinet pour des consultations en face à face.</p></div>
-        <div class="service-card"><h3>Consultations à Domicile</h3><p>Certains professionnels se déplacent à votre domicile pour plus de confort et de discrétion.</p></div>
-        <div class="service-card"><h3>Consultations en Vidéo</h3><p>Consultez en ligne depuis chez vous grâce à nos outils de visioconférence sécurisés.</p></div>
-        <div class="service-card"><h3>Gestion de Planning</h3><p>Réservez vos créneaux en ligne et recevez des rappels automatiques de vos rendez-vous.</p></div>
-        <div class="service-card"><h3>Profils Vérifiés</h3><p>Tous nos professionnels sont certifiés et leurs diplômes sont vérifiés par notre équipe.</p></div>
-        <div class="service-card"><h3>Support 24/7</h3><p>Notre équipe est disponible pour vous accompagner à tout moment dans votre parcours.</p></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Section contact (inchangée) -->
+  <!-- CONTACT -->
   <section id="contact" class="contact-section">
-    <style>
-      .contact-actions{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin-top:1.25rem}
-      .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#fff;color:#6D28D9;border:2px solid #fff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,.18);transition:all .2s}
-      .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
-      .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
-    </style>
     <div class="contact-container">
       <h2>Nous contacter</h2>
-      <p><strong>Bienvenue au Centre d'écoute et de conseil Tighri.</strong><br>Si vous avez besoin d'aide et de conseils gratuits, n'hésitez pas à nous contacter.</p>
-      <div class="contact-info" style="margin-top:1rem">
+      <p><strong>Centre d'écoute et de conseil Tighri.</strong> Besoin d’aide ? Contactez-nous.</p>
+      <div class="contact-info" style="margin-top:.75rem">
         <div class="contact-item"><strong>Email</strong><span>contact@tighri.ma</span></div>
         <div class="contact-item"><strong>Téléphone</strong><span>06 63 40 01 90</span></div>
-        <div class="contact-item"><strong>WhatsApp</strong><span class="contact-badge">Disponible</span></div>
+        <div class="contact-item"><strong>WhatsApp</strong><span>Disponible</span></div>
       </div>
-      <div class="contact-actions">
-        <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">✉️ Contacter par e-mail</a>
-        <a class="contact-btn" href="tel:+212663400190">📞 Appeler le <span>06 63 40 01 90</span></a>
-        <a class="contact-btn" target="_blank" rel="noopener" href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">💬 WhatsApp direct</a>
+      <div style="display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap;margin-top:1rem">
+        <a class="nav-login" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">✉️ Email</a>
+        <a class="nav-register" style="color:#fff" href="tel:+212663400190">📞 06 63 40 01 90</a>
       </div>
     </div>
   </section>
 
-  <footer><p>&copy; 2024 Tighri. Tous droits réservés. | Plateforme de santé mentale au Maroc</p></footer>
+  <footer>
+    <p>&copy; 2024 Tighri. Tous droits réservés.</p>
+  </footer>
+
+  <script>
+    // Menu mobile (évite chevauchements)
+    (function(){
+      const btn = document.getElementById('burger');
+      const panel = document.getElementById('nav-panel');
+      if(!btn || !panel) return;
+      btn.addEventListener('click', function(){
+        const open = panel.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      panel.addEventListener('click', (e)=>{
+        if(e.target.tagName === 'A'){ panel.classList.remove('open'); btn.setAttribute('aria-expanded','false'); }
+      });
+    })();
+  </script>
 </body>
 </html>
