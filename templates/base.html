@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" class="">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -109,7 +109,7 @@
             .section-title h2 { font-size: 2rem; }
         }
 
-        /* ===== Ajout minimal : burger mobile isolé pour À propos & Contact ===== */
+        /* ===== Burger mobile Tighri (spécifique À propos / Services / Contact) ===== */
         .tgh-burger{
             display:none; align-items:center; justify-content:center;
             background:transparent; border:1px solid rgba(255,255,255,0.35);
@@ -128,9 +128,9 @@
         }
         .tgh-mobile-panel a:hover{ background:#f7fafc; }
 
-        /* On cache uniquement ces liens dans la barre Bootstrap sur mobile (pour éviter le chevauchement) */
+        /* Masquage des liens dans la navbar uniquement si JS actif (progressive enhancement) */
         @media (max-width: 767.98px){
-            .nav-item.tgh-only-desktop { display:none !important; }
+            html.js .nav-item.tgh-hide-mobile { display:none !important; }
             .tgh-burger { display:inline-flex; }
         }
 
@@ -152,7 +152,7 @@
                     <i class="fas fa-heart me-2"></i>Tighri
                 </a>
 
-                <!-- Burger mobile indépendant (n'affecte que A propos & Contact) -->
+                <!-- Burger mobile Tighri (indépendant du collapse Bootstrap) -->
                 <button class="tgh-burger" type="button" aria-label="Ouvrir le menu secondaire"
                         aria-controls="tgh-mobile-menu" aria-expanded="false">
                     <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
@@ -160,9 +160,10 @@
                     </svg>
                 </button>
 
-                <!-- Panneau mobile (À propos & Contact) -->
+                <!-- Panneau mobile (À propos / Services / Contact) -->
                 <div id="tgh-mobile-menu" class="tgh-mobile-panel" hidden>
                     <a href="{{ url_for('about') }}">À propos</a>
+                    <a href="{{ url_for('professionals') }}">Services</a>
                     <a href="{{ url_for('contact') }}">Contact</a>
                 </div>
             </div>
@@ -182,16 +183,21 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('professionals') }}">Professionnels</a>
                     </li>
-                    <!-- Ces deux liens sont visibles desktop, masqués mobile (puis accessibles via le burger ci-dessus) -->
-                    <li class="nav-item tgh-only-desktop">
+
+                    <!-- Ces liens restent intacts côté routes.
+                         Sur mobile, ils seront masqués SEULEMENT si JS actif (classe html.js). -->
+                    <li class="nav-item tgh-hide-mobile">
                         <a class="nav-link" href="{{ url_for('about') }}">À propos</a>
+                    </li>
+                    <li class="nav-item tgh-hide-mobile">
+                        <a class="nav-link" href="{{ url_for('professionals') }}">Services</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('site_status') }}">
                             <i class="fas fa-server me-1"></i>Statut
                         </a>
                     </li>
-                    <li class="nav-item tgh-only-desktop">
+                    <li class="nav-item tgh-hide-mobile">
                         <a class="nav-link" href="{{ url_for('contact') }}">Contact</a>
                     </li>
                 </ul>
@@ -339,6 +345,9 @@
     </div>
 
     <script>
+    // Flag JS actif pour masquage conditionnel (progressive enhancement)
+    document.documentElement.classList.add('js');
+
     // Confirmation stylée (utilitaire)
     window.showSiteConfirm = function(message, onConfirm) {
         document.getElementById('confirmModalMessage').textContent = message || 'Êtes-vous sûr ?';
@@ -372,7 +381,7 @@
         notification.querySelector('.btn-close').addEventListener('click', () => notification.remove());
     }
 
-    // === Burger mobile isolé (À propos & Contact) — n'affecte rien d'autre ===
+    // === Burger mobile Tighri (À propos / Services / Contact) — indépendant du collapse ===
     (function(){
         const container = document.querySelector('.navbar .container');
         const btn = container.querySelector('.tgh-burger');
