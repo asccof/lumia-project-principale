@@ -24,11 +24,7 @@
             --danger-color: #e53e3e;
         }
         
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: 'Inter', sans-serif;
@@ -43,11 +39,7 @@
             padding: 1rem 0;
         }
         
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 1.8rem;
-            color: white !important;
-        }
+        .navbar-brand { font-weight: 700; font-size: 1.8rem; color: white !important; }
         
         .navbar-nav .nav-link {
             color: rgba(255, 255, 255, 0.9) !important;
@@ -55,11 +47,7 @@
             margin: 0 0.5rem;
             transition: all 0.3s ease;
         }
-        
-        .navbar-nav .nav-link:hover {
-            color: white !important;
-            transform: translateY(-2px);
-        }
+        .navbar-nav .nav-link:hover { color: white !important; transform: translateY(-2px); }
         
         .hero-section {
             background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
@@ -67,18 +55,8 @@
             padding: 4rem 0;
             text-align: center;
         }
-        
-        .hero-section h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-        }
-        
-        .hero-section p {
-            font-size: 1.2rem;
-            margin-bottom: 2rem;
-            opacity: 0.9;
-        }
+        .hero-section h1 { font-size: 3.5rem; font-weight: 700; margin-bottom: 1rem; }
+        .hero-section p  { font-size: 1.2rem; margin-bottom: 2rem; opacity: 0.9; }
         
         .btn-primary {
             background: var(--primary-color);
@@ -88,7 +66,6 @@
             font-weight: 600;
             transition: all 0.3s ease;
         }
-        
         .btn-primary:hover {
             background: var(--secondary-color);
             transform: translateY(-2px);
@@ -96,115 +73,74 @@
         }
         
         .card {
-            border: none;
-            border-radius: 15px;
+            border: none; border-radius: 15px;
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
-            overflow: hidden;
+            transition: all 0.3s ease; overflow: hidden;
         }
-        
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-        }
-        
-        .card-img-top {
-            height: 200px;
-            object-fit: cover;
-        }
-        
-        .product-card {
-            height: 100%;
-        }
-        
-        .price {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary-color);
-        }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); }
+        .card-img-top { height: 200px; object-fit: cover; }
+        .product-card { height: 100%; }
+        .price { font-size: 1.5rem; font-weight: 700; color: var(--primary-color); }
         
         .footer {
-            background: var(--dark-color);
-            color: white;
-            padding: 3rem 0 1rem;
-            margin-top: 4rem;
+            background: var(--dark-color); color: white; padding: 3rem 0 1rem; margin-top: 4rem;
         }
-        
-        .footer h5 {
-            color: var(--accent-color);
-            margin-bottom: 1rem;
-        }
-        
-        .footer a {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            transition: color 0.3s ease;
-        }
-        
-        .footer a:hover {
-            color: var(--accent-color);
-        }
-        
+        .footer h5 { color: var(--accent-color); margin-bottom: 1rem; }
+        .footer a { color: rgba(255, 255, 255, 0.8); text-decoration: none; transition: color 0.3s ease; }
+        .footer a:hover { color: var(--accent-color); }
         .social-links a {
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            background: var(--primary-color);
-            color: white;
-            text-align: center;
-            line-height: 40px;
-            border-radius: 50%;
-            margin-right: 10px;
-            transition: all 0.3s ease;
+            display: inline-block; width: 40px; height: 40px; background: var(--primary-color); color: white;
+            text-align: center; line-height: 40px; border-radius: 50%; margin-right: 10px; transition: all 0.3s ease;
         }
+        .social-links a:hover { background: var(--accent-color); transform: translateY(-2px); }
         
-        .social-links a:hover {
-            background: var(--accent-color);
-            transform: translateY(-2px);
-        }
-        
-        .alert {
-            border-radius: 10px;
-            border: none;
-        }
-        
+        .alert { border-radius: 10px; border: none; }
         .form-control {
-            border-radius: 10px;
-            border: 2px solid #e9ecef;
-            padding: 0.75rem 1rem;
-            transition: all 0.3s ease;
+            border-radius: 10px; border: 2px solid #e9ecef; padding: 0.75rem 1rem; transition: all 0.3s ease;
         }
+        .form-control:focus { border-color: var(--primary-color); box-shadow: 0 0 0 0.2rem rgba(0, 120, 212, 0.25); }
         
-        .form-control:focus {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 0.2rem rgba(0, 120, 212, 0.25);
-        }
-        
-        .section-title {
-            text-align: center;
-            margin-bottom: 3rem;
-        }
-        
-        .section-title h2 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: var(--dark-color);
-            margin-bottom: 1rem;
-        }
-        
-        .section-title p {
-            color: #6c757d;
-            font-size: 1.1rem;
-        }
+        .section-title { text-align: center; margin-bottom: 3rem; }
+        .section-title h2 { font-size: 2.5rem; font-weight: 700; color: var(--dark-color); margin-bottom: 1rem; }
+        .section-title p  { color: #6c757d; font-size: 1.1rem; }
         
         @media (max-width: 768px) {
-            .hero-section h1 {
-                font-size: 2.5rem;
-            }
-            
-            .section-title h2 {
-                font-size: 2rem;
-            }
+            .hero-section h1 { font-size: 2.5rem; }
+            .section-title h2 { font-size: 2rem; }
+        }
+
+        /* === AJOUTS TIGHRI : burger mobile pour A propos / Services / Contact uniquement === */
+        /* On garde tout le reste du header intact. */
+        .tgh-burger{
+            display:none; align-items:center; justify-content:center;
+            background:#ffffff; color:#ffffff; /* texte non visible, on s'appuie sur l'icône */
+            border:1px solid rgba(255,255,255,0.35);
+            border-radius:10px; padding:.45rem .55rem; margin-left:.5rem;
+        }
+        .tgh-burger svg{ display:block; }
+
+        .tgh-mobile-panel{
+            position:absolute; top:100%; right:1rem; z-index:1050; width:240px;
+            background:#fff; border:1px solid #eee; border-radius:12px;
+            box-shadow:0 12px 34px rgba(0,0,0,.18); padding:8px;
+        }
+        .tgh-mobile-panel a{
+            display:block; padding:10px 12px; border-radius:8px;
+            color:#2d3748; text-decoration:none; font-weight:600;
+        }
+        .tgh-mobile-panel a:hover{ background:#f7fafc; }
+
+        /* Ciblage précis : on cache uniquement ces liens du header sur mobile (pour éviter les doublons) */
+        @media (max-width: 767.98px){
+            .nav-item.only-desktop { display:none !important; }
+            .tgh-burger { display:inline-flex; }
+        }
+
+        /* Animation accessible */
+        @media (prefers-reduced-motion: no-preference){
+            .tgh-mobile-panel{ transition:opacity .18s ease, transform .18s ease; }
+            .tgh-mobile-panel[data-open="true"]{ opacity:1; transform:translateY(0); }
+            .tgh-mobile-panel[data-open="false"]{ opacity:0; transform:translateY(-6px); }
         }
     </style>
     
@@ -212,44 +148,52 @@
 </head>
 <body>
     <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i class="fas fa-heart me-2"></i>Tighri
-            </a>
-            
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item">
+    <nav class="navbar navbar-dark">
+        <div class="container position-relative">
+            <div class="d-flex align-items-center">
+                <a class="navbar-brand" href="{{ url_for('index') }}">
+                    <i class="fas fa-heart me-2"></i>Tighri
+                </a>
+
+                <!-- Burger mobile Tighri : ne concerne que A propos / Services / Contact -->
+                <button class="tgh-burger" type="button" aria-label="Ouvrir le menu secondaire"
+                        aria-controls="tgh-mobile-menu" aria-expanded="false">
+                    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 6h18M3 12h18M3 18h18" stroke="rgba(255,255,255,0.95)" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- On garde une barre simple non-collapsée pour le reste des liens -->
+            <div class="d-flex align-items-center">
+                <ul class="navbar-nav me-3 flex-row">
+                    <li class="nav-item me-2">
                         <a class="nav-link" href="{{ url_for('index') }}">Accueil</a>
                     </li>
-                    <li class="nav-item">
+                    <li class="nav-item me-2">
                         <a class="nav-link" href="{{ url_for('professionals') }}">Professionnels</a>
                     </li>
-                    <li class="nav-item">
+                    <!-- Ces deux liens passent dans le burger sur mobile -->
+                    <li class="nav-item me-2 only-desktop">
                         <a class="nav-link" href="{{ url_for('about') }}">À propos</a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('contact') }}">Contact</a>
-                    </li>
-                    <li class="nav-item">
+                    <li class="nav-item me-2">
                         <a class="nav-link" href="{{ url_for('site_status') }}">
                             <i class="fas fa-server me-1"></i>Statut
                         </a>
                     </li>
+                    <li class="nav-item me-2 only-desktop">
+                        <a class="nav-link" href="{{ url_for('contact') }}">Contact</a>
+                    </li>
                 </ul>
-                
-                <ul class="navbar-nav">
+
+                <ul class="navbar-nav flex-row">
                     {% if current_user.is_authenticated %}
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                                 <i class="fas fa-user me-1"></i>{{ current_user.username }}
                             </a>
-                            <ul class="dropdown-menu">
+                            <ul class="dropdown-menu dropdown-menu-end">
                                 <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>Profil</a></li>
                                 <li><a class="dropdown-item" href="#"><i class="fas fa-shopping-cart me-2"></i>Commandes</a></li>
                                 <li><hr class="dropdown-divider"></li>
@@ -257,7 +201,7 @@
                             </ul>
                         </li>
                     {% else %}
-                        <li class="nav-item">
+                        <li class="nav-item me-2">
                             <a class="nav-link" href="{{ url_for('login') }}">
                                 <i class="fas fa-sign-in-alt me-1"></i>Connexion
                             </a>
@@ -269,6 +213,13 @@
                         </li>
                     {% endif %}
                 </ul>
+            </div>
+
+            <!-- Panneau mobile (à propos / services / contact) -->
+            <div id="tgh-mobile-menu" class="tgh-mobile-panel" hidden>
+                <a href="{{ url_for('about') }}">À propos</a>
+                <a href="{{ url_for('professionals') }}">Services</a>
+                <a href="{{ url_for('contact') }}">Contact</a>
             </div>
         </div>
     </nav>
@@ -386,30 +337,27 @@
     </div>
 
     <script>
-    // Fonction utilitaire pour afficher une confirmation dans le site (sans alert/confirm natifs)
+    // Confirmation stylée (utilitaire)
     window.showSiteConfirm = function(message, onConfirm) {
         document.getElementById('confirmModalMessage').textContent = message || 'Êtes-vous sûr ?';
         const modalEl = document.getElementById('confirmModal');
         const modal = new bootstrap.Modal(modalEl);
         const okBtn = document.getElementById('confirmModalOk');
 
-        // Nettoyer les anciens listeners
+        // Reset listeners
         const newOkBtn = okBtn.cloneNode(true);
         okBtn.parentNode.replaceChild(newOkBtn, okBtn);
 
         newOkBtn.addEventListener('click', function() {
             modal.hide();
-            if (typeof onConfirm === 'function') {
-                onConfirm();
-            }
+            if (typeof onConfirm === 'function') onConfirm();
         });
 
         modal.show();
     }
 
-    // Fonction utilitaire pour afficher des notifications dans le site (sans alert natifs)
+    // Notifications (utilitaire)
     window.showSiteNotification = function(message, type = 'info') {
-        // Créer la notification
         const notification = document.createElement('div');
         notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
         notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
@@ -417,24 +365,41 @@
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
-        
-        // Ajouter au body
         document.body.appendChild(notification);
-        
-        // Auto-supprimer après 5 secondes
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.remove();
-            }
-        }, 5000);
-        
-        // Permettre la fermeture manuelle
-        notification.querySelector('.btn-close').addEventListener('click', () => {
-            notification.remove();
-        });
+        setTimeout(() => { if (notification.parentNode) notification.remove(); }, 5000);
+        notification.querySelector('.btn-close').addEventListener('click', () => notification.remove());
     }
+
+    // === JS du burger mobile Tighri (A propos / Services / Contact uniquement) ===
+    (function(){
+        const container = document.querySelector('.navbar .container');
+        const btn = container.querySelector('.tgh-burger');
+        const panel = document.getElementById('tgh-mobile-menu');
+        if(!btn || !panel) return;
+
+        function openMenu(open){
+            btn.setAttribute('aria-expanded', String(open));
+            panel.hidden = !open;
+            panel.dataset.open = open ? 'true' : 'false';
+        }
+
+        btn.addEventListener('click', ()=>{
+            const isOpen = btn.getAttribute('aria-expanded') === 'true';
+            openMenu(!isOpen);
+        });
+
+        document.addEventListener('click', (e)=>{
+            if(!panel.hidden && !container.contains(e.target)){
+                openMenu(false);
+            }
+        });
+
+        document.addEventListener('keydown', (e)=>{
+            if(e.key === 'Escape'){ openMenu(false); }
+        });
+    })();
     </script>
     
     {% block extra_js %}{% endblock %}
 </body>
-</html> 
+</html>
