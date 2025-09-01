@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>{{ professional.name }} - Fiche professionnelle</title>
 
-  <!-- Librairies UI -->
+  <!-- UI libs -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
 
@@ -19,26 +19,37 @@
       box-shadow:0 10px 25px rgba(111,66,193,.08);
     }
 
-    /* ========= Avatar 100%-compatible (sans aspect-ratio, sans JS) ========= */
+    /* --- Avatar ultra-safe (fonctionne iOS/Android anciens & desktop) --- */
     .avatar-box{
       position:relative;
       width:100%;
       max-width:320px;
       margin-inline:auto;
+      border-radius:16px;
+      overflow:hidden;
+      box-shadow:0 10px 25px rgba(0,0,0,.06);
+      isolation:isolate; /* pour que l'image et le bg ne débordent pas */
     }
-    /* Carré 1:1 via padding-top — marche partout, iOS/Android anciens inclus */
-    .avatar-box::before{
-      content:"";
-      display:block;
-      padding-top:100%;
+    /* carré 1:1 via padding-top (compat universelle) */
+    .avatar-box::before{ content:""; display:block; padding-top:100%; }
+
+    /* calque background-image = filet de sécurité si <img> ne peint pas */
+    .avatar-bg{
+      position:absolute; inset:0;
+      background: radial-gradient(ellipse at 50% 45%, #faf8ff 0 60%, #eee 61% 100%);
+      background-size: cover;
+      background-position: center;
+      filter: none;
+      will-change: transform;
     }
+
+    /* <img> réelle par-dessus */
     .avatar{
       position:absolute; inset:0;
+      display:block;
       width:100%; height:100%;
-      object-fit:cover; /* recadrage propre */
-      border-radius:16px;
-      background: radial-gradient(ellipse at 50% 45%, #faf8ff 0 60%, #eee 61% 100%);
-      box-shadow:0 10px 25px rgba(0,0,0,.06);
+      object-fit:cover;
+      background: transparent; /* rien derrière, on utilise .avatar-bg */
       image-rendering:auto;
       -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
     }
@@ -65,13 +76,12 @@
     }
     .socials a:hover{ transform: translateY(-2px); color:var(--primary-2); }
 
-    /* Petits écrans */
     @media (max-width: 480px){
       .avatar-box{ max-width: 260px; }
     }
   </style>
 
-  <!-- Ta feuille mobile spécifique (déjà ajoutée côté projet) -->
+  <!-- ta feuille mobile spécifique (conserve le rendu PC) -->
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 </head>
 <body>
@@ -92,17 +102,31 @@
     </div>
   {% endif %}
 
+  {# ------- Construction d'une URL d'image ABSOLUE + cache-buster ------- #}
+  {% set raw = (professional.image_url or '')|trim %}
+  {% if raw.startswith('/media/profiles/') %}
+    {% set fname = raw.split('/media/profiles/')[1] %}
+    {% set base_url = url_for('profile_media', filename=fname, _external=True) %}
+  {% elif raw.startswith('http') %}
+    {% set base_url = raw %}
+  {% elif raw %}
+    {# au cas où une ancienne valeur relative ait été stockée #}
+    {% set base_url = url_for('static', filename=raw.lstrip('/'), _external=True) %}
+  {% else %}
+    {% set base_url = 'https://placehold.co/600x600?text=Photo' %}
+  {% endif %}
+  {% set img_url = base_url ~ '?v=' ~ professional.id %}
+
   <div class="pro-header p-4 p-lg-5">
     <div class="row g-4 align-items-start">
       <!-- Photo -->
       <div class="col-lg-4 text-center">
-        <div class="avatar-box">
+        <div class="avatar-box" style="--avatar-url:url('{{ img_url|e }}')">
+          <div class="avatar-bg" style="background-image:var(--avatar-url);"></div>
           <img
             class="avatar"
             alt="Photo de {{ professional.name }}"
-            loading="lazy"
-            decoding="async"
-            src="{% set img=(professional.image_url or '')|trim %}{{ img if img else 'https://placehold.co/600x600?text=Photo' }}"
+            src="{{ img_url }}"
             onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=Photo';"
           >
         </div>
