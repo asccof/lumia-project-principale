@@ -1,198 +1,135 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Tighri — Admin · Ajouter un professionnel</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Ajouter un professionnel | Tighri</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
   <style>
-    :root{ --primary:#6f42c1; --secondary:#8e44ad; --light:#f8f5ff; --ink:#2d1a47 }
-    body{ background:var(--light); color:var(--ink) }
-    .navbar{ background:linear-gradient(135deg,var(--primary),var(--secondary)) }
-    .brand{ font-weight:800 }
-    .card{ border:0; border-radius:16px; box-shadow:0 10px 24px rgba(111,66,193,.12) }
-    .form-control, .form-select{ border-radius:10px }
-    .help{ color:#6b7280; font-size:.9rem }
-    .avatar{ width:100%; max-width:220px; border-radius:12px; object-fit:cover; aspect-ratio:1/1; }
+    body{background:#f6f7fb}
+    .card{border:0; box-shadow:0 10px 25px rgba(0,0,0,.06); border-radius:16px;}
+    .form-text{opacity:.8}
+    .badge-chip{background:#eef2ff;color:#4f46e5;border-radius:999px;padding:.25rem .6rem}
   </style>
 </head>
 <body>
-<nav class="navbar navbar-dark">
-  <div class="container">
-    <a class="navbar-brand brand" href="{{ url_for('admin.admin_dashboard') }}">
-      <i class="fa-solid fa-shield-halved me-2"></i>Tighri — Administration
-    </a>
-    <div class="d-flex align-items-center gap-2">
-      <a class="btn btn-light btn-sm" href="{{ url_for('change_password') }}">
-        <i class="fa-solid fa-key me-1"></i>Changer mot de passe
-      </a>
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin.admin_logout') }}">
-        <i class="fa-solid fa-right-from-bracket me-1"></i>Déconnexion
-      </a>
+<div class="container py-4">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h4 mb-0">Ajouter un professionnel</h1>
+    <div>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.admin_products') }}">Liste</a>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('admin.admin_dashboard') }}">Dashboard</a>
     </div>
   </div>
-</nav>
 
-<div class="container py-4">
   {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      <div class="mb-3">
-        {% for cat, msg in messages %}
-          <div class="alert alert-{{ _cats.get(cat,'info') }} alert-dismissible fade show" role="alert">
-            <i class="fa-solid fa-circle-info me-2"></i>{{ msg }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
-          </div>
-        {% endfor %}
-      </div>
+      {% for category, message in messages %}
+        <div class="alert alert-{{ _cats.get(category,'info') }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
     {% endif %}
   {% endwith %}
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0"><i class="fa-solid fa-user-doctor text-primary me-2"></i>Ajouter un professionnel</h1>
-    <div class="d-flex gap-2">
-      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">
-        <i class="fa-solid fa-arrow-left-long me-1"></i>Retour
-      </a>
-    </div>
-  </div>
-
-  <form method="post" action="{{ url_for('admin.admin_add_product') }}">
+  <form class="card p-4" method="post" action="{{ url_for('admin.admin_add_product') }}">
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
 
-    <div class="row g-3">
-      <!-- Colonne gauche -->
-      <div class="col-lg-8">
-        <div class="card mb-3">
-          <div class="card-body">
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label">Nom <span class="text-danger">*</span></label>
-                <input name="name" class="form-control" required>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Spécialité <span class="text-danger">*</span></label>
-                <input name="specialty" class="form-control" placeholder="Psychologue, Thérapeute, Coach… (ou utilisez 'category')">
-                <div class="help">Compat : le champ <code>category</code> est aussi accepté.</div>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Ville</label>
-                <input name="location" class="form-control" placeholder="Casablanca">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Téléphone</label>
-                <input name="phone" class="form-control" placeholder="+212 6 XX XX XX XX">
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Adresse (complète)</label>
-                <input name="address" class="form-control" placeholder="Rue, quartier, ville…">
-                <div class="help">Si renseignée + coordonnées, le lien Google Maps sera précis.</div>
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Latitude</label>
-                <input name="latitude" class="form-control" type="number" step="any" placeholder="33.5731">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Longitude</label>
-                <input name="longitude" class="form-control" type="number" step="any" placeholder="-7.5898">
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Tarif (MAD)</label>
-                <input name="consultation_fee" class="form-control" type="number" min="0" step="1" placeholder="300">
-                <div class="help">Compat : le champ <code>price</code> est aussi accepté.</div>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Années d’expérience</label>
-                <input name="experience_years" class="form-control" type="number" min="0" step="1" placeholder="5">
-              </div>
-
-              <div class="col-md-6">
-                <label class="form-label">Disponibilité</label>
-                <select name="availability" class="form-select">
-                  <option value="disponible">Disponible</option>
-                  <option value="indisponible">Indisponible</option>
-                </select>
-                <div class="help">Compat : si absent, le champ <code>stock</code> (1/0) sera utilisé.</div>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Types de consultation</label>
-                <select name="consultation_types" class="form-select" multiple>
-                  <option value="cabinet" selected>Cabinet</option>
-                  <option value="domicile">Domicile</option>
-                  <option value="en_ligne">En ligne / Vidéo</option>
-                </select>
-                <div class="help">Tu peux aussi cocher ci-dessous (fallback) :</div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="checkbox" name="office_consultation" id="ct_cabinet">
-                  <label class="form-check-label" for="ct_cabinet">Cabinet</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="checkbox" name="home_consultation" id="ct_domicile">
-                  <label class="form-check-label" for="ct_domicile">Domicile</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="checkbox" name="online_consultation" id="ct_enligne">
-                  <label class="form-check-label" for="ct_enligne">En ligne</label>
-                </div>
-              </div>
-
-              <div class="col-12">
-                <label class="form-label">Description <span class="text-danger">*</span></label>
-                <textarea name="description" class="form-control" rows="5" required
-                  placeholder="Courte présentation du professionnel, approches thérapeutiques, langues parlées, etc."></textarea>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div class="row g-4">
+      <div class="col-lg-6">
+        <label class="form-label">Nom <span class="text-danger">*</span></label>
+        <input type="text" name="name" class="form-control" required placeholder="Nom et prénom">
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Spécialité <span class="text-danger">*</span></label>
+        <input type="text" name="specialty" class="form-control" list="sp-list" required placeholder="Ex: Psychologue">
+        <datalist id="sp-list">
+          <option>Psychologue</option><option>Psychiatre</option><option>Psychothérapeute</option>
+          <option>Coach</option><option>Coach de vie</option><option>Thérapeute familial</option>
+          <option>Thérapeute de couple</option><option>Hypnothérapeute</option>
+          <option>Orthophoniste</option><option>Psychomotricien</option><option>Kinésithérapeute</option>
+          <option>Guérisseur</option><option>Art-thérapeute</option><option>Neuropsychologue</option>
+          <option>Sexologue</option>
+        </datalist>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Ville</label>
+        <input type="text" name="location" class="form-control" placeholder="Ex: Casablanca">
       </div>
 
-      <!-- Colonne droite -->
-      <div class="col-lg-4">
-        <div class="card mb-3">
-          <div class="card-body">
-            <label class="form-label">Image (URL)</label>
-            <input name="image_url" id="imageUrl" class="form-control" placeholder="/media/profiles/xxx.jpg ou https://…">
-            <div class="help">Astuce : si une photo a été téléversée côté pro, mets le chemin local <code>/media/profiles/…</code>.</div>
-            <div class="text-center mt-3">
-              <img id="imgPreview" class="avatar" src="https://placehold.co/400x400?text=Photo" alt="">
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-body d-grid gap-2">
-            <div class="alert alert-info mb-2">
-              À la création, le statut du profil est <strong>en attente</strong> (validation requise).
-            </div>
-            <button class="btn btn-primary btn-lg">
-              <i class="fa-solid fa-floppy-disk me-2"></i>Enregistrer
-            </button>
-            <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">Annuler</a>
-          </div>
-        </div>
+      <div class="col-12">
+        <label class="form-label">Description <span class="text-danger">*</span></label>
+        <textarea name="description" class="form-control" rows="3" required placeholder="Présentation courte du professionnel"></textarea>
       </div>
+
+      <div class="col-lg-3">
+        <label class="form-label">Tarif (MAD)</label>
+        <input type="number" step="0.01" name="price" class="form-control" placeholder="Ex: 300">
+        <div class="form-text">Champ compatible avec <code>consultation_fee</code>.</div>
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Années d’expérience</label>
+        <input type="number" name="experience_years" class="form-control" min="0" placeholder="Ex: 5">
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Téléphone</label>
+        <input type="text" name="phone" class="form-control" placeholder="+212 ... / 06 ...">
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Disponibilité</label>
+        <select name="availability" class="form-select">
+          <option value="disponible" selected>Disponible</option>
+          <option value="indisponible">Indisponible</option>
+        </select>
+      </div>
+
+      <div class="col-lg-6">
+        <label class="form-label">Image (URL)</label>
+        <input type="url" name="image_url" class="form-control" placeholder="https://...">
+        <div class="form-text">Optionnel. Le pro peut aussi téléverser sa photo depuis son espace.</div>
+      </div>
+
+      <div class="col-lg-6">
+        <label class="form-label">Adresse exacte</label>
+        <input type="text" name="address" class="form-control" placeholder="Rue, quartier, ville">
+        <div class="form-text">Facultatif, s’affiche aussi sur Google Maps.</div>
+      </div>
+
+      <div class="col-lg-3">
+        <label class="form-label">Latitude</label>
+        <input type="number" step="any" name="latitude" class="form-control" placeholder="33.5">
+      </div>
+      <div class="col-lg-3">
+        <label class="form-label">Longitude</label>
+        <input type="number" step="any" name="longitude" class="form-control" placeholder="-7.6">
+      </div>
+
+      <div class="col-lg-6">
+        <label class="form-label d-block">Types de consultation</label>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="ct_cab" name="office_consultation">
+          <label class="form-check-label" for="ct_cab">Cabinet</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="ct_dom" name="home_consultation">
+          <label class="form-check-label" for="ct_dom">Domicile</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="ct_online" name="online_consultation">
+          <label class="form-check-label" for="ct_online">En ligne</label>
+        </div>
+        <div class="form-text">Le backend assemble en <span class="badge-chip">cabinet,domicile,en_ligne</span>.</div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mt-4">
+      <button class="btn btn-primary"><i class="bi bi-plus-circle me-2"></i>Ajouter</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">Annuler</a>
     </div>
   </form>
 </div>
-
-<script>
-  (function(){
-    const url = document.getElementById('imageUrl');
-    const img = document.getElementById('imgPreview');
-    if(url && img){
-      url.addEventListener('input', ()=> {
-        const v = url.value.trim();
-        img.src = v || 'https://placehold.co/400x400?text=Photo';
-      });
-      img.onerror = ()=> { img.src = 'https://placehold.co/400x400?text=Photo'; };
-    }
-  })();
-</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
