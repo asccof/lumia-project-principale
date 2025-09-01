@@ -60,12 +60,12 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = True  # Render est en HTTPS
 app.config['PREFERRED_URL_SCHEME'] = 'https'  # URLs absolues en https
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # respecte X-Forwarded-Proto/Host
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # X-Forwarded-Proto/Host
 
-# Taille max d'upload (respecte la valeur si déjà définie ailleurs)
+# Taille max d'upload
 app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
 
-# Crée le dossier d'upload si besoin (idempotent)
+# Crée le dossier d'upload si besoin
 try:
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 except Exception as e:
@@ -974,7 +974,7 @@ def site_status():
         'total_professionals': Professional.query.count(),
         'total_users': User.query.count(),
         'total_appointments': Appointment.query.count(),
-        'database_file': 'tighri.db',  # compat UI
+        'database_file': 'tighri.db',  # compat UI locale
         'server_port': 5000,
         'admin_port': 8080
     }
@@ -1006,7 +1006,7 @@ def profile_photo(professional_id):
     if parsed.scheme not in ("http", "https"):
         return redirect(PHOTO_PLACEHOLDER)
 
-    # Requête côté serveur (contourne hotlink). Référent “tighri” + User-Agent standard.
+    # Requête côté serveur (contourne hotlink)
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
         "Referer": "https://www.tighri.com",
@@ -1015,16 +1015,16 @@ def profile_photo(professional_id):
         r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
         r.raise_for_status()
     except Exception:
-        # En cas d’erreur (403/404/timeout...), on renvoie un placeholder
+        # En cas d’erreur (403/404/timeout...), placeholder
         return redirect(PHOTO_PLACEHOLDER)
 
     content_type = r.headers.get("Content-Type", "image/jpeg")
     data = r.content
 
     resp = Response(data, mimetype=content_type)
-    # Cache 24h côté navigateur/CDN
+    # Cache 24h
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
 # ===== Fin proxy d’images =====
 
-# Pas de bloc __main__ pour Render (gunicorn utilise app:app)
+# Pas de bloc __main__ (gunicorn utilise app:app)
