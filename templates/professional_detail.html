@@ -3,24 +3,72 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta name="referrer" content="no-referrer" />
   <title>{{ professional.name }} - Fiche professionnelle</title>
 
+  <!-- UI libs -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 
   <style>
-    :root{ --primary:#6f42c1; --light:#f8f5ff; }
-    body{ background:var(--light); }
-    .pro-header{ background:white; border-radius:16px; box-shadow:0 10px 25px rgba(111,66,193,.08); }
-    .avatar{ width:100%; max-width:280px; aspect-ratio:1/1; object-fit:cover; border-radius:16px; box-shadow:0 10px 25px rgba(0,0,0,.06); background:linear-gradient(#eee,#ddd) }
-    .badge-chip{ background:rgba(111,66,193,.1); color:var(--primary); border-radius:999px; padding:.35rem .75rem; }
+    :root{ --primary:#6f42c1; --light:#f8f5ff; --ink:#1f1430; }
+    body{ background:var(--light); color:var(--ink); }
+
+    .pro-header{
+      background:#fff; border-radius:16px;
+      box-shadow:0 10px 25px rgba(111,66,193,.08);
+    }
+
+    /* Avatar: carré responsive, cover, fond neutre en attente */
+    .avatar-wrap{
+      width:100%;
+      max-width:320px;
+      margin-inline:auto;
+      position:relative; /* requis pour le fallback @supports */
+    }
+    .avatar{
+      display:block; width:100%;
+      aspect-ratio: 1 / 1;             /* navigateurs modernes */
+      object-fit: cover;
+      border-radius:16px;
+      background: radial-gradient(ellipse at 50% 45%, #faf8ff 0 60%, #eee 61% 100%);
+      box-shadow:0 10px 25px rgba(0,0,0,.06);
+      image-rendering:auto;
+    }
+    /* Fallback anciens navigateurs sans aspect-ratio */
+    @supports not (aspect-ratio: 1 / 1){
+      .avatar-wrap::before{ content:""; display:block; padding-top:100%; }
+      .avatar{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+    }
+
+    .badge-chip{
+      background: rgba(111,66,193,.1);
+      color: var(--primary);
+      border-radius: 999px;
+      padding:.35rem .75rem;
+      display:inline-flex; align-items:center; gap:.4rem;
+      margin:.15rem .25rem .15rem 0;
+      white-space:nowrap;
+    }
+
     .price{ font-size:1.6rem; font-weight:700; color:var(--primary); }
-    .cta a{ min-width:220px; }
-    .socials a{ display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.08); margin-right:.5rem; border:1px solid #eee; }
+    .cta a{ min-width: 220px; }
+
+    .socials a{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:44px; height:44px; border-radius:50%;
+      background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.08);
+      margin-right:.5rem; border:1px solid #eee;
+    }
     .socials a:hover{ transform: translateY(-2px); }
+
+    /* Petits écrans */
+    @media (max-width: 480px){
+      .avatar-wrap{ max-width: 260px; }
+    }
   </style>
+
+  <!-- Ta feuille mobile spécifique (déjà en place dans ton projet) -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 </head>
 <body>
 <nav class="navbar navbar-expand-lg navbar-dark" style="background:linear-gradient(135deg,#6f42c1,#8b5cf6);">
@@ -42,36 +90,48 @@
 
   <div class="pro-header p-4 p-lg-5">
     <div class="row g-4 align-items-start">
+      <!-- Photo -->
       <div class="col-lg-4 text-center">
-        {% set img_url = (professional.image_url or '')|trim %}
-        {% set placeholder = 'https://placehold.co/600x600?text=Photo' %}
-        <img class="avatar"
-             src="{{ img_url or placeholder }}"
-             alt="Photo de {{ professional.name }}"
-             referrerpolicy="no-referrer"
-             loading="eager" fetchpriority="high"
-             onerror="this.onerror=null;this.src='{{ placeholder }}';">
+        <div class="avatar-wrap">
+          <img
+            id="proAvatar"
+            class="avatar"
+            alt="Photo de {{ professional.name }}"
+            loading="lazy"
+            decoding="async"
+            referrerpolicy="no-referrer"
+            crossorigin="anonymous"
+            src="{% set img=(professional.image_url or '')|trim %}{{ img if img else 'https://placehold.co/600x600?text=Photo' }}"
+            onerror="window.__proImgFallback && window.__proImgFallback(this)"
+          >
+        </div>
       </div>
-      <div class="col-lg-8">
-        <h1 class="h2 mb-2">{{ professional.name }}</h1>
 
-        <div class="mb-3">
-          <span class="badge-chip me-2"><i class="fas fa-user-md me-1"></i>{{ professional.specialty or 'Spécialité non renseignée' }}</span>
+      <!-- Infos -->
+      <div class="col-lg-8">
+        <h1 class="h2 mb-2 text-capitalize">{{ professional.name }}</h1>
+
+        <div class="mb-2">
+          <span class="badge-chip"><i class="fas fa-user-md"></i>{{ professional.specialty or 'Spécialité non renseignée' }}</span>
           {% if professional.experience_years %}
-            <span class="badge-chip me-2"><i class="fas fa-briefcase me-1"></i>{{ professional.experience_years }} ans d’expérience</span>
+            <span class="badge-chip"><i class="fas fa-briefcase"></i>{{ professional.experience_years }} ans d’expérience</span>
           {% endif %}
-          {% if professional.consultation_types %}
+        </div>
+
+        {% if professional.consultation_types %}
+          <div class="mb-2">
             {% for t in professional.consultation_types.split(',') %}
-              <span class="badge-chip me-2"><i class="fas fa-stethoscope me-1"></i>
-                {% set tt = t.strip() %}
+              {% set tt = t.strip() %}
+              <span class="badge-chip">
+                <i class="fas fa-stethoscope"></i>
                 {% if tt=='cabinet' %}Cabinet
                 {% elif tt=='domicile' %}Domicile
                 {% elif tt in ['en_ligne','video','vidéo'] %}En ligne
                 {% else %}{{ t }}{% endif %}
               </span>
             {% endfor %}
-          {% endif %}
-        </div>
+          </div>
+        {% endif %}
 
         {% set has_coords = (professional.latitude is not none) and (professional.longitude is not none) %}
         {% if has_coords %}
@@ -85,7 +145,9 @@
           <i class="fas fa-map-marker-alt me-2 text-danger"></i>
           {{ professional.address or professional.location or 'Adresse non renseignée' }}
           {% if has_coords %}<small class="text-muted"> ({{ professional.latitude }}, {{ professional.longitude }})</small>{% endif %}
-          {% if (professional.address or has_coords or professional.location) %} · <a href="{{ maps_url }}" target="_blank" rel="noopener" class="link-primary">Voir sur Google Maps</a>{% endif %}
+          {% if (professional.address or has_coords or professional.location) %} ·
+            <a href="{{ maps_url }}" target="_blank" rel="noopener" class="link-primary">Voir sur Google Maps</a>
+          {% endif %}
         </div>
 
         {% if professional.phone %}
@@ -106,10 +168,18 @@
         {% if has_socials %}
           {% if professional.social_links_approved %}
             <div class="socials mb-3">
-              {% if professional.facebook_url %}<a href="{{ professional.facebook_url }}" target="_blank" rel="noopener" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>{% endif %}
-              {% if professional.instagram_url %}<a href="{{ professional.instagram_url }}" target="_blank" rel="noopener" aria-label="Instagram"><i class="fab fa-instagram"></i></a>{% endif %}
-              {% if professional.tiktok_url %}<a href="{{ professional.tiktok_url }}" target="_blank" rel="noopener" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>{% endif %}
-              {% if professional.youtube_url %}<a href="{{ professional.youtube_url }}" target="_blank" rel="noopener" aria-label="YouTube"><i class="fab fa-youtube"></i></a>{% endif %}
+              {% if professional.facebook_url %}
+                <a href="{{ professional.facebook_url }}" target="_blank" rel="noopener" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+              {% endif %}
+              {% if professional.instagram_url %}
+                <a href="{{ professional.instagram_url }}" target="_blank" rel="noopener" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+              {% endif %}
+              {% if professional.tiktok_url %}
+                <a href="{{ professional.tiktok_url }}" target="_blank" rel="noopener" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>
+              {% endif %}
+              {% if professional.youtube_url %}
+                <a href="{{ professional.youtube_url }}" target="_blank" rel="noopener" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
+              {% endif %}
             </div>
           {% else %}
             <div class="alert alert-info py-2 mb-3"><i class="fa-solid fa-hourglass-half me-2"></i>Les liens réseaux sociaux sont en attente de validation.</div>
@@ -132,6 +202,7 @@
     </div>
   </div>
 
+  <!-- À propos -->
   <div class="mt-4">
     <div class="card shadow-sm">
       <div class="card-header bg-white">
@@ -143,11 +214,100 @@
     </div>
   </div>
 
-  <!-- Bloc avis inchangé -->
-  {% if false %}{% endif %}
-  <!-- (Ton bloc d'avis existant reste le même ici) -->
+  <!-- Avis -->
+  <div class="mt-4">
+    <div class="card shadow-sm">
+      <div class="card-header bg-white d-flex align-items-center justify-content-between">
+        <h5 class="mb-0"><i class="fa-solid fa-star me-2 text-warning"></i>Avis & évaluations</h5>
+        {% if avg_rating %}
+          <span class="badge bg-warning text-dark">Moyenne : {{ avg_rating }}/5</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if reviews %}
+          <div class="list-group mb-3">
+            {% for r in reviews %}
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between">
+                  <strong>{{ r.user.username }}</strong>
+                  <small class="text-muted">{{ r.created_at.strftime('%d/%m/%Y %H:%M') if r.created_at else '' }}</small>
+                </div>
+                <div class="mb-1">
+                  <span class="text-warning">
+                    {% for i in range(0, r.rating) %}★{% endfor %}{% for i in range(r.rating, 5) %}☆{% endfor %}
+                  </span>
+                </div>
+                <div>{{ r.comment }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="text-muted">Pas encore d’avis pour ce professionnel.</p>
+        {% endif %}
 
+        {% if current_user.is_authenticated and current_user.user_type == 'patient' %}
+          <hr>
+          <form method="post" action="{{ url_for('add_review', professional_id=professional.id) }}">
+            {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <div class="row g-3">
+              <div class="col-md-3">
+                <label class="form-label">Note</label>
+                <select name="rating" class="form-select" required>
+                  <option value="">Choisir…</option>
+                  <option value="5">5 - Excellent</option>
+                  <option value="4">4 - Très bien</option>
+                  <option value="3">3 - Bien</option>
+                  <option value="2">2 - Moyen</option>
+                  <option value="1">1 - Insuffisant</option>
+                </select>
+              </div>
+              <div class="col-md-9">
+                <label class="form-label">Commentaire</label>
+                <textarea name="comment" rows="2" class="form-control" placeholder="Partagez votre expérience…" required></textarea>
+              </div>
+            </div>
+            <button class="btn btn-primary mt-3"><i class="fa-solid fa-paper-plane me-2"></i>Envoyer</button>
+          </form>
+        {% else %}
+          <p class="text-muted mt-3">Connectez-vous en tant que patient pour laisser un avis.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
 </div>
+
+<script>
+/* Fallback image robuste (évite mixed content, query protégé, hotlink referer) */
+window.__proImgFallback = function(img){
+  try{
+    const attempt = Number(img.dataset.attempt||0);
+
+    if(attempt === 0){
+      img.dataset.attempt = "1";
+      const u = img.src;
+      if(/^http:\/\//i.test(u)){ img.src = u.replace(/^http:\/\//i,'https://'); return; }
+      // sinon on rejoue tel quel (parfois l'erreur est transitoire)
+    }else if(attempt === 1){
+      img.dataset.attempt = "2";
+      try{
+        const url = new URL(img.src, window.location.origin);
+        url.search = ""; url.hash = "";
+        img.src = url.toString();
+        return;
+      }catch(e){}
+    }
+
+    // Dernier recours
+    img.dataset.attempt = "3";
+    img.removeAttribute('crossorigin');
+    img.setAttribute('referrerpolicy','no-referrer');
+    img.src = 'https://placehold.co/600x600?text=Photo';
+  }catch(e){
+    img.src = 'https://placehold.co/600x600?text=Photo';
+  }
+};
+</script>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
