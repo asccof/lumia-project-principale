@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tighri - Prendre rendez-vous avec un professionnel</title>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+
+    <!-- Styles de base (desktop) -->
     <style>
-       <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
- 
         body {
             font-family: 'Montserrat', Arial, sans-serif;
             background: #f7f5fa;
@@ -84,7 +84,7 @@
             color: #fff;
             padding: 8rem 0 2rem 0;
             text-align: center;
-            margin-top: 70px;
+            margin-top: 70px; /* pour compenser la navbar fixe (desktop) */
         }
         header h1 {
             margin: 0 0 0.5rem 0;
@@ -321,91 +321,10 @@
             text-align: center;
             padding: 2rem;
         }
-        @media (max-width: 768px) {
-            .nav-container {
-                flex-direction: column;
-                gap: 1rem;
-            }
-            .nav-menu {
-                flex-direction: column;
-                gap: 1rem;
-            }
-            header {
-                padding: 6rem 0 2rem 0;
-            }
-            header h1 {
-                font-size: 2rem;
-            }
-            .search-bar input {
-                width: 250px;
-            }
-            .sections {
-                flex-direction: column;
-                align-items: center;
-            }
-            .contact-info {
-                flex-direction: column;
-                gap: 1.5rem;
-            }
-        }
-
-        /* === PATCH MOBILE-ONLY TIGHRI === */
-        /* Téléphones compacts ≤ 480px */
-        @media (max-width: 480px) {
-          /* Navbar compacte */
-          .nav-container { padding: .6rem 1rem; gap: .5rem; }
-          .nav-logo { font-size: 1.4rem; }
-          .nav-menu { gap: .75rem; flex-wrap: wrap; font-size: .95rem; }
-          .nav-auth a { padding: .4rem .75rem; font-size: .9rem; }
-
-          /* En-tête plus court */
-          header { padding: 5.5rem 1rem 1.5rem; margin-top: 64px; }
-          header h1 { font-size: 1.75rem; }
-          header p { font-size: 1rem; }
-
-          /* Barre de recherche en pile */
-          .search-bar { flex-direction: column; align-items: stretch; padding: 0 1rem; gap: .5rem; }
-          .search-bar input { width: 100%; border-radius: 12px; }
-          .search-bar button { width: 100%; border-radius: 12px; }
-
-          /* Sections en plein écran avec marges réduites */
-          .sections { padding: 0 1rem; gap: 1rem; margin: 2rem 0; }
-          .section { min-width: 0; width: 100%; max-width: 100%; padding: 1.25rem; }
-          .section h2 { font-size: 1.25rem; }
-          .section p { font-size: .98rem; }
-
-          /* Bloc "en vedette" en 1 colonne */
-          .featured { padding: 0 1rem; }
-          .professionals { display: grid; grid-template-columns: 1fr; gap: 1rem; }
-          .professional-card { max-width: 100%; padding: 1rem; }
-          .professional-card img { width: 72px; height: 72px; }
-
-          /* À propos / Services */
-          .about-section, .services-section { padding: 2rem 1rem; margin: 2rem 0; }
-          .about-section h2, .services-section h2 { font-size: 1.6rem; }
-          .about-section p { font-size: 1rem; }
-          .services-grid { grid-template-columns: 1fr; gap: 1rem; }
-          .service-card { padding: 1.25rem; }
-
-          /* Contact */
-          .contact-section { padding: 2rem 1rem; }
-          .contact-section h2 { font-size: 1.6rem; }
-          .contact-section p { font-size: 1rem; }
-          .contact-info { gap: 1rem; }
-
-          /* Footer */
-          footer { padding: 1.25rem; font-size: .95rem; }
-        }
-
-        /* Mobiles larges / petites tablettes 481–768px */
-        @media (min-width: 481px) and (max-width: 768px) {
-          header { padding: 6rem 0 2rem; }
-          .search-bar input { width: 100%; }
-          .sections { padding: 0 1.25rem; }
-          .featured { padding: 0 1.25rem; }
-          .professionals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
-        }
     </style>
+
+    <!-- Correctif mobile dédié (ne touche pas le desktop) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 </head>
 <body>
     <nav class="navbar">
@@ -504,7 +423,7 @@
     <!-- SECTION CONTACT améliorée -->
     <section id="contact" class="contact-section">
       <style>
-        /* Styles locaux aux boutons de contact */
+        /* Styles locaux aux boutons de contact (scopés à cette section) */
         .contact-actions{
           display:flex; gap:1rem; flex-wrap:wrap; justify-content:center; margin-top:1.25rem;
         }
