@@ -13,7 +13,7 @@
     <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">← Retour</a>
   </div>
 
-  <!-- Ajout: enctype pour permettre l'upload de fichier, sinon inchangé -->
+  <!-- IMPORTANT: enctype pour upload -->
   <form method="post" enctype="multipart/form-data">
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
     <div class="row g-3">
@@ -58,6 +58,17 @@
         <input name="consultation_fee" type="number" step="0.01" class="form-control" value="{{ professional.consultation_fee }}">
       </div>
 
+      <div class="col-md-3">
+        <label class="form-label">Durée séance (min)</label>
+        <input name="consultation_duration_minutes" type="number" min="5" max="240" class="form-control" value="{{ professional.consultation_duration_minutes or 45 }}">
+        <div class="form-text">Par défaut: 45</div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Délai entre séances (min)</label>
+        <input name="buffer_between_appointments_minutes" type="number" min="0" max="120" class="form-control" value="{{ professional.buffer_between_appointments_minutes or 15 }}">
+        <div class="form-text">Par défaut: 15</div>
+      </div>
+
       <div class="col-md-6">
         <label class="form-label">Années d’expérience</label>
         <input name="experience_years" type="number" min="0" class="form-control" value="{{ professional.experience_years }}">
@@ -68,28 +79,20 @@
         <textarea name="description" rows="3" class="form-control">{{ professional.description }}</textarea>
       </div>
 
-      <!-- Bloc aperçu + ajout du champ fichier, totalement optionnel -->
-      <div class="col-12">
-        <label class="form-label d-block">Photo actuelle</label>
-        <div class="d-flex align-items-center gap-3">
-          <img
-            src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-            alt="Photo actuelle"
-            class="rounded border"
-            style="max-width:120px; max-height:120px; object-fit:cover">
-          <div class="flex-grow-1">
-            <label class="form-label">Importer une nouvelle image (optionnel)</label>
-            <input type="file" name="image_file" accept="image/*" class="form-control">
-            <div class="form-text">
-              JPG/PNG/GIF, max 5&nbsp;Mo. Si vous uploadez un fichier, l’URL ci-dessous peut être laissée vide.
-            </div>
-          </div>
-        </div>
+      <div class="col-md-6">
+        <label class="form-label">Image (fichier)</label>
+        <input name="image_file" type="file" accept=".jpg,.jpeg,.png,.gif" class="form-control">
+        <div class="form-text">Si un fichier est envoyé, il remplacera l’image actuelle.</div>
       </div>
-
-      <div class="col-12">
+      <div class="col-md-6">
         <label class="form-label">Image URL</label>
         <input name="image_url" class="form-control" value="{{ professional.image_url }}">
+      </div>
+      <div class="col-12">
+        <div class="mt-2">
+          <span class="d-block text-muted mb-1">Aperçu actuel&nbsp;:</span>
+          <img src="{{ url_for('profile_photo', professional_id=professional.id) }}" alt="Photo" class="img-thumbnail" style="max-width:160px;">
+        </div>
       </div>
 
       <div class="col-12">
