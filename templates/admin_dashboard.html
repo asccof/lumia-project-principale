@@ -1,121 +1,210 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Admin · Tableau de bord</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-<div class="container py-4">
+{% extends "admin_base.html" %}
+{% block title %}Tableau de bord · Admin{% endblock %}
 
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">Tableau de bord</h1>
-    <div class="d-flex gap-2">
-      <a class="btn btn-outline-primary" href="{{ url_for('admin.admin_products') }}">Professionnels</a>
-      <a class="btn btn-outline-primary" href="{{ url_for('admin.admin_users') }}">Utilisateurs</a>
-      <a class="btn btn-outline-primary" href="{{ url_for('admin.admin_appointments') }}">Rendez-vous</a>
-      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_logout') }}">Déconnexion</a>
+{% block content %}
+<div class="container-fluid py-3">
+
+  <!-- En-tête + actions rapides -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-2 mb-md-0">Tableau de bord</h1>
+    <div class="btn-group">
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">Professionnels</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_users') }}">Utilisateurs</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_appointments') }}">Rendez-vous</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.pending_professionals') }}">En attente</a>
+      <a class="btn btn-primary" href="{{ url_for('admin.admin_add_product') }}">
+        <i class="bi bi-person-plus me-1"></i> Ajouter un professionnel
+      </a>
     </div>
   </div>
 
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <div class="mb-3">
-        {% for cat, msg in messages %}
-          <div class="alert alert-{{ 'warning' if cat=='error' else cat }}">{{ msg }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
-
-  <div class="row g-3 mb-4">
-    <div class="col-md-3">
-      <div class="card shadow-sm">
+  <!-- Statistiques -->
+  <div class="row g-3">
+    <div class="col-sm-6 col-lg-3">
+      <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="text-muted small">Professionnels</div>
-          <div class="h4 mb-0">{{ total_professionals }}</div>
+          <div class="display-6">{{ total_professionals }}</div>
+          <a class="stretched-link" href="{{ url_for('admin.admin_products') }}"></a>
         </div>
       </div>
     </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm">
+    <div class="col-sm-6 col-lg-3">
+      <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="text-muted small">Utilisateurs</div>
-          <div class="h4 mb-0">{{ total_users }}</div>
+          <div class="display-6">{{ total_users }}</div>
+          <a class="stretched-link" href="{{ url_for('admin.admin_users') }}"></a>
         </div>
       </div>
     </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm">
+    <div class="col-sm-6 col-lg-3">
+      <div class="card shadow-sm h-100">
         <div class="card-body">
-          <div class="text-muted small">RDV (total)</div>
-          <div class="h4 mb-0">{{ total_appointments }}</div>
+          <div class="text-muted small">Rendez-vous</div>
+          <div class="display-6">{{ total_appointments }}</div>
+          <a class="stretched-link" href="{{ url_for('admin.admin_appointments') }}"></a>
         </div>
       </div>
     </div>
-    <div class="col-md-3">
-      <div class="card shadow-sm">
+    <div class="col-sm-6 col-lg-3">
+      <div class="card shadow-sm h-100">
         <div class="card-body">
           <div class="text-muted small">Chiffre estimé (MAD)</div>
-          <div class="h4 mb-0">{{ '%.0f'|format(total_revenue or 0) }}</div>
+          <div class="display-6">{{ '%.2f'|format(total_revenue or 0) }}</div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Liste rapide des pros avec Durée/Buffer + actions -->
-  <div class="card shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <strong>Professionnels récents</strong>
-      <a class="btn btn-sm btn-primary" href="{{ url_for('admin.admin_add_product') }}">+ Ajouter</a>
+  <!-- Listes récentes -->
+  <div class="row g-3 mt-1">
+    <!-- Professionnels récents -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 class="h6 mb-0">Professionnels récents</h2>
+          <div class="btn-group btn-group-sm">
+            <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">Voir tout</a>
+            <a class="btn btn-outline-primary" href="{{ url_for('admin.admin_add_product') }}">Ajouter</a>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Nom</th>
+                <th>Spécialité</th>
+                <th>Ville</th>
+                <th>Statut</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for p in professionals[:10] %}
+              <tr>
+                <td>{{ p.name }}</td>
+                <td>{{ p.specialty or '-' }}</td>
+                <td>{{ p.location or '-' }}</td>
+                <td>
+                  {% if p.status == 'valide' %}
+                    <span class="badge bg-success">Validé</span>
+                  {% elif p.status == 'en_attente' %}
+                    <span class="badge bg-warning text-dark">En attente</span>
+                  {% elif p.status == 'rejete' %}
+                    <span class="badge bg-danger">Rejeté</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ p.status or '—' }}</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <div class="btn-group btn-group-sm">
+                    <a class="btn btn-outline-secondary" href="{{ url_for('admin.view_professional', professional_id=p.id) }}">Voir</a>
+                    <!-- Deux chemins d’édition compatibles avec ton blueprint -->
+                    <a class="btn btn-outline-primary" href="{{ url_for('admin.edit_professional', professional_id=p.id) }}">Éditer</a>
+                    <a class="btn btn-outline-primary" href="{{ url_for('admin.admin_edit_product', product_id=p.id) }}">Éditer (produit)</a>
+                  </div>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-muted text-center">Aucun professionnel trouvé.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer text-end">
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.pending_professionals') }}">Gérer les validations</a>
+        </div>
+      </div>
     </div>
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
-        <thead>
-          <tr>
-            <th style="width:60px;">Photo</th>
-            <th>Nom</th>
-            <th>Spécialité</th>
-            <th>Ville</th>
-            <th>Statut</th>
-            <th>Durée / Buffer</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for p in professionals %}
-          <tr>
-            <td>
-              <img src="{{ url_for('profile_photo', professional_id=p.id) }}" alt="photo" class="rounded" style="width:48px;height:48px;object-fit:cover;">
-            </td>
-            <td><a href="{{ url_for('admin.view_professional', professional_id=p.id) }}">{{ p.name }}</a></td>
-            <td>{{ p.specialty or '-' }}</td>
-            <td>{{ p.location or '-' }}</td>
-            <td>
-              <span class="badge bg-{{ 'success' if p.status=='valide' else ('secondary' if p.status=='en_attente' else 'danger') }}">
-                {{ p.status }}
-              </span>
-            </td>
-            <td>
-              {{ (p.consultation_duration_minutes or 45) }} min /
-              {{ (p.buffer_between_appointments_minutes or 15) }} min
-            </td>
-            <td class="text-nowrap">
-              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.admin_edit_product', product_id=p.id) }}">Éditer</a>
-              <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_professional_availability', professional_id=p.id) }}">Disponibilités</a>
-              <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_professional_unavailable_slots', professional_id=p.id) }}">Indispo</a>
-              <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.view_professional', professional_id=p.id) }}">Voir</a>
-            </td>
-          </tr>
-        {% else %}
-          <tr><td colspan="7" class="text-muted">Aucun professionnel.</td></tr>
-        {% endfor %}
-        </tbody>
-      </table>
+
+    <!-- Utilisateurs récents -->
+    <div class="col-lg-6">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 class="h6 mb-0">Utilisateurs récents</h2>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_users') }}">Voir tout</a>
+        </div>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Username</th>
+                <th>Email</th>
+                <th>Type</th>
+                <th>Admin</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for u in users[:10] %}
+              <tr>
+                <td>{{ u.username }}</td>
+                <td>{{ u.email }}</td>
+                <td>{{ u.user_type }}</td>
+                <td>{% if u.is_admin %}<span class="badge bg-dark">Admin</span>{% else %}-{% endif %}</td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.edit_user', user_id=u.id) }}">Éditer</a>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-muted text-center">Aucun utilisateur trouvé.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- RDV récents -->
+    <div class="col-12">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 class="h6 mb-0">Rendez-vous récents</h2>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_appointments') }}">Voir tout</a>
+        </div>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>Date & heure</th>
+                <th>Pro</th>
+                <th>Patient</th>
+                <th>Type</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for a in appointments[:10] %}
+              <tr>
+                <td>{{ a.appointment_date.strftime('%d/%m/%Y %H:%M') if a.appointment_date else '—' }}</td>
+                <td>{{ a.professional.name if a.professional else '—' }}</td>
+                <td>{{ a.patient.username if a.patient else '—' }}</td>
+                <td>{{ a.consultation_type }}</td>
+                <td>
+                  {% if a.status == 'confirme' %}
+                    <span class="badge bg-success">Confirmé</span>
+                  {% elif a.status == 'en_attente' %}
+                    <span class="badge bg-warning text-dark">En attente</span>
+                  {% elif a.status == 'annule' %}
+                    <span class="badge bg-danger">Annulé</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ a.status or '—' }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-muted text-center">Aucun rendez-vous trouvé.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer text-end">
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_appointments') }}">Gérer les rendez-vous</a>
+        </div>
+      </div>
     </div>
   </div>
 
 </div>
-</body>
-</html>
+{% endblock %}
