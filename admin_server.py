@@ -390,18 +390,43 @@ def add_user():
             flash("Email déjà utilisé")
             return redirect(url_for('admin.add_user'))
 
-        user = User(
-            username=username,
-            email=email,
-            password_hash=generate_password_hash(password),
-            user_type=user_type,
-            is_admin=bool(is_admin),
-            phone=phone or None
-        )
-        db.session.add(user)
-        db.session.commit()
-        flash('Utilisateur ajouté avec succès!')
-        return redirect(url_for('admin.admin_users'))
+        try:
+            user = User(
+                username=username,
+                email=email,
+                password_hash=generate_password_hash(password),
+                user_type=user_type,
+                is_admin=bool(is_admin),
+                phone=phone or None
+            )
+            db.session.add(user)
+
+            # Si on crée directement un pro, créer aussi sa fiche Professional
+            if user_type == 'professional':
+                exists = Professional.query.filter_by(name=username).first()
+                if not exists:
+                    pro = Professional(
+                        name=username,
+                        description="Profil en cours de complétion.",
+                        specialty="Psychologue",
+                        location="Casablanca",
+                        experience_years=0,
+                        consultation_fee=0.0,
+                        phone=phone or None,
+                        availability='disponible',
+                        consultation_types='cabinet',
+                        social_links_approved=False,
+                        status='en_attente'
+                    )
+                    db.session.add(pro)
+
+            db.session.commit()
+            flash('Utilisateur ajouté avec succès!')
+            return redirect(url_for('admin.admin_users'))
+        except Exception as e:
+            db.session.rollback()
+            flash("Erreur lors de la création de l'utilisateur.", "error")
+            return redirect(url_for('admin.add_user'))
 
     return render_template('add_user.html')
 
@@ -414,6 +439,10 @@ def edit_user(user_id):
     user = User.query.get_or_404(user_id)
 
     if request.method == 'POST':
+        # Conserver valeurs avant modif
+        old_username = user.username
+        old_type = user.user_type
+
         username = (request.form.get('username') or user.username).strip()
         email = (request.form.get('email') or user.email).strip().lower()
         user_type = (request.form.get('user_type') or user.user_type).strip()
@@ -428,6 +457,7 @@ def edit_user(user_id):
             flash("Email déjà enregistré")
             return redirect(url_for('admin.edit_user', user_id=user.id))
 
+        # Appliquer modifs
         user.username = username
         user.email = email
         user.user_type = user_type
@@ -437,9 +467,41 @@ def edit_user(user_id):
         if new_pw:
             user.password_hash = generate_password_hash(new_pw)
 
-        db.session.commit()
-        flash('Utilisateur modifié avec succès!')
-        return redirect(url_for('admin.admin_users'))
+        # PROMOTION EN PRO : si on passe à 'professional', créer la fiche pro si absente
+        try:
+            if old_type != 'professional' and user_type == 'professional':
+                exists = Professional.query.filter_by(name=user.username).first()
+                if not exists:
+                    pro = Professional(
+                        name=user.username,
+                        description="Profil en cours de complétion.",
+                        specialty="Psychologue",
+                        location="Casablanca",
+                        experience_years=0,
+                        consultation_fee=0.0,
+                        phone=user.phone or None,
+                        availability='disponible',
+                        consultation_types='cabinet',
+                        social_links_approved=False,
+                        status='en_attente'
+                    )
+                    db.session.add(pro)
+
+            # Synchroniser le nom si c'était déjà un pro et que le username a changé
+            if old_type == 'professional' and user_type == 'professional' and old_username != user.username:
+                pro = Professional.query.filter_by(name=old_username).first()
+                if pro:
+                    pro.name = user.username
+                    if user.phone and not pro.phone:
+                        pro.phone = user.phone
+
+            db.session.commit()
+            flash('Utilisateur modifié avec succès!')
+            return redirect(url_for('admin.admin_users'))
+        except Exception:
+            db.session.rollback()
+            flash("Erreur lors de la modification de l'utilisateur.", "error")
+            return redirect(url_for('admin.edit_user', user_id=user.id))
 
     return render_template('edit_user.html', user=user)
 
@@ -464,13 +526,6 @@ def admin_appointments():
         return redirect(url_for('admin.admin_login'))
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_appointments.html', appointments=appointments)
-
-# ✅ Alias de compatibilité : certaines templates utilisent 'admin.admin_orders'
-@admin_bp.route('/orders', endpoint='admin_orders')
-@login_required
-def admin_orders():
-    # Redirige proprement vers la page RDV existante
-    return redirect(url_for('admin.admin_appointments'))
 
 @admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'], endpoint='update_appointment_status')
 @login_required
