@@ -144,7 +144,10 @@ def load_user(user_id):
 with app.app_context():
     db.create_all()
     try:
-        # professionals: adresse + géoloc + téléphone + réseaux sociaux
+        # professionals: ajout de colonnes utiles (idempotent)
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_professionals_user_id ON professionals(user_id);"))
+
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
@@ -243,6 +246,28 @@ else:
 # ===========================================================================
 
 # ======================
+# Helpers
+# ======================
+def _find_current_professional():
+    """
+    Récupère le profil pro du current_user :
+    - si la colonne Professional.user_id existe : on l'utilise
+    - sinon, repli sur name == username (ancien comportement)
+    """
+    if not current_user.is_authenticated:
+        return None
+    try:
+        # Si la colonne existe côté modèle ET BDD
+        if hasattr(Professional, 'user_id'):
+            pro = Professional.query.filter_by(user_id=current_user.id).first()
+            if pro:
+                return pro
+    except Exception:
+        # En cas de décalage schéma, on retombe sur le name
+        pass
+    return Professional.query.filter_by(name=current_user.username).first()
+
+# ======================
 # Pages publiques
 # ======================
 @app.route('/', endpoint='index')
@@ -339,7 +364,7 @@ def professional_register():
         fee_raw = request.form.get('consultation_fee', '0')
         phone = request.form.get('phone', '').strip()
 
-        # Réseaux sociaux (présents dans le formulaire)
+        # Réseaux sociaux
         facebook_url  = (request.form.get('facebook_url')  or '').strip()
         instagram_url = (request.form.get('instagram_url') or '').strip()
         tiktok_url    = (request.form.get('tiktok_url')    or '').strip()
@@ -377,9 +402,10 @@ def professional_register():
                 phone=phone
             )
             db.session.add(user)
+            db.session.flush()  # obtient user.id avant d'ajouter le pro
 
             # Créer le profil pro correspondant
-            professional = Professional(
+            professional_kwargs = dict(
                 name=username,  # cohérence avec l'espace pro existant (name == username)
                 description=description or "Profil en cours de complétion.",
                 specialty=specialty or "Psychologue",
@@ -396,6 +422,11 @@ def professional_register():
                 social_links_approved=False,
                 status='en_attente'
             )
+            # Lier user_id si la colonne existe dans le modèle
+            if hasattr(Professional, 'user_id'):
+                professional_kwargs['user_id'] = user.id
+
+            professional = Professional(**professional_kwargs)
             db.session.add(professional)
 
             db.session.commit()
@@ -475,7 +506,7 @@ def professional_dashboard():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _find_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -496,7 +527,7 @@ def professional_edit_profile():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    pro = Professional.query.filter_by(name=current_user.username).first()
+    pro = _find_current_professional()
     if not pro:
         flash("Profil professionnel non trouvé")
         return redirect(url_for('professional_dashboard'))
@@ -553,7 +584,7 @@ def professional_upload_photo():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    pro = Professional.query.filter_by(name=current_user.username).first()
+    pro = _find_current_professional()
     if not pro:
         flash("Profil professionnel non trouvé")
         return redirect(url_for('professional_dashboard'))
@@ -590,7 +621,7 @@ def professional_availability():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _find_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -631,7 +662,7 @@ def professional_unavailable_slots():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _find_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -683,7 +714,7 @@ def delete_unavailable_slot(slot_id):
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _find_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -705,7 +736,7 @@ def professional_appointments():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _find_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -734,7 +765,7 @@ def professional_appointment_action(appointment_id, action):
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = _find_current_professional()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -951,9 +982,11 @@ def book_appointment(professional_id):
 @login_required
 def my_appointments():
     if current_user.user_type == 'professional':
-        appointments = Appointment.query.join(Professional).filter(
-            Professional.name == current_user.username
-        ).all()
+        pro = _find_current_professional()
+        if pro:
+            appointments = Appointment.query.filter_by(professional_id=pro.id).all()
+        else:
+            appointments = []
     else:
         appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
     return render_template('my_appointments.html', appointments=appointments)
