@@ -1,116 +1,87 @@
 {% extends "base.html" %}
-
-{% block title %}Mes Disponibilités - Lumia{% endblock %}
-
+{% block title %}Mes disponibilités{% endblock %}
 {% block content %}
-<div class="container mt-4">
-    <div class="row">
-        <div class="col-md-12">
-            <div class="card">
-                <div class="card-header">
-                    <h4><i class="fas fa-calendar-alt"></i> Gérer mes disponibilités</h4>
-                </div>
-                <div class="card-body">
-                    <form method="POST">
-                        <div class="table-responsive">
-                            <table class="table table-bordered">
-                                <thead class="table-dark">
-                                    <tr>
-                                        <th>Jour</th>
-                                        <th>Disponible</th>
-                                        <th>Heure de début</th>
-                                        <th>Heure de fin</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% set days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'] %}
-                                    {% for day_num in range(7) %}
-                                    <tr>
-                                        <td><strong>{{ days[day_num] }}</strong></td>
-                                        <td>
-                                            <div class="form-check">
-                                                <input class="form-check-input" type="checkbox" 
-                                                       name="available_{{ day_num }}" id="available_{{ day_num }}"
-                                                       {% if availabilities.get(day_num) %}checked{% endif %}>
-                                                <label class="form-check-label" for="available_{{ day_num }}">
-                                                    Disponible
-                                                </label>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <input type="time" class="form-control" 
-                                                   name="start_time_{{ day_num }}" 
-                                                   value="{{ availabilities.get(day_num).start_time if availabilities.get(day_num) else '09:00' }}">
-                                        </td>
-                                        <td>
-                                            <input type="time" class="form-control" 
-                                                   name="end_time_{{ day_num }}" 
-                                                   value="{{ availabilities.get(day_num).end_time if availabilities.get(day_num) else '17:00' }}">
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                        
-                        <div class="mt-3">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-save"></i> Sauvegarder les disponibilités
-                            </button>
-                            <a href="{{ url_for('professional_dashboard') }}" class="btn btn-secondary">
-                                <i class="fas fa-arrow-left"></i> Retour au tableau de bord
-                            </a>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+<div class="container py-4">
+  <h1 class="h4 mb-3">Mes disponibilités</h1>
+  <p class="text-muted">Définissez vos plages horaires par jour. Vous pouvez ajouter jusqu’à 3 plages par jour. Les durées et le délai entre séances sont définis dans votre <a href="{{ url_for('professional_edit_profile') }}">profil</a>.</p>
 
-<script>
-// Validation JavaScript pour s'assurer que l'heure de fin est après l'heure de début
-document.addEventListener('DOMContentLoaded', function() {
-    const checkboxes = document.querySelectorAll('input[type="checkbox"]');
-    const startTimes = document.querySelectorAll('input[name^="start_time"]');
-    const endTimes = document.querySelectorAll('input[name^="end_time"]');
-    
-    checkboxes.forEach((checkbox, index) => {
-        checkbox.addEventListener('change', function() {
-            const startTime = startTimes[index];
-            const endTime = endTimes[index];
-            
-            if (this.checked) {
-                startTime.required = true;
-                endTime.required = true;
-            } else {
-                startTime.required = false;
-                endTime.required = false;
-            }
-        });
-    });
-    
-    // Validation lors de la soumission
-    document.querySelector('form').addEventListener('submit', function(e) {
-        let isValid = true;
-        
-        checkboxes.forEach((checkbox, index) => {
-            if (checkbox.checked) {
-                const startTime = startTimes[index].value;
-                const endTime = endTimes[index].value;
-                
-                if (startTime >= endTime) {
-                    alert('L\'heure de fin doit être après l\'heure de début pour ' + 
-                          ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'][index]);
-                    isValid = false;
-                }
-            }
-        });
-        
-        if (!isValid) {
-            e.preventDefault();
-        }
-    });
-});
-</script>
-{% endblock %} 
+  <form method="post">
+    {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+
+    {% set jours = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'] %}
+    {% for d in range(0,7) %}
+      {% set windows = (windows_by_day[d] if windows_by_day is defined else []) %}
+      {% set w1 = windows[0] if windows|length > 0 else None %}
+      {% set w2 = windows[1] if windows|length > 1 else None %}
+      {% set w3 = windows[2] if windows|length > 2 else None %}
+
+      <div class="card mb-3">
+        <div class="card-header d-flex align-items-center">
+          <strong class="me-2">{{ jours[d] }}</strong>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="available_{{d}}" name="available_{{d}}" {% if w1 %}checked{% endif %}>
+            <label class="form-check-label" for="available_{{d}}">Disponible ce jour</label>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- Plage 1 (legacy) -->
+          <div class="row g-2 align-items-end mb-2">
+            <div class="col-auto">
+              <label class="form-label d-block">Plage 1</label>
+              <span class="badge bg-secondary">obligatoire si "Disponible" coché</span>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Heure début</label>
+              <input type="time" class="form-control" name="start_time_{{d}}" value="{{ w1.start_time if w1 else '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Heure fin</label>
+              <input type="time" class="form-control" name="end_time_{{d}}" value="{{ w1.end_time if w1 else '' }}">
+            </div>
+          </div>
+
+          <!-- Plage 2 -->
+          <div class="row g-2 align-items-end mb-2">
+            <div class="col-auto">
+              <div class="form-check mt-4">
+                <input class="form-check-input" type="checkbox" id="available_{{d}}_2" name="available_{{d}}_2" {% if w2 %}checked{% endif %}>
+                <label class="form-check-label" for="available_{{d}}_2">Ajouter une 2ᵉ plage</label>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Heure début</label>
+              <input type="time" class="form-control" name="start_time_{{d}}_2" value="{{ w2.start_time if w2 else '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Heure fin</label>
+              <input type="time" class="form-control" name="end_time_{{d}}_2" value="{{ w2.end_time if w2 else '' }}">
+            </div>
+          </div>
+
+          <!-- Plage 3 -->
+          <div class="row g-2 align-items-end">
+            <div class="col-auto">
+              <div class="form-check mt-4">
+                <input class="form-check-input" type="checkbox" id="available_{{d}}_3" name="available_{{d}}_3" {% if w3 %}checked{% endif %}>
+                <label class="form-check-label" for="available_{{d}}_3">Ajouter une 3ᵉ plage</label>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Heure début</label>
+              <input type="time" class="form-control" name="start_time_{{d}}_3" value="{{ w3.start_time if w3 else '' }}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Heure fin</label>
+              <input type="time" class="form-control" name="end_time_{{d}}_3" value="{{ w3.end_time if w3 else '' }}">
+            </div>
+          </div>
+
+        </div>
+      </div>
+    {% endfor %}
+
+    <button class="btn btn-primary">Enregistrer mes disponibilités</button>
+    <a href="{{ url_for('professional_dashboard') }}" class="btn btn-outline-secondary">Annuler</a>
+  </form>
+</div>
+{% endblock %}
