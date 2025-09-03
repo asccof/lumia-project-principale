@@ -1,479 +1,121 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Tighri — Administration · Tableau de bord</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
-  <style>
-    :root{ --primary:#6f42c1; --secondary:#8e44ad; --light:#f8f5ff; --ink:#2d1a47 }
-    body{ background:var(--light); color:var(--ink) }
-    .navbar{ background:linear-gradient(135deg,var(--primary),var(--secondary)) }
-    .brand{ font-weight:800 }
-    .card{ border:0; border-radius:16px; box-shadow:0 10px 24px rgba(111,66,193,.12) }
-    .kpi .icon{
-      width:52px; height:52px; border-radius:12px; display:flex; align-items:center; justify-content:center;
-      background:rgba(111,66,193,.12); color:var(--primary); font-size:1.25rem
-    }
-    .kpi .value{ font-size:1.6rem; font-weight:800 }
-    .kpi .label{ color:#6b7280; font-weight:600 }
-    .table> :not(caption)>*>*{ vertical-align:middle }
-    .btn-icon{ display:inline-flex; align-items:center; gap:.45rem }
-    .status-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:.4rem }
-    .status-confirme{ background:#16a34a }
-    .status-attente{ background:#f59e0b }
-    .status-annule{ background:#ef4444 }
-    .status-valide{ background:#16a34a }
-    .status-pending{ background:#f59e0b }
-    .status-rejete{ background:#ef4444 }
-    .avatar{ width:44px; height:44px; border-radius:10px; object-fit:cover }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Tableau de bord</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body>
-<nav class="navbar navbar-dark">
-  <div class="container">
-    <a class="navbar-brand brand" href="{{ url_for('admin.admin_dashboard') }}">
-      <i class="fa-solid fa-shield-halved me-2"></i>Tighri — Administration
-    </a>
-    <div class="d-flex align-items-center gap-2">
-      <a class="btn btn-light btn-sm" href="{{ url_for('change_password') }}">
-        <i class="fa-solid fa-key me-1"></i>Changer mot de passe
-      </a>
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin.admin_logout') }}">
-        <i class="fa-solid fa-right-from-bracket me-1"></i>Déconnexion
-      </a>
-    </div>
-  </div>
-</nav>
-
+<body class="bg-light">
 <div class="container py-4">
 
-  {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Tableau de bord</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('admin.admin_products') }}">Professionnels</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('admin.admin_users') }}">Utilisateurs</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('admin.admin_appointments') }}">Rendez-vous</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_logout') }}">Déconnexion</a>
+    </div>
+  </div>
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="mb-3">
         {% for cat, msg in messages %}
-          <div class="alert alert-{{ _cats.get(cat,'info') }} alert-dismissible fade show" role="alert">
-            <i class="fa-solid fa-circle-info me-2"></i>{{ msg }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
-          </div>
+          <div class="alert alert-{{ 'warning' if cat=='error' else cat }}">{{ msg }}</div>
         {% endfor %}
       </div>
     {% endif %}
   {% endwith %}
 
-  <!-- KPIs -->
-  <div class="row g-3">
+  <div class="row g-3 mb-4">
     <div class="col-md-3">
-      <div class="card kpi h-100">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="icon"><i class="fa-solid fa-briefcase-medical"></i></div>
-          <div>
-            <div class="value" id="kpiPro">{{ total_professionals or 0 }}</div>
-            <div class="label">Professionnels</div>
-          </div>
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Professionnels</div>
+          <div class="h4 mb-0">{{ total_professionals }}</div>
         </div>
       </div>
     </div>
     <div class="col-md-3">
-      <div class="card kpi h-100">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="icon"><i class="fa-solid fa-users"></i></div>
-          <div>
-            <div class="value" id="kpiUsers">{{ total_users or 0 }}</div>
-            <div class="label">Utilisateurs</div>
-          </div>
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Utilisateurs</div>
+          <div class="h4 mb-0">{{ total_users }}</div>
         </div>
       </div>
     </div>
     <div class="col-md-3">
-      <div class="card kpi h-100">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="icon"><i class="fa-solid fa-calendar-check"></i></div>
-          <div>
-            <div class="value" id="kpiAppt">{{ total_appointments or 0 }}</div>
-            <div class="label">Rendez-vous</div>
-          </div>
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">RDV (total)</div>
+          <div class="h4 mb-0">{{ total_appointments }}</div>
         </div>
       </div>
     </div>
     <div class="col-md-3">
-      <div class="card kpi h-100">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="icon"><i class="fa-solid fa-sack-dollar"></i></div>
-          <div>
-            <div class="value" id="kpiRevenue">{{ '%.0f'|format(total_revenue or 0) }} MAD</div>
-            <div class="label">Revenus confirmés</div>
-          </div>
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Chiffre estimé (MAD)</div>
+          <div class="h4 mb-0">{{ '%.0f'|format(total_revenue or 0) }}</div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Statuts / Raccourcis -->
-  <div class="row g-3 mt-1">
-    <div class="col-lg-8">
-      <div class="card">
-        <div class="card-header bg-white">
-          <div class="d-flex justify-content-between align-items-center">
-            <h5 class="mb-0"><i class="fa-solid fa-chart-simple text-primary me-2"></i>Statuts des rendez-vous</h5>
-            <a href="{{ url_for('admin.admin_appointments') }}" class="btn btn-sm btn-outline-primary btn-icon"><i class="fa-solid fa-calendar-days"></i> Tous les RDV</a>
-          </div>
-        </div>
-        <div class="card-body">
-          {% set appts = appointments or [] %}
-          {% set c_conf = appts|selectattr('status','equalto','confirme')|list|length %}
-          {% set c_att  = appts|selectattr('status','equalto','en_attente')|list|length %}
-          {% set c_ann  = appts|selectattr('status','equalto','annule')|list|length %}
-          <div class="row text-center">
-            <div class="col-4">
-              <div class="fw-bold fs-4">{{ c_conf }}</div>
-              <div class="text-success"><span class="status-dot status-confirme"></span>Confirmés</div>
-            </div>
-            <div class="col-4">
-              <div class="fw-bold fs-4">{{ c_att }}</div>
-              <div class="text-warning"><span class="status-dot status-attente"></span>En attente</div>
-            </div>
-            <div class="col-4">
-              <div class="fw-bold fs-4">{{ c_ann }}</div>
-              <div class="text-danger"><span class="status-dot status-annule"></span>Annulés</div>
-            </div>
-          </div>
-          <hr>
-          <canvas id="rdvChart" height="90"></canvas>
-        </div>
-      </div>
+  <!-- Liste rapide des pros avec Durée/Buffer + actions -->
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>Professionnels récents</strong>
+      <a class="btn btn-sm btn-primary" href="{{ url_for('admin.admin_add_product') }}">+ Ajouter</a>
     </div>
-    <div class="col-lg-4">
-      {% set pros = professionals or [] %}
-      {% set p_pending = pros|selectattr('status','equalto','en_attente')|list %}
-      {% set p_valid   = pros|selectattr('status','equalto','valide')|list %}
-      {% set p_rejet   = pros|selectattr('status','equalto','rejete')|list %}
-      <div class="card h-100">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><i class="fa-solid fa-user-doctor text-primary me-2"></i>Professionnels</h5>
-          <a href="{{ url_for('admin.admin_products') }}" class="btn btn-sm btn-outline-primary btn-icon"><i class="fa-solid fa-briefcase-medical"></i> Gérer</a>
-        </div>
-        <div class="card-body">
-          <div class="d-flex justify-content-between">
-            <div class="text-warning"><span class="status-dot status-pending"></span>En attente</div>
-            <div class="fw-bold">{{ p_pending|length }}</div>
-          </div>
-          <div class="d-flex justify-content-between">
-            <div class="text-success"><span class="status-dot status-valide"></span>Validés</div>
-            <div class="fw-bold">{{ p_valid|length }}</div>
-          </div>
-          <div class="d-flex justify-content-between">
-            <div class="text-danger"><span class="status-dot status-rejete"></span>Rejetés</div>
-            <div class="fw-bold">{{ p_rejet|length }}</div>
-          </div>
-          <hr>
-          <div class="d-grid gap-2">
-            <a href="{{ url_for('admin.pending_professionals') }}" class="btn btn-sm btn-outline-primary">Voir tout</a>
-            <a href="{{ url_for('admin.admin_add_product') }}" class="btn btn-primary btn-icon">
-              <i class="fa-solid fa-plus"></i> Ajouter un professionnel
-            </a>
-          </div>
-        </div>
-      </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width:60px;">Photo</th>
+            <th>Nom</th>
+            <th>Spécialité</th>
+            <th>Ville</th>
+            <th>Statut</th>
+            <th>Durée / Buffer</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for p in professionals %}
+          <tr>
+            <td>
+              <img src="{{ url_for('profile_photo', professional_id=p.id) }}" alt="photo" class="rounded" style="width:48px;height:48px;object-fit:cover;">
+            </td>
+            <td><a href="{{ url_for('admin.view_professional', professional_id=p.id) }}">{{ p.name }}</a></td>
+            <td>{{ p.specialty or '-' }}</td>
+            <td>{{ p.location or '-' }}</td>
+            <td>
+              <span class="badge bg-{{ 'success' if p.status=='valide' else ('secondary' if p.status=='en_attente' else 'danger') }}">
+                {{ p.status }}
+              </span>
+            </td>
+            <td>
+              {{ (p.consultation_duration_minutes or 45) }} min /
+              {{ (p.buffer_between_appointments_minutes or 15) }} min
+            </td>
+            <td class="text-nowrap">
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.admin_edit_product', product_id=p.id) }}">Éditer</a>
+              <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_professional_availability', professional_id=p.id) }}">Disponibilités</a>
+              <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_professional_unavailable_slots', professional_id=p.id) }}">Indispo</a>
+              <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.view_professional', professional_id=p.id) }}">Voir</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="text-muted">Aucun professionnel.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 
-  <!-- Deux colonnes : Derniers RDV & Pros en attente -->
-  <div class="row g-3 mt-1">
-    <div class="col-lg-7">
-      <div class="card">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>Derniers rendez-vous</h5>
-          <a href="{{ url_for('admin.admin_appointments') }}" class="btn btn-sm btn-outline-primary">Voir tout</a>
-        </div>
-        <div class="card-body">
-          {% set ap_sorted = (appointments|sort(attribute='appointment_date', reverse=true)) if (appointments is iterable) else appointments %}
-          {% if ap_sorted and ap_sorted|length %}
-          <div class="table-responsive">
-            <table class="table align-middle">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Patient</th>
-                  <th>Professionnel</th>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-              {% for a in ap_sorted[:8] %}
-                {% set st = a.status or 'en_attente' %}
-                <tr>
-                  <td class="text-muted">#{{ a.id }}</td>
-                  <td>
-                    {# Lien "Voir profil patient" seulement si l'ID est valide #}
-                    {% if a.patient_id %}
-                      <a class="text-decoration-none" href="{{ url_for('admin.edit_user', user_id=a.patient_id) }}" title="Voir le profil utilisateur">
-                        <i class="fa-solid fa-user me-1"></i>{{ a.patient.username if a.patient else ('User#' ~ a.patient_id) }}
-                      </a>
-                    {% else %}
-                      <span class="text-muted"><i class="fa-solid fa-user me-1"></i>Utilisateur inconnu</span>
-                    {% endif %}
-                  </td>
-                  <td>
-                    {# Lien "Voir profil pro" seulement si l'ID est valide #}
-                    {% if a.professional_id %}
-                      <a class="text-decoration-none" href="{{ url_for('admin.view_professional', professional_id=a.professional_id) }}" title="Voir le profil professionnel">
-                        <i class="fa-solid fa-user-doctor me-1"></i>{{ a.professional.name if a.professional else ('Pro#' ~ a.professional_id) }}
-                      </a>
-                    {% else %}
-                      <span class="text-muted"><i class="fa-solid fa-user-doctor me-1"></i>Pro inconnu</span>
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% if a.appointment_date %}
-                      {{ a.appointment_date.strftime('%d/%m/%Y') }} à {{ a.appointment_date.strftime('%H:%M') }}
-                    {% else %}—{% endif %}
-                  </td>
-                  <td>
-                    <span class="badge bg-info">
-                      {% if a.consultation_type == 'cabinet' %}Cabinet
-                      {% elif a.consultation_type == 'domicile' %}Domicile
-                      {% elif a.consultation_type in ['video','vidéo','en_ligne'] %}Vidéo
-                      {% else %}{{ a.consultation_type or '—' }}{% endif %}
-                    </span>
-                  </td>
-                  <td>
-                    {% if st == 'confirme' %}
-                      <span class="status-dot status-confirme"></span><span class="badge bg-success">Confirmé</span>
-                    {% elif st == 'annule' %}
-                      <span class="status-dot status-annule"></span><span class="badge bg-danger">Annulé</span>
-                    {% else %}
-                      <span class="status-dot status-attente"></span><span class="badge bg-warning text-dark">En attente</span>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {% else %}
-            <div class="text-center text-muted py-4">Aucun rendez-vous récent.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-
-    <div class="col-lg-5">
-      <div class="card">
-        <div class="card-header bg-white d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><i class="fa-solid fa-hourglass-half text-primary me-2"></i>Professionnels en attente</h5>
-          <a href="{{ url_for('admin.pending_professionals') }}" class="btn btn-sm btn-outline-primary">Voir tout</a>
-        </div>
-        <div class="card-body">
-          {% set pending = p_pending %}
-          {% if pending and pending|length %}
-          <div class="table-responsive">
-            <table class="table align-middle" id="pendingTable">
-              <thead>
-                <tr>
-                  <th>Pro</th>
-                  <th>Spécialité</th>
-                  <th>Ville</th>
-                  <th class="text-end">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for p in pending[:7] %}
-                <tr data-id="{{ p.id }}">
-                  <td>
-                    <div class="d-flex align-items-center gap-2">
-                      <img class="avatar" src="{{ (p.image_url or '')|trim or 'https://placehold.co/88x88?text=Pro' }}"
-                           onerror="this.onerror=null;this.src='https://placehold.co/88x88?text=Pro';" alt="">
-                      <div>
-                        <div class="fw-semibold">
-                          {# Lien "Voir profil pro" seulement si l'ID est valide #}
-                          {% if p.id %}
-                            <a class="text-decoration-none" href="{{ url_for('admin.view_professional', professional_id=p.id) }}" title="Voir le profil professionnel">
-                              {{ p.name }}
-                            </a>
-                          {% else %}
-                            <span class="text-muted">{{ p.name or '—' }}</span>
-                          {% endif %}
-                        </div>
-                        <div class="small text-muted">
-                          {% if p.address %}<i class="fa-solid fa-location-dot me-1"></i>{{ p.address }}{% endif %}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td>{{ p.specialty or '—' }}</td>
-                  <td>{{ p.location or '—' }}</td>
-                  <td class="text-end">
-                    <div class="btn-group">
-                      <button class="btn btn-sm btn-success btn-icon js-validate" data-id="{{ p.id }}">
-                        <i class="fa-solid fa-check"></i> Valider
-                      </button>
-                      <button class="btn btn-sm btn-outline-danger btn-icon js-reject" data-id="{{ p.id }}">
-                        <i class="fa-solid fa-xmark"></i> Rejeter
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-          {% else %}
-            <div class="text-center text-muted py-4">Aucun profil en attente.</div>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Raccourcis -->
-  <div class="row g-3 mt-1">
-    <div class="col-md-3">
-      <a class="card text-decoration-none h-100" href="{{ url_for('admin.admin_products') }}">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="icon text-primary"><i class="fa-solid fa-briefcase-medical fa-xl"></i></div>
-          <div>
-            <div class="fw-bold">Gérer les professionnels</div>
-            <div class="text-muted small">Liste & validation</div>
-          </div>
-        </div>
-      </a>
-    </div>
-    <div class="col-md-3">
-      <a class="card text-decoration-none h-100" href="{{ url_for('admin.admin_appointments') }}">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="icon text-primary"><i class="fa-solid fa-calendar-days fa-xl"></i></div>
-          <div>
-            <div class="fw-bold">Gérer les rendez-vous</div>
-            <div class="text-muted small">Statuts & export</div>
-          </div>
-        </div>
-      </a>
-    </div>
-    <div class="col-md-3">
-      <a class="card text-decoration-none h-100" href="{{ url_for('admin.admin_users') }}">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="icon text-primary"><i class="fa-solid fa-users fa-xl"></i></div>
-          <div>
-            <div class="fw-bold">Gérer les utilisateurs</div>
-            <div class="text-muted small">Ajout, édition, suppression</div>
-          </div>
-        </div>
-      </a>
-    </div>
-    <div class="col-md-3">
-      <a class="card text-decoration-none h-100" href="{{ url_for('admin.admin_add_product') }}">
-        <div class="card-body d-flex align-items-center gap-3">
-          <div class="icon text-primary"><i class="fa-solid fa-plus fa-xl"></i></div>
-          <div>
-            <div class="fw-bold">Ajouter un professionnel</div>
-            <div class="text-muted small">Fiche détaillée</div>
-          </div>
-        </div>
-      </a>
-    </div>
-  </div>
 </div>
-
-<!-- CSRF caché si présent (pour POST AJAX) -->
-{% if csrf_token is defined %}
-  <form style="display:none"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
-{% endif %}
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script>
-(function(){
-  const $q = (sel, ctx=document)=>ctx.querySelector(sel);
-
-  // Format nombre FR
-  const nf = new Intl.NumberFormat('fr-MA');
-  function setText(id, val){ const el = document.getElementById(id); if(el) el.textContent = val; }
-
-  // KPI live via API
-  async function refreshKPIs(){
-    try{
-      const res = await fetch("{{ url_for('admin.api_stats') }}");
-      if(!res.ok) return;
-      const j = await res.json();
-      if(j){
-        setText('kpiPro', nf.format(j.total_professionals||0));
-        setText('kpiUsers', nf.format(j.total_users||0));
-        setText('kpiAppt', nf.format(j.total_appointments||0));
-        // kpiRevenue non fourni par /api/stats => on garde valeur serveur
-        updateChart(j.confirmed_appointments||0, j.pending_appointments||0, (j.total_appointments||0) - (j.confirmed_appointments||0) - (j.pending_appointments||0));
-      }
-    }catch(e){ console.warn(e); }
-  }
-
-  // Graph RDV
-  const ctx = document.getElementById('rdvChart');
-  let chart;
-  function updateChart(conf, pend, ann){
-    const data = {
-      labels: ['Confirmés','En attente','Annulés'],
-      datasets: [{
-        label: 'RDV',
-        data: [conf, pend, ann],
-      }]
-    };
-    if(chart){ chart.data = data; chart.update(); return; }
-    chart = new Chart(ctx, { type:'bar', data,
-      options:{
-        plugins:{ legend:{ display:false } },
-        scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } }
-      }
-    });
-  }
-
-  // Init chart avec données serveur (fallback)
-  updateChart(
-    {{ c_conf|default(0) }},
-    {{ c_att|default(0) }},
-    {{ c_ann|default(0) }}
-  );
-  refreshKPIs(); // rafraîchit
-
-  // CSRF helper
-  const getCSRF = ()=> (document.querySelector('input[name="csrf_token"]')||{}).value || null;
-
-  // Actions Valider/Rejeter (table pros en attente)
-  document.addEventListener('click', async (e)=>{
-    const btn = e.target.closest('.js-validate, .js-reject');
-    if(!btn) return;
-    const id = btn.dataset.id;
-    const tr = btn.closest('tr');
-    if(!id || !tr) return;
-
-    const headers = { 'Content-Type':'application/json' };
-    const csrf = getCSRF(); if(csrf) headers['X-CSRFToken'] = csrf;
-
-    let url = '';
-    if(btn.classList.contains('js-validate')){
-      url = "{{ url_for('admin.validate_professional', professional_id=0) }}".replace('/0/', `/${id}/`);
-    }else{
-      if(!confirm('Rejeter ce professionnel ?')) return;
-      url = "{{ url_for('admin.reject_professional', professional_id=0) }}".replace('/0/', `/${id}/`);
-    }
-    try{
-      const res = await fetch(url, { method:'POST', headers, body:'{}' });
-      const data = await res.json();
-      if(data && data.success){
-        tr.remove();
-        refreshKPIs();
-      }else{
-        alert(data && data.message ? data.message : 'Action impossible.');
-      }
-    }catch(err){
-      console.error(err);
-      alert('Erreur réseau.');
-    }
-  });
-})();
-</script>
 </body>
 </html>
