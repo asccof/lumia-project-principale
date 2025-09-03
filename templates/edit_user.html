@@ -4,34 +4,115 @@
 <div class="container-fluid">
   <div class="row"><div class="col-12">
     <div class="card">
-      <div class="card-header"><h4 class="card-title"><i class="fas fa-user-edit me-2"></i>Modifier l'utilisateur</h4></div>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h4 class="card-title mb-0">
+          <i class="fas fa-user-edit me-2"></i>Modifier l'utilisateur
+        </h4>
+        <!-- Bouton conversion rapide vers "Professionnel" (soumet le formulaire) -->
+        <button type="button" class="btn btn-outline-success btn-sm" id="convertToProBtn">
+          <i class="fas fa-user-tie me-1"></i> Convertir en professionnel
+        </button>
+      </div>
+
       <div class="card-body">
-        <form method="POST" action="{{ url_for('admin.edit_user', user_id=user.id) }}" accept-charset="utf-8">
+        <form method="POST" action="{{ url_for('admin.edit_user', user_id=user.id) }}" accept-charset="utf-8" id="editUserForm">
           {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+
           <div class="row">
-            <div class="col-md-6"><div class="mb-3"><label for="username" class="form-label">Nom d'utilisateur *</label><input type="text" class="form-control" id="username" name="username" value="{{ user.username }}" required></div></div>
-            <div class="col-md-6"><div class="mb-3"><label for="email" class="form-label">Email *</label><input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" required></div></div>
-          </div>
-          <div class="row">
-            <div class="col-md-6"><div class="mb-3"><label for="user_type" class="form-label">Type d'utilisateur</label>
-              <select id="user_type" name="user_type" class="form-select">
-                <option value="patient" {{ 'selected' if user.user_type=='patient' else '' }}>Patient</option>
-                <option value="professional" {{ 'selected' if user.user_type=='professional' else '' }}>Professionnel</option>
-              </select></div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label for="username" class="form-label">Nom d'utilisateur *</label>
+                <input type="text" class="form-control" id="username" name="username" value="{{ user.username }}" required>
+              </div>
             </div>
-            <div class="col-md-6"><div class="mb-3"><label for="password" class="form-label">Nouveau mot de passe (laisser vide)</label><input type="password" class="form-control" id="password" name="password" autocomplete="new-password"></div></div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label for="email" class="form-label">Email *</label>
+                <input type="email" class="form-control" id="email" name="email" value="{{ user.email }}" required>
+              </div>
+            </div>
           </div>
+
           <div class="row">
-            <div class="col-md-6"><div class="form-check mb-3"><input class="form-check-input" type="checkbox" id="is_admin" name="is_admin" {% if user.is_admin %}checked{% endif %}><label class="form-check-label" for="is_admin">Administrateur</label></div></div>
-            <div class="col-md-6"><p class="text-muted mb-0"><strong>Date de création:</strong> {% if user.created_at %}{{ user.created_at.strftime('%d/%m/%Y à %H:%M') }}{% else %}-{% endif %}</p></div>
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label for="user_type" class="form-label">Type d'utilisateur</label>
+                <select id="user_type" name="user_type" class="form-select">
+                  <option value="patient" {{ 'selected' if user.user_type=='patient' else '' }}>Patient</option>
+                  <option value="professional" {{ 'selected' if user.user_type=='professional' else '' }}>Professionnel</option>
+                </select>
+                <div class="form-text">
+                  Si vous choisissez <strong>Professionnel</strong>, un profil pro sera
+                  <em>créé automatiquement</em> (ou mis à jour) si nécessaire.
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label for="password" class="form-label">Nouveau mot de passe (laisser vide)</label>
+                <!-- Le backend accepte "new_password" OU "password". On garde "password" pour compatibilité. -->
+                <input type="password" class="form-control" id="password" name="password" autocomplete="new-password">
+              </div>
+            </div>
           </div>
-          <div class="d-flex justify-content-between">
-            <a href="{{ url_for('admin.admin_users') }}" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i>Retour</a>
-            <button type="submit" class="btn btn-primary"><i class="fas fa-save me-2"></i>Enregistrer</button>
+
+          <div class="row">
+            <!-- Téléphone (utilisé par admin_server.edit_user) -->
+            <div class="col-md-6">
+              <div class="mb-3">
+                <label for="phone" class="form-label">Téléphone</label>
+                <input type="text" class="form-control" id="phone" name="phone" value="{{ user.phone or '' }}" placeholder="+212 6 12 34 56 78">
+              </div>
+            </div>
+
+            <div class="col-md-6 d-flex align-items-center">
+              <div class="form-check mb-3 mt-2">
+                <input class="form-check-input" type="checkbox" id="is_admin" name="is_admin" {% if user.is_admin %}checked{% endif %}>
+                <label class="form-check-label" for="is_admin">Administrateur</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <p class="text-muted mb-0">
+                <strong>Date de création:</strong>
+                {% if user.created_at %}{{ user.created_at.strftime('%d/%m/%Y à %H:%M') }}{% else %}-{% endif %}
+              </p>
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between mt-4">
+            <a href="{{ url_for('admin.admin_users') }}" class="btn btn-secondary">
+              <i class="fas fa-arrow-left me-2"></i>Retour
+            </a>
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-save me-2"></i>Enregistrer
+            </button>
           </div>
         </form>
       </div>
     </div>
   </div></div>
 </div>
+
+<!-- JS minimal : convertit en "professionnel" + submit -->
+<script>
+  (function () {
+    const btn = document.getElementById('convertToProBtn');
+    const form = document.getElementById('editUserForm');
+    const select = document.getElementById('user_type');
+    if (btn && form && select) {
+      btn.addEventListener('click', function () {
+        try {
+          select.value = 'professional';
+          form.submit();
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    }
+  })();
+</script>
 {% endblock %}
