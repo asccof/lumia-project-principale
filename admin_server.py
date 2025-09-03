@@ -2,6 +2,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
+from jinja2 import TemplateNotFound  # ✅ pour fallback de template
 
 from models import db, User, Professional, Appointment
 
@@ -74,7 +75,11 @@ def admin_products():
         flash('Accès refusé')
         return redirect(url_for('admin.admin_login'))
     professionals = Professional.query.order_by(Professional.id.desc()).all()
-    return render_template('admin_products.html', professionals=professionals)
+    # ✅ supporte admin_products.html OU admin_products.htm selon ce que tu as
+    try:
+        return render_template('admin_products.html', professionals=professionals)
+    except TemplateNotFound:
+        return render_template('admin_products.htm', professionals=professionals)
 
 @admin_bp.route('/products/add', methods=['GET', 'POST'], endpoint='admin_add_product')
 @login_required
@@ -138,7 +143,7 @@ def admin_add_product():
         youtube_url   = (request.form.get('youtube_url')   or '').strip()
         social_links_approved = bool(request.form.get('social_links_approved'))
 
-        # ✅ Durée & buffer (défauts 45/15 si rien)
+        # ✅ Durée & buffer (défauts souhaités 45/15)
         dur_raw = (request.form.get('consultation_duration_minutes') or '45').strip()
         buf_raw = (request.form.get('buffer_between_appointments_minutes') or '15').strip()
         try:
@@ -183,6 +188,7 @@ def admin_add_product():
         flash('Professionnel ajouté avec succès!')
         return redirect(url_for('admin.admin_products'))
 
+    # ✅ tes templates sont à la racine (pas /admin/)
     return render_template('add_product.html')
 
 @admin_bp.route('/products/edit/<int:product_id>', methods=['GET', 'POST'], endpoint='admin_edit_product')
@@ -283,6 +289,7 @@ def admin_edit_product(product_id):
         flash('Professionnel modifié avec succès!')
         return redirect(url_for('admin.admin_products'))
 
+    # ✅ tes templates sont à la racine (pas /admin/)
     return render_template('edit_product.html', professional=professional)
 
 @admin_bp.route('/products/<int:product_id>/delete', methods=['POST'], endpoint='admin_delete_product')
@@ -373,6 +380,7 @@ def edit_professional(professional_id):
         flash('Professionnel modifié avec succès!')
         return redirect(url_for('admin.admin_professionals'))
 
+    # ✅ tes templates sont à la racine (pas /admin/)
     return render_template('edit_product.html', professional=professional)
 
 @admin_bp.route('/professionals/delete/<int:professional_id>', endpoint='delete_professional')
@@ -457,7 +465,6 @@ def edit_user(user_id):
     user = User.query.get_or_404(user_id)
 
     if request.method == 'POST':
-        # Conserver l’ancien état pour gérer la promotion et le renommage
         old_username = user.username
         old_type = user.user_type
 
@@ -468,7 +475,6 @@ def edit_user(user_id):
         new_pw = (request.form.get('new_password') or request.form.get('password') or '').strip()
         phone = (request.form.get('phone') or user.phone or '').strip()
 
-        # Unicité username/email (hors utilisateur courant)
         if User.query.filter(User.username == username, User.id != user.id).first():
             flash("Nom d'utilisateur déjà pris")
             return redirect(url_for('admin.edit_user', user_id=user.id))
@@ -476,7 +482,6 @@ def edit_user(user_id):
             flash("Email déjà enregistré")
             return redirect(url_for('admin.edit_user', user_id=user.id))
 
-        # Appliquer les modifications au User
         user.username = username
         user.email = email
         user.user_type = user_type
@@ -485,20 +490,17 @@ def edit_user(user_id):
         if new_pw:
             user.password_hash = generate_password_hash(new_pw)
 
-        # ---- PROMOTION AUTO: patient -> professional (sans colonne user_id) ----
         try:
             if user_type == 'professional':
                 pro = Professional.query.filter_by(name=username).first()
 
                 if not pro:
-                    # Peut-être un pro existe avec l'ancien username => le renommer
                     pro_old = Professional.query.filter_by(name=old_username).first()
                     if pro_old and old_username != username:
                         pro_old.name = username
                         pro = pro_old
 
                 if not pro:
-                    # Créer un profil pro minimal
                     pro = Professional(
                         name=username,
                         description="Profil en cours de complétion.",
@@ -508,7 +510,6 @@ def edit_user(user_id):
                         consultation_fee=0.0,
                         phone=user.phone or None,
                         status="en_attente",
-                        # ✅ valeurs par défaut souhaitées si création ici
                         consultation_duration_minutes=45,
                         buffer_between_appointments_minutes=15,
                     )
