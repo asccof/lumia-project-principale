@@ -27,6 +27,7 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
+        # Les UNIQUE créent déjà des index sur username/email.
         db.Index('ix_users_user_type', 'user_type'),
         db.Index('ix_users_is_admin', 'is_admin'),
         db.Index('ix_users_created_at', 'created_at'),
@@ -76,7 +77,7 @@ class Professional(db.Model):
     # Validation par l’admin: 'valide' | 'en_attente' | 'rejete'
     status = db.Column(db.String(20), default='en_attente')
 
-    # ✅ Durée & délai (défauts 45 / 15)
+    # ✅ Durée par défaut 45 min et buffer 15 min (modifiables pro + admin)
     consultation_duration_minutes = db.Column(db.Integer, default=45)
     buffer_between_appointments_minutes = db.Column(db.Integer, default=15)
 
@@ -91,7 +92,7 @@ class Professional(db.Model):
         db.Index('ix_professionals_status', 'status'),
         db.Index('ix_professionals_availability', 'availability'),
         db.Index('ix_professionals_created_at', 'created_at'),
-        # Index multi-colonnes pour les filtres/search
+        # Index multi-colonnes pour les filtres/search (LIKE sur plusieurs champs)
         db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
     )
 
@@ -132,3 +133,26 @@ class Appointment(db.Model):
 
     def __repr__(self):
         return f"<Appt id={self.id} pro={self.professional_id} patient={self.patient_id} at={self.appointment_date} status={self.status}>"
+
+
+# ✅ Déplacés ici depuis app.py pour être accessibles aussi côté admin
+class ProfessionalAvailability(db.Model):
+    __tablename__ = "professional_availabilities"
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
+    day_of_week = db.Column(db.Integer, nullable=False)  # 0..6
+    start_time = db.Column(db.String(5), nullable=False)  # "HH:MM"
+    end_time = db.Column(db.String(5), nullable=False)    # "HH:MM"
+    is_available = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+
+class UnavailableSlot(db.Model):
+    __tablename__ = "unavailable_slots"
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    start_time = db.Column(db.String(5), nullable=False)
+    end_time = db.Column(db.String(5), nullable=False)
+    reason = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
