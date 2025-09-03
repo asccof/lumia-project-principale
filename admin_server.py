@@ -5,43 +5,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from models import db, User, Professional, Appointment
 
-# ==== [AJOUT MINIMAL — UPLOAD IMAGE ADMIN] ==================================
-# Sauvegarde simple du fichier (sans Pillow), même dossier que /media/profiles
-from pathlib import Path
-import os, uuid
-
-BASE_DIR = Path(__file__).resolve().parent
-UPLOAD_FOLDER = BASE_DIR / 'uploads' / 'profiles'
-ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
-
-def _save_uploaded_image(file_storage) -> str:
-    """
-    Enregistre le fichier image tel quel dans uploads/profiles,
-    renvoie une URL de type /media/profiles/<uuid>.<ext>.
-    N'affecte rien d'autre.
-    """
-    filename = getattr(file_storage, "filename", "")
-    if not filename:
-        raise ValueError("Aucun fichier sélectionné.")
-    ext = os.path.splitext(filename)[1].lower()
-    if ext not in ALLOWED_IMAGE_EXT:
-        raise ValueError("Extension non autorisée (jpg, jpeg, png, gif).")
-
-    try:
-        UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-    except Exception:
-        # on n'échoue pas l'action pour un problème de mkdir concurrent
-        pass
-
-    out_name = f"{uuid.uuid4().hex}{ext}"
-    out_path = UPLOAD_FOLDER / out_name
-    # Sauvegarde brute (pas de redimensionnement ici)
-    file_storage.save(out_path)
-
-    # Correspond au routeur /media/profiles/<filename> défini dans app.py
-    return f"/media/profiles/{out_name}"
-# ============================================================================
-
 admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
 
 # --------------------- AUTH ADMIN ---------------------
@@ -128,14 +91,6 @@ def admin_add_product():
         image_url = (request.form.get('image_url') or '').strip()
         phone = (request.form.get('phone') or '').strip()
 
-        # --- [AJOUT] si un fichier image est fourni, il prend la priorité ---
-        image_file = request.files.get('image_file')
-        if image_file and getattr(image_file, "filename", ""):
-            try:
-                image_url = _save_uploaded_image(image_file)
-            except Exception as e:
-                flash(f"Image non enregistrée: {e}", "warning")
-
         address = (request.form.get('address') or '').strip()
         lat_raw = (request.form.get('latitude') or '').strip()
         lng_raw = (request.form.get('longitude') or '').strip()
@@ -183,6 +138,18 @@ def admin_add_product():
         youtube_url   = (request.form.get('youtube_url')   or '').strip()
         social_links_approved = bool(request.form.get('social_links_approved'))
 
+        # ✅ Durée & buffer (défauts 45/15 si rien)
+        dur_raw = (request.form.get('consultation_duration_minutes') or '45').strip()
+        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '15').strip()
+        try:
+            consultation_duration_minutes = max(5, min(240, int(dur_raw)))
+        except ValueError:
+            consultation_duration_minutes = 45
+        try:
+            buffer_between_appointments_minutes = max(0, min(120, int(buf_raw)))
+        except ValueError:
+            buffer_between_appointments_minutes = 15
+
         if not name or not description or not specialty:
             flash("Nom, description et spécialité sont obligatoires.", "error")
             return redirect(url_for('admin.admin_add_product'))
@@ -206,7 +173,10 @@ def admin_add_product():
             tiktok_url=tiktok_url or None,
             youtube_url=youtube_url or None,
             social_links_approved=social_links_approved,
-            status='en_attente'
+            status='en_attente',
+            # ✅ nouveaux champs
+            consultation_duration_minutes=consultation_duration_minutes,
+            buffer_between_appointments_minutes=buffer_between_appointments_minutes
         )
         db.session.add(professional)
         db.session.commit()
@@ -239,14 +209,6 @@ def admin_edit_product(product_id):
         professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
         professional.location = (request.form.get('location') or professional.location or '').strip()
         professional.phone = (request.form.get('phone') or professional.phone or '').strip()
-
-        # --- [AJOUT] upload éventuel d'une nouvelle image
-        image_file = request.files.get('image_file')
-        if image_file and getattr(image_file, "filename", ""):
-            try:
-                professional.image_url = _save_uploaded_image(image_file)
-            except Exception as e:
-                flash(f"Image non enregistrée: {e}", "warning")
 
         address = (request.form.get('address') or '').strip()
         lat_raw = (request.form.get('latitude') or '').strip()
@@ -302,6 +264,20 @@ def admin_edit_product(product_id):
                 professional.experience_years = int(exp_raw)
             except ValueError:
                 flash("Expérience invalide", "error")
+
+        # ✅ Durée & buffer (ne change que si fournis)
+        dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
+        if dur_raw != '':
+            try:
+                professional.consultation_duration_minutes = max(5, min(240, int(dur_raw)))
+            except ValueError:
+                flash("Durée invalide (minutes).", "error")
+        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
+        if buf_raw != '':
+            try:
+                professional.buffer_between_appointments_minutes = max(0, min(120, int(buf_raw)))
+            except ValueError:
+                flash("Délai/buffer invalide (minutes).", "error")
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
@@ -378,6 +354,20 @@ def edit_professional(professional_id):
         professional.tiktok_url    = (request.form.get('tiktok_url')    or '').strip() or None
         professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
         professional.social_links_approved = bool(request.form.get('social_links_approved'))
+
+        # ✅ Durée & buffer (optionnels)
+        dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
+        if dur_raw != '':
+            try:
+                professional.consultation_duration_minutes = max(5, min(240, int(dur_raw)))
+            except ValueError:
+                flash("Durée invalide (minutes).", "error")
+        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
+        if buf_raw != '':
+            try:
+                professional.buffer_between_appointments_minutes = max(0, min(120, int(buf_raw)))
+            except ValueError:
+                flash("Délai/buffer invalide (minutes).", "error")
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
@@ -496,11 +486,6 @@ def edit_user(user_id):
             user.password_hash = generate_password_hash(new_pw)
 
         # ---- PROMOTION AUTO: patient -> professional (sans colonne user_id) ----
-        # Règle d’association existante dans app.py : on relie par le nom,
-        # via Professional.name == current_user.username.
-        # Donc si l’utilisateur devient "professional", on s’assure qu’un
-        # Professional(name=username) existe. Si on a renommé le username,
-        # on renomme aussi le Professional correspondant (si trouvé).
         try:
             if user_type == 'professional':
                 pro = Professional.query.filter_by(name=username).first()
@@ -513,7 +498,7 @@ def edit_user(user_id):
                         pro = pro_old
 
                 if not pro:
-                    # Créer un profil pro minimal et cohérent avec le site
+                    # Créer un profil pro minimal
                     pro = Professional(
                         name=username,
                         description="Profil en cours de complétion.",
@@ -522,12 +507,13 @@ def edit_user(user_id):
                         experience_years=0,
                         consultation_fee=0.0,
                         phone=user.phone or None,
-                        status="en_attente"
+                        status="en_attente",
+                        # ✅ valeurs par défaut souhaitées si création ici
+                        consultation_duration_minutes=45,
+                        buffer_between_appointments_minutes=15,
                     )
                     db.session.add(pro)
-            # Si l’admin rétrograde en patient, on ne supprime rien pour éviter toute perte.
         except Exception as e:
-            # On ne casse pas l’édition de l’utilisateur si la création du pro échoue.
             flash(f"Attention: la synchronisation du profil professionnel a rencontré un souci: {e}", "warning")
 
         db.session.commit()
@@ -562,7 +548,6 @@ def admin_appointments():
 @admin_bp.route('/orders', endpoint='admin_orders')
 @login_required
 def admin_orders():
-    # Redirige proprement vers la page RDV existante
     return redirect(url_for('admin.admin_appointments'))
 
 @admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'], endpoint='update_appointment_status')
