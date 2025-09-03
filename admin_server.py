@@ -66,7 +66,7 @@ def admin_dashboard():
         total_revenue=total_revenue
     )
 
-# --------------------- PROFESSIONNELS (liste type "products") ---------------------
+# --------------------- PROFESSIONNELS ---------------------
 @admin_bp.route('/products', endpoint='admin_products')
 @login_required
 def admin_products():
@@ -122,7 +122,6 @@ def admin_add_product():
             stock = (request.form.get('stock') or '').strip().lower()
             availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
 
-        # Types de consultation
         types_list = request.form.getlist('consultation_types')
         if not types_list:
             types_list = []
@@ -131,7 +130,6 @@ def admin_add_product():
             if request.form.get('online_consultation'): types_list.append('en_ligne')
         consultation_types = ','.join(types_list) if types_list else 'cabinet'
 
-        # Réseaux sociaux (URLs + approbation)
         facebook_url  = (request.form.get('facebook_url')  or '').strip()
         instagram_url = (request.form.get('instagram_url') or '').strip()
         tiktok_url    = (request.form.get('tiktok_url')    or '').strip()
@@ -236,7 +234,6 @@ def admin_edit_product(product_id):
             if t:
                 professional.consultation_types = ','.join(t)
 
-        # Réseaux sociaux
         professional.facebook_url  = (request.form.get('facebook_url')  or '').strip() or None
         professional.instagram_url = (request.form.get('instagram_url') or '').strip() or None
         professional.tiktok_url    = (request.form.get('tiktok_url')    or '').strip() or None
@@ -266,7 +263,7 @@ def admin_delete_product(product_id):
     db.session.commit()
     return jsonify({'success': True, 'message': 'Professionnel supprimé avec succès'})
 
-# Variante CRUD /professionals
+# --------------------- Variante CRUD /professionals -------------------------
 @admin_bp.route('/professionals', endpoint='admin_professionals')
 @login_required
 def admin_professionals():
@@ -303,7 +300,6 @@ def edit_professional(professional_id):
         if status in ('valide', 'en_attente', 'rejete'):
             professional.status = status
 
-        # Téléphone / Adresse
         professional.phone = (request.form.get('phone') or professional.phone or '').strip() or None
         professional.location = (request.form.get('location') or professional.location or '').strip()
         professional.address = (request.form.get('address') or professional.address or '').strip() or None
@@ -319,7 +315,6 @@ def edit_professional(professional_id):
         except ValueError:
             flash("Longitude invalide", "error")
 
-        # Réseaux sociaux
         professional.facebook_url  = (request.form.get('facebook_url')  or '').strip() or None
         professional.instagram_url = (request.form.get('instagram_url') or '').strip() or None
         professional.tiktok_url    = (request.form.get('tiktok_url')    or '').strip() or None
@@ -390,18 +385,43 @@ def add_user():
             flash("Email déjà utilisé")
             return redirect(url_for('admin.add_user'))
 
-        user = User(
-            username=username,
-            email=email,
-            password_hash=generate_password_hash(password),
-            user_type=user_type,
-            is_admin=bool(is_admin),
-            phone=phone or None
-        )
-        db.session.add(user)
-        db.session.commit()
-        flash('Utilisateur ajouté avec succès!')
-        return redirect(url_for('admin.admin_users'))
+        try:
+            user = User(
+                username=username,
+                email=email,
+                password_hash=generate_password_hash(password),
+                user_type=user_type,
+                is_admin=bool(is_admin),
+                phone=phone or None
+            )
+            db.session.add(user)
+            db.session.flush()  # pour user.id
+
+            if user_type == 'professional':
+                # Créer la fiche pro liée par user_id
+                pro = Professional(
+                    user_id=user.id,
+                    name=username,
+                    description="Profil en cours de complétion.",
+                    specialty="Psychologue",
+                    location="Casablanca",
+                    experience_years=0,
+                    consultation_fee=0.0,
+                    phone=phone or None,
+                    availability='disponible',
+                    consultation_types='cabinet',
+                    social_links_approved=False,
+                    status='en_attente'
+                )
+                db.session.add(pro)
+
+            db.session.commit()
+            flash('Utilisateur ajouté avec succès!')
+            return redirect(url_for('admin.admin_users'))
+        except Exception:
+            db.session.rollback()
+            flash("Erreur lors de la création de l'utilisateur.", "error")
+            return redirect(url_for('admin.add_user'))
 
     return render_template('add_user.html')
 
@@ -414,6 +434,9 @@ def edit_user(user_id):
     user = User.query.get_or_404(user_id)
 
     if request.method == 'POST':
+        old_username = user.username
+        old_type = user.user_type
+
         username = (request.form.get('username') or user.username).strip()
         email = (request.form.get('email') or user.email).strip().lower()
         user_type = (request.form.get('user_type') or user.user_type).strip()
@@ -437,9 +460,42 @@ def edit_user(user_id):
         if new_pw:
             user.password_hash = generate_password_hash(new_pw)
 
-        db.session.commit()
-        flash('Utilisateur modifié avec succès!')
-        return redirect(url_for('admin.admin_users'))
+        try:
+            # Promotion -> pro
+            if old_type != 'professional' and user_type == 'professional':
+                pro = Professional.query.filter_by(user_id=user.id).first()
+                if not pro:
+                    pro = Professional(
+                        user_id=user.id,
+                        name=user.username,
+                        description="Profil en cours de complétion.",
+                        specialty="Psychologue",
+                        location="Casablanca",
+                        experience_years=0,
+                        consultation_fee=0.0,
+                        phone=user.phone or None,
+                        availability='disponible',
+                        consultation_types='cabinet',
+                        social_links_approved=False,
+                        status='en_attente'
+                    )
+                    db.session.add(pro)
+
+            # Si déjà pro et username changé : synchroniser la fiche liée à user_id
+            if user_type == 'professional' and old_username != user.username:
+                pro = Professional.query.filter_by(user_id=user.id).first()
+                if pro:
+                    pro.name = user.username
+                    if user.phone and not pro.phone:
+                        pro.phone = user.phone
+
+            db.session.commit()
+            flash('Utilisateur modifié avec succès!')
+            return redirect(url_for('admin.admin_users'))
+        except Exception:
+            db.session.rollback()
+            flash("Erreur lors de la modification de l'utilisateur.", "error")
+            return redirect(url_for('admin.edit_user', user_id=user.id))
 
     return render_template('edit_user.html', user=user)
 
@@ -464,13 +520,6 @@ def admin_appointments():
         return redirect(url_for('admin.admin_login'))
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_appointments.html', appointments=appointments)
-
-# ✅ Alias de compatibilité : certaines templates utilisent 'admin.admin_orders'
-@admin_bp.route('/orders', endpoint='admin_orders')
-@login_required
-def admin_orders():
-    # Redirige proprement vers la page RDV existante
-    return redirect(url_for('admin.admin_appointments'))
 
 @admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'], endpoint='update_appointment_status')
 @login_required
