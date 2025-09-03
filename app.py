@@ -339,13 +339,16 @@ def professional_register():
         fee_raw = request.form.get('consultation_fee', '0')
         phone = request.form.get('phone', '').strip()
 
-        # Réseaux sociaux (présents dans le formulaire)
-        facebook_url  = (request.form.get('facebook_url')  or '').strip()
-        instagram_url = (request.form.get('instagram_url') or '').strip()
-        tiktok_url    = (request.form.get('tiktok_url')    or '').strip()
-        youtube_url   = (request.form.get('youtube_url')   or '').strip()
+        try:
+            experience = int(experience_raw or 0)
+        except ValueError:
+            experience = 0
 
-        # Validations basiques
+        try:
+            consultation_fee = float((fee_raw or '0').replace(',', '.'))
+        except ValueError:
+            consultation_fee = 0.0
+
         if not username or not email or not password or not phone:
             flash("Tous les champs obligatoires (dont téléphone) ne sont pas remplis.")
             return redirect(url_for('professional_register'))
@@ -353,56 +356,32 @@ def professional_register():
         if User.query.filter_by(username=username).first():
             flash("Nom d'utilisateur déjà pris")
             return redirect(url_for('professional_register'))
+
         if User.query.filter_by(email=email).first():
             flash('Email déjà enregistré')
             return redirect(url_for('professional_register'))
 
-        try:
-            experience = int((experience_raw or '0').strip())
-        except ValueError:
-            experience = 0
-        try:
-            consultation_fee = float((fee_raw or '0').replace(',', '.'))
-        except ValueError:
-            consultation_fee = 0.0
+        user = User(
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password),
+            user_type='professional',
+            phone=phone
+        )
+        db.session.add(user)
+        db.session.commit()
 
-        # ==== ATOMIQUE : création User + Professional dans une seule transaction ====
-        try:
-            # Créer l'utilisateur pro
-            user = User(
-                username=username,
-                email=email,
-                password_hash=generate_password_hash(password),
-                user_type='professional',
-                phone=phone
-            )
-            db.session.add(user)
-
-            # Créer le profil pro correspondant
-            professional = Professional(
-                name=username,  # cohérence avec l'espace pro existant (name == username)
-                description=description or "Profil en cours de complétion.",
-                specialty=specialty or "Psychologue",
-                location=city or "Casablanca",
-                experience_years=experience,
-                consultation_fee=consultation_fee,
-                phone=phone or None,
-                availability='disponible',
-                consultation_types='cabinet',
-                facebook_url=facebook_url or None,
-                instagram_url=instagram_url or None,
-                tiktok_url=tiktok_url or None,
-                youtube_url=youtube_url or None,
-                social_links_approved=False,
-                status='en_attente'
-            )
-            db.session.add(professional)
-
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            flash("Erreur lors de la création du compte professionnel. Réessayez.", "danger")
-            return redirect(url_for('professional_register'))
+        professional = Professional(
+            name=username,
+            description=description or "Profil en cours de complétion.",
+            specialty=specialty or "Psychologue",
+            location=city or "Casablanca",
+            experience_years=experience,
+            consultation_fee=consultation_fee,
+            status='en_attente'
+        )
+        db.session.add(professional)
+        db.session.commit()
 
         flash('Compte professionnel créé avec succès! Un administrateur validera votre profil.')
         return redirect(url_for('login'))
@@ -1009,42 +988,41 @@ def profile_photo(professional_id):
     pro = Professional.query.get_or_404(professional_id)
     raw_url = (pro.image_url or "").strip()
 
-    # Si on a déjà un fichier local : rediriger vers le service local (HTTPS absolu)
+    # 1) Fichier local (upload) -> renvoie directement le fichier (200), pas de redirect
     if raw_url.startswith("/media/profiles/"):
-        fname = raw_url.split("/media/profiles/")[-1]
-        return redirect(url_for('profile_media', filename=fname, _external=True, _scheme='https'))
+        fname = raw_url.split("/media/profiles/")[-1].strip("/")
+        if not fname:
+            return redirect(PHOTO_PLACEHOLDER)
+        local_path = UPLOAD_FOLDER / fname
+        if local_path.exists():
+            return send_from_directory(str(UPLOAD_FOLDER), fname, as_attachment=False, max_age=31536000)
+        # Fichier introuvable -> placeholder
+        return redirect(PHOTO_PLACEHOLDER)
 
-    # Pas d’URL => placeholder
+    # 2) Pas d’URL -> placeholder
     if not raw_url:
         return redirect(PHOTO_PLACEHOLDER)
 
-    # Normalisation http -> https (évite mixed content)
+    # 3) URL distante -> normaliser & proxy (200)
     if raw_url.startswith("http://"):
         raw_url = "https://" + raw_url[len("http://"):]
-
-    # Sécurité: n’autorise que http(s)
     parsed = urlparse(raw_url)
     if parsed.scheme not in ("http", "https"):
         return redirect(PHOTO_PLACEHOLDER)
 
-    # Requête côté serveur (contourne hotlink)
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
         "Referer": "https://www.tighri.com",
     }
     try:
-        r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
+        r = requests.get(raw_url, headers=headers, timeout=8)
         r.raise_for_status()
     except Exception:
-        # En cas d’erreur (403/404/timeout...), placeholder
         return redirect(PHOTO_PLACEHOLDER)
 
     content_type = r.headers.get("Content-Type", "image/jpeg")
-    data = r.content
-
-    resp = Response(data, mimetype=content_type)
-    # Cache 24h
-    resp.headers["Cache-Control"] = "public, max-age=86400"
+    resp = Response(r.content, mimetype=content_type)
+    resp.headers["Cache-Control"] = "public, max-age=86400"  # 24h
     return resp
 # ===== Fin proxy d’images =====
 
