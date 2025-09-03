@@ -465,6 +465,13 @@ def admin_appointments():
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_appointments.html', appointments=appointments)
 
+# ✅ Alias de compatibilité : certaines templates utilisent 'admin.admin_orders'
+@admin_bp.route('/orders', endpoint='admin_orders')
+@login_required
+def admin_orders():
+    # Redirige proprement vers la page RDV existante
+    return redirect(url_for('admin.admin_appointments'))
+
 @admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'], endpoint='update_appointment_status')
 @login_required
 def update_appointment_status(appointment_id):
