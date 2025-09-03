@@ -1,9 +1,35 @@
 # admin_server.py — Blueprint d'administration Tighri (une seule instance Flask dans app.py)
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from models import db, User, Professional, Appointment
+
+# ===== AJOUT: mini-helper d'upload local sécurisé (optionnel) =================
+import os, uuid
+from pathlib import Path
+ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
+
+def _save_uploaded_image(file_storage):
+    """
+    Sauvegarde simple dans <racine_app>/uploads/profiles/ et retourne une URL locale
+    /media/profiles/<uuid>.<ext>. A utiliser uniquement si un fichier est fourni.
+    """
+    if not file_storage:
+        return None
+    filename = getattr(file_storage, "filename", "") or ""
+    if not filename.strip():
+        return None
+    ext = os.path.splitext(filename.lower())[1]
+    if ext not in ALLOWED_IMAGE_EXT:
+        raise ValueError("Format d'image non autorisé (JPG/PNG/GIF).")
+    # dossier cible
+    upload_dir = Path(current_app.root_path) / 'uploads' / 'profiles'
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    out_name = f"{uuid.uuid4().hex}{ext}"
+    file_storage.save(upload_dir / out_name)
+    return f"/media/profiles/{out_name}"
+# ==============================================================================
 
 admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
 
@@ -90,6 +116,17 @@ def admin_add_product():
         city_or_location = (request.form.get('location') or '').strip()
         image_url = (request.form.get('image_url') or '').strip()
         phone = (request.form.get('phone') or '').strip()
+
+        # === AJOUT: prise en charge optionnelle d'un fichier image ===
+        try:
+            file = request.files.get('image_file')
+            uploaded_url = _save_uploaded_image(file) if file else None
+            if uploaded_url:
+                image_url = uploaded_url
+        except ValueError as e:
+            flash(str(e), "error")
+        except Exception:
+            flash("Erreur lors de l'upload de l'image.", "error")
 
         address = (request.form.get('address') or '').strip()
         lat_raw = (request.form.get('latitude') or '').strip()
@@ -191,7 +228,20 @@ def admin_edit_product(product_id):
                 flash("Tarif invalide.", "error")
 
         professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
-        professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
+
+        # Conserver l'URL existante, la remplacer seulement si upload OK
+        new_image_url = (request.form.get('image_url') or professional.image_url or '').strip()
+        try:
+            file = request.files.get('image_file')
+            uploaded_url = _save_uploaded_image(file) if file else None
+            if uploaded_url:
+                new_image_url = uploaded_url
+        except ValueError as e:
+            flash(str(e), "error")
+        except Exception:
+            flash("Erreur lors de l'upload de l'image.", "error")
+        professional.image_url = new_image_url
+
         professional.location = (request.form.get('location') or professional.location or '').strip()
         professional.phone = (request.form.get('phone') or professional.phone or '').strip()
 
@@ -443,11 +493,6 @@ def edit_user(user_id):
             user.password_hash = generate_password_hash(new_pw)
 
         # ---- PROMOTION AUTO: patient -> professional (sans colonne user_id) ----
-        # Règle d’association existante dans app.py : on relie par le nom,
-        # via Professional.name == current_user.username.
-        # Donc si l’utilisateur devient "professional", on s’assure qu’un
-        # Professional(name=username) existe. Si on a renommé le username,
-        # on renomme aussi le Professional correspondant (si trouvé).
         try:
             if user_type == 'professional':
                 pro = Professional.query.filter_by(name=username).first()
@@ -472,9 +517,8 @@ def edit_user(user_id):
                         status="en_attente"
                     )
                     db.session.add(pro)
-            # Si l’admin rétrograde en patient, on ne supprime rien pour éviter toute perte.
+            # Si rétrogradé en patient, on ne supprime rien.
         except Exception as e:
-            # On ne casse pas l’édition de l’utilisateur si la création du pro échoue.
             flash(f"Attention: la synchronisation du profil professionnel a rencontré un souci: {e}", "warning")
 
         db.session.commit()
