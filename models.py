@@ -27,7 +27,6 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
-        # Les UNIQUE créent déjà des index sur username/email.
         db.Index('ix_users_user_type', 'user_type'),
         db.Index('ix_users_is_admin', 'is_admin'),
         db.Index('ix_users_created_at', 'created_at'),
@@ -77,9 +76,9 @@ class Professional(db.Model):
     # Validation par l’admin: 'valide' | 'en_attente' | 'rejete'
     status = db.Column(db.String(20), default='en_attente')
 
-    # ✅ NOUVEAU : durée et buffer (en minutes)
-    consultation_duration_minutes = db.Column(db.Integer, default=30)            # p.ex. 30
-    buffer_between_appointments_minutes = db.Column(db.Integer, default=0)       # p.ex. 10
+    # ✅ Durée & délai (défauts 45 / 15)
+    consultation_duration_minutes = db.Column(db.Integer, default=45)
+    buffer_between_appointments_minutes = db.Column(db.Integer, default=15)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -92,7 +91,7 @@ class Professional(db.Model):
         db.Index('ix_professionals_status', 'status'),
         db.Index('ix_professionals_availability', 'availability'),
         db.Index('ix_professionals_created_at', 'created_at'),
-        # Index multi-colonnes pour les filtres/search (LIKE sur plusieurs champs)
+        # Index multi-colonnes pour les filtres/search
         db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
     )
 
