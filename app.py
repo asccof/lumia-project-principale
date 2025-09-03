@@ -5,7 +5,7 @@ from flask import (
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, time as dtime
 from sqlalchemy import or_, text
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
@@ -144,10 +144,7 @@ def load_user(user_id):
 with app.app_context():
     db.create_all()
     try:
-        # professionals: ajout de colonnes utiles (idempotent)
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;"))
-        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_professionals_user_id ON professionals(user_id);"))
-
+        # professionals: adresse + géoloc + téléphone + réseaux sociaux
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
@@ -157,6 +154,9 @@ with app.app_context():
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS tiktok_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS youtube_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;"))
+        # ✅ NOUVEAU : durée & buffer
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 30;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 0;"))
 
         # users: téléphone
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"))
@@ -244,28 +244,6 @@ else:
         allowed_ext=ALLOWED_IMAGE_EXT,
     )
 # ===========================================================================
-
-# ======================
-# Helpers
-# ======================
-def _find_current_professional():
-    """
-    Récupère le profil pro du current_user :
-    - si la colonne Professional.user_id existe : on l'utilise
-    - sinon, repli sur name == username (ancien comportement)
-    """
-    if not current_user.is_authenticated:
-        return None
-    try:
-        # Si la colonne existe côté modèle ET BDD
-        if hasattr(Professional, 'user_id'):
-            pro = Professional.query.filter_by(user_id=current_user.id).first()
-            if pro:
-                return pro
-    except Exception:
-        # En cas de décalage schéma, on retombe sur le name
-        pass
-    return Professional.query.filter_by(name=current_user.username).first()
 
 # ======================
 # Pages publiques
@@ -364,7 +342,7 @@ def professional_register():
         fee_raw = request.form.get('consultation_fee', '0')
         phone = request.form.get('phone', '').strip()
 
-        # Réseaux sociaux
+        # Réseaux sociaux (présents dans le formulaire)
         facebook_url  = (request.form.get('facebook_url')  or '').strip()
         instagram_url = (request.form.get('instagram_url') or '').strip()
         tiktok_url    = (request.form.get('tiktok_url')    or '').strip()
@@ -402,10 +380,9 @@ def professional_register():
                 phone=phone
             )
             db.session.add(user)
-            db.session.flush()  # obtient user.id avant d'ajouter le pro
 
             # Créer le profil pro correspondant
-            professional_kwargs = dict(
+            professional = Professional(
                 name=username,  # cohérence avec l'espace pro existant (name == username)
                 description=description or "Profil en cours de complétion.",
                 specialty=specialty or "Psychologue",
@@ -422,11 +399,6 @@ def professional_register():
                 social_links_approved=False,
                 status='en_attente'
             )
-            # Lier user_id si la colonne existe dans le modèle
-            if hasattr(Professional, 'user_id'):
-                professional_kwargs['user_id'] = user.id
-
-            professional = Professional(**professional_kwargs)
             db.session.add(professional)
 
             db.session.commit()
@@ -506,7 +478,7 @@ def professional_dashboard():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = _find_current_professional()
+    professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -519,7 +491,7 @@ def professional_dashboard():
                            professional=professional,
                            appointments=appointments)
 
-# --- EDIT PROFIL PRO: adresse / lat / lng ---
+# --- EDIT PROFIL PRO: adresse / lat / lng + durée/buffer ---
 @app.route('/professional/profile', methods=['GET', 'POST'], endpoint='professional_edit_profile')
 @login_required
 def professional_edit_profile():
@@ -527,7 +499,7 @@ def professional_edit_profile():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    pro = _find_current_professional()
+    pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro:
         flash("Profil professionnel non trouvé")
         return redirect(url_for('professional_dashboard'))
@@ -564,6 +536,22 @@ def professional_edit_profile():
         if hasattr(pro, "longitude"):
             pro.longitude = val_lng
 
+        # ✅ NOUVEAU : durée & buffer (facultatif)
+        dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
+        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
+        if dur_raw:
+            try:
+                d = max(5, min(240, int(dur_raw)))
+                pro.consultation_duration_minutes = d
+            except ValueError:
+                flash("Durée invalide (minutes).", "error")
+        if buf_raw:
+            try:
+                b = max(0, min(120, int(buf_raw)))
+                pro.buffer_between_appointments_minutes = b
+            except ValueError:
+                flash("Buffer invalide (minutes).", "error")
+
         db.session.commit()
         flash("Profil mis à jour avec succès!")
         return redirect(url_for('professional_dashboard'))
@@ -584,7 +572,7 @@ def professional_upload_photo():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    pro = _find_current_professional()
+    pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro:
         flash("Profil professionnel non trouvé")
         return redirect(url_for('professional_dashboard'))
@@ -621,39 +609,63 @@ def professional_availability():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = _find_current_professional()
+    professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
 
     if request.method == 'POST':
+        # On accepte toujours l’ancien format (1 plage/jour)
+        # + ✅ NOUVEAU : jusqu’à 3 plages par jour via suffixes _2 et _3
         ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
 
-        for day in range(7):
-            start_time = request.form.get(f'start_time_{day}', '').strip()
-            end_time = request.form.get(f'end_time_{day}', '').strip()
-            is_available = request.form.get(f'available_{day}') == 'on'
-
-            if is_available and start_time and end_time:
+        def add_window(day, s, e, avail_flag):
+            s = (s or '').strip()
+            e = (e or '').strip()
+            if avail_flag and s and e:
                 av = ProfessionalAvailability(
                     professional_id=professional.id,
                     day_of_week=day,
-                    start_time=start_time,
-                    end_time=end_time,
+                    start_time=s,
+                    end_time=e,
                     is_available=True
                 )
                 db.session.add(av)
+
+        for day in range(7):
+            base_flag = request.form.get(f'available_{day}') == 'on'
+            # plage 1 (legacy)
+            add_window(day,
+                       request.form.get(f'start_time_{day}', ''),
+                       request.form.get(f'end_time_{day}', ''),
+                       base_flag)
+            # plage 2
+            add_window(day,
+                       request.form.get(f'start_time_{day}_2', ''),
+                       request.form.get(f'end_time_{day}_2', ''),
+                       request.form.get(f'available_{day}_2') == 'on' or base_flag)
+            # plage 3
+            add_window(day,
+                       request.form.get(f'start_time_{day}_3', ''),
+                       request.form.get(f'end_time_{day}_3', ''),
+                       request.form.get(f'available_{day}_3') == 'on' or base_flag)
 
         db.session.commit()
         flash('Disponibilités mises à jour avec succès!')
         return redirect(url_for('professional_availability'))
 
-    availabilities = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
-    availability_dict = {av.day_of_week: av for av in availabilities}
+    # GET : on garde l’API compatible avec l’ancien template (un dict premier créneau)
+    all_avs = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
+    windows_by_day = {d: [] for d in range(7)}
+    for av in all_avs:
+        windows_by_day.get(av.day_of_week, []).append(av)
+    # Compat : premier créneau par jour (si le template actuel attend un seul objet)
+    availability_dict = {d: (windows_by_day[d][0] if windows_by_day[d] else None) for d in range(7)}
 
     return render_template('professional_availability.html',
                            professional=professional,
-                           availabilities=availability_dict)
+                           availabilities=availability_dict,   # compat
+                           windows_by_day=windows_by_day)      # nouveau (optionnel template)
 
 @app.route('/professional/unavailable-slots', methods=['GET', 'POST'], endpoint='professional_unavailable_slots')
 @login_required
@@ -662,7 +674,7 @@ def professional_unavailable_slots():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = _find_current_professional()
+    professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -714,7 +726,7 @@ def delete_unavailable_slot(slot_id):
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = _find_current_professional()
+    professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -736,7 +748,7 @@ def professional_appointments():
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = _find_current_professional()
+    professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -765,7 +777,7 @@ def professional_appointment_action(appointment_id, action):
         flash('Accès non autorisé')
         return redirect(url_for('index'))
 
-    professional = _find_current_professional()
+    professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
         flash('Profil professionnel non trouvé')
         return redirect(url_for('index'))
@@ -789,6 +801,19 @@ def professional_appointment_action(appointment_id, action):
     return redirect(url_for('professional_appointments'))
 
 # ======================
+# Helpers slots (durée/buffer)
+# ======================
+def _str_to_time(hhmm: str) -> dtime:
+    return datetime.strptime(hhmm, "%H:%M").time()
+
+def _add_minutes(t: dtime, minutes: int) -> dtime:
+    return (datetime.combine(date.today(), t) + timedelta(minutes=minutes)).time()
+
+def _overlap(start1: dtime, end1: dtime, start2: dtime, end2: dtime) -> bool:
+    # [start1, end1) intersects [start2, end2)
+    return start1 < end2 and start2 < end1
+
+# ======================
 # API REST
 # ======================
 @app.route('/api/professionals', endpoint='api_professionals')
@@ -804,7 +829,10 @@ def api_professionals():
         'availability': p.availability,
         'address': getattr(p, 'address', None),
         'latitude': getattr(p, 'latitude', None),
-        'longitude': getattr(p, 'longitude', None)
+        'longitude': getattr(p, 'longitude', None),
+        # ✅ expose (optionnel)
+        'consultation_duration_minutes': getattr(p, 'consultation_duration_minutes', 30),
+        'buffer_between_appointments_minutes': getattr(p, 'buffer_between_appointments_minutes', 0),
     } for p in pros])
 
 @app.route('/api/professional/<int:professional_id>/available-slots', endpoint='api_available_slots')
@@ -838,24 +866,34 @@ def api_available_slots(professional_id):
         db.func.date(Appointment.appointment_date) == target_date
     ).all()
 
+    # ✅ durée/buffer
+    duration = int(getattr(professional, 'consultation_duration_minutes', 30) or 30)
+    buffer_m = int(getattr(professional, 'buffer_between_appointments_minutes', 0) or 0)
+    step = max(1, duration + buffer_m)
+
     slots = []
     for availability in availabilities:
-        start_time = datetime.strptime(availability.start_time, '%H:%M').time()
-        end_time = datetime.strptime(availability.end_time, '%H:%M').time()
+        start_time = _str_to_time(availability.start_time)
+        end_time = _str_to_time(availability.end_time)
 
         current = start_time
-        while current < end_time:
+        while _add_minutes(current, duration) <= end_time:
             slot_start = current
-            slot_end = (datetime.combine(date.today(), current) + timedelta(minutes=30)).time()
+            slot_end = _add_minutes(current, duration)
 
+            # indispo manuelles (overlap)
             is_unavailable = any(
-                (slot_start >= datetime.strptime(u.start_time, '%H:%M').time()
-                 and slot_start < datetime.strptime(u.end_time, '%H:%M').time())
+                _overlap(slot_start, slot_end, _str_to_time(u.start_time), _str_to_time(u.end_time))
                 for u in unavailable_slots
             )
 
+            # RDV confirmés (overlap en tenant compte de la même durée pro)
             is_booked = any(
-                slot_start <= a.appointment_date.time() < slot_end
+                _overlap(
+                    slot_start, slot_end,
+                    a.appointment_date.time(),
+                    _add_minutes(a.appointment_date.time(), duration)
+                )
                 for a in confirmed
             )
 
@@ -866,12 +904,14 @@ def api_available_slots(professional_id):
                     'available': True
                 })
 
-            # avance de 30 min
-            current = slot_end
+            # Avance = durée + buffer
+            current = _add_minutes(current, step)
 
     return jsonify({
         'professional_id': professional_id,
         'date': target_date.isoformat(),
+        'duration_minutes': duration,
+        'buffer_minutes': buffer_m,
         'available_slots': slots
     })
 
@@ -886,6 +926,9 @@ def book_appointment(professional_id):
     if professional.status != 'valide':
         flash("Ce professionnel n'est pas encore validé par l'administration.")
         return redirect(url_for('professionals'))
+
+    # ✅ durée/buffer
+    duration = int(getattr(professional, 'consultation_duration_minutes', 30) or 30)
 
     if request.method == 'POST':
         appointment_date = request.form.get('appointment_date', '')
@@ -911,7 +954,7 @@ def book_appointment(professional_id):
             flash("Format de date/heure invalide.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Vérifier disponibilités
+        # Vérifier disponibilités (toutes plages du jour)
         day_of_week = appointment_datetime.weekday()
         availabilities = ProfessionalAvailability.query.filter_by(
             professional_id=professional_id,
@@ -919,26 +962,42 @@ def book_appointment(professional_id):
             is_available=True
         ).all()
 
-        if not any(av.start_time <= appointment_time <= av.end_time for av in availabilities):
+        start_t = appointment_datetime.time()
+        end_t = _add_minutes(start_t, duration)
+
+        inside_any_window = any(
+            (_str_to_time(av.start_time) <= start_t) and (end_t <= _str_to_time(av.end_time))
+            for av in availabilities
+        )
+        if not inside_any_window:
             flash("Cette heure n'est pas disponible pour ce professionnel.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Déjà réservé ?
-        existing = Appointment.query.filter_by(
+        # RDV confirmé qui chevauche ?
+        existing_confirmed = Appointment.query.filter_by(
             professional_id=professional_id,
-            appointment_date=appointment_datetime,
             status='confirme'
-        ).first()
-        if existing:
+        ).filter(
+            db.func.date(Appointment.appointment_date) == appointment_date_obj
+        ).all()
+        conflict_confirmed = any(
+            _overlap(start_t, end_t, a.appointment_date.time(), _add_minutes(a.appointment_date.time(), duration))
+            for a in existing_confirmed
+        )
+        if conflict_confirmed:
             flash("Ce créneau est déjà réservé.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
-        # Indisponibilités ?
-        slots = UnavailableSlot.query.filter_by(
+        # Indisponibilités du jour (chevauchement)
+        day_unavailable = UnavailableSlot.query.filter_by(
             professional_id=professional_id,
             date=appointment_date_obj
         ).all()
-        if any(s.start_time <= appointment_time <= s.end_time for s in slots):
+        conflict_unavail = any(
+            _overlap(start_t, end_t, _str_to_time(s.start_time), _str_to_time(s.end_time))
+            for s in day_unavailable
+        )
+        if conflict_unavail:
             flash("Ce créneau est marqué comme indisponible.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
@@ -982,11 +1041,9 @@ def book_appointment(professional_id):
 @login_required
 def my_appointments():
     if current_user.user_type == 'professional':
-        pro = _find_current_professional()
-        if pro:
-            appointments = Appointment.query.filter_by(professional_id=pro.id).all()
-        else:
-            appointments = []
+        appointments = Appointment.query.join(Professional).filter(
+            Professional.name == current_user.username
+        ).all()
     else:
         appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
     return render_template('my_appointments.html', appointments=appointments)
