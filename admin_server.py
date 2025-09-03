@@ -1,12 +1,67 @@
 # admin_server.py — Blueprint d'administration Tighri (une seule instance Flask dans app.py)
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
-from jinja2 import TemplateNotFound  # ✅ pour fallback de template
+from datetime import datetime, date
+from pathlib import Path
+import os, io, uuid
 
-from models import db, User, Professional, Appointment
+# PIL pour l'upload image (même logique que côté app.py)
+try:
+    from PIL import Image, ImageOps
+    _PIL_OK = True
+except Exception:
+    _PIL_OK = False
+
+from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
 
 admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
+
+# ===== Helpers image (admin) =================================================
+ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
+
+def _ext_ok(filename: str) -> bool:
+    if not filename:
+        return False
+    _, ext = os.path.splitext(filename.lower())
+    return ext in ALLOWED_IMAGE_EXT
+
+def _admin_upload_dir() -> Path:
+    base = Path(current_app.root_path).parent  # projet/
+    up = base / 'uploads' / 'profiles'
+    up.mkdir(parents=True, exist_ok=True)
+    return up
+
+def _admin_process_and_save_profile_image(file_storage) -> str:
+    filename = getattr(file_storage, "filename", None)
+    if not filename or not _ext_ok(filename):
+        raise ValueError("Extension non autorisée")
+
+    if not _PIL_OK:
+        raise RuntimeError("Pillow n'est pas installé sur le serveur.")
+
+    raw = file_storage.read()
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img.verify()
+    except Exception:
+        raise ValueError("Fichier image invalide ou corrompu")
+
+    img = Image.open(io.BytesIO(raw))
+    if img.mode not in ("RGB", "RGBA"):
+        img = img.convert("RGB")
+
+    img_no_exif = Image.new(img.mode, img.size)
+    img_no_exif.putdata(list(img.getdata()))
+
+    TARGET_SIZE = (512, 512)
+    img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
+
+    out_name = f"{uuid.uuid4().hex}.jpg"
+    out_path = _admin_upload_dir() / out_name
+    img_square.save(out_path, format="JPEG", quality=88, optimize=True)
+    return out_name
+# ============================================================================
 
 # --------------------- AUTH ADMIN ---------------------
 @admin_bp.route('/login', methods=['GET', 'POST'], endpoint='admin_login')
@@ -75,11 +130,7 @@ def admin_products():
         flash('Accès refusé')
         return redirect(url_for('admin.admin_login'))
     professionals = Professional.query.order_by(Professional.id.desc()).all()
-    # ✅ supporte admin_products.html OU admin_products.htm selon ce que tu as
-    try:
-        return render_template('admin_products.html', professionals=professionals)
-    except TemplateNotFound:
-        return render_template('admin_products.htm', professionals=professionals)
+    return render_template('admin_products.html', professionals=professionals)
 
 @admin_bp.route('/products/add', methods=['GET', 'POST'], endpoint='admin_add_product')
 @login_required
@@ -96,6 +147,7 @@ def admin_add_product():
         image_url = (request.form.get('image_url') or '').strip()
         phone = (request.form.get('phone') or '').strip()
 
+        # adresse / géoloc
         address = (request.form.get('address') or '').strip()
         lat_raw = (request.form.get('latitude') or '').strip()
         lng_raw = (request.form.get('longitude') or '').strip()
@@ -110,6 +162,7 @@ def admin_add_product():
             longitude = None
             flash("Longitude invalide", "error")
 
+        # tarif / expérience
         fee_raw = (request.form.get('price') or request.form.get('consultation_fee') or '0').replace(',', '.')
         try:
             consultation_fee = float(fee_raw)
@@ -122,6 +175,7 @@ def admin_add_product():
         except ValueError:
             experience_years = 0
 
+        # dispo
         availability = request.form.get('availability')
         if availability is None:
             stock = (request.form.get('stock') or '').strip().lower()
@@ -143,20 +197,29 @@ def admin_add_product():
         youtube_url   = (request.form.get('youtube_url')   or '').strip()
         social_links_approved = bool(request.form.get('social_links_approved'))
 
-        # ✅ Durée & buffer (défauts souhaités 45/15)
-        dur_raw = (request.form.get('consultation_duration_minutes') or '45').strip()
-        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '15').strip()
+        # ✅ durée/buffer (défauts 45 & 15 si vides)
+        dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
+        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
         try:
-            consultation_duration_minutes = max(5, min(240, int(dur_raw)))
+            consultation_duration_minutes = max(5, min(240, int(dur_raw))) if dur_raw else 45
         except ValueError:
             consultation_duration_minutes = 45
         try:
-            buffer_between_appointments_minutes = max(0, min(120, int(buf_raw)))
+            buffer_between_appointments_minutes = max(0, min(120, int(buf_raw))) if buf_raw else 15
         except ValueError:
             buffer_between_appointments_minutes = 15
 
-        if not name or not description or not specialty:
-            flash("Nom, description et spécialité sont obligatoires.", "error")
+        # ✅ upload fichier image (optionnel)
+        file = request.files.get('image_file')
+        if file and getattr(file, 'filename', ''):
+            try:
+                saved = _admin_process_and_save_profile_image(file)
+                image_url = f"/media/profiles/{saved}"
+            except Exception as e:
+                flash(f"Image non enregistrée ({e}).", "warning")
+
+        if not name or not specialty:
+            flash("Nom et spécialité sont obligatoires.", "error")
             return redirect(url_for('admin.admin_add_product'))
 
         professional = Professional(
@@ -179,16 +242,14 @@ def admin_add_product():
             youtube_url=youtube_url or None,
             social_links_approved=social_links_approved,
             status='en_attente',
-            # ✅ nouveaux champs
             consultation_duration_minutes=consultation_duration_minutes,
-            buffer_between_appointments_minutes=buffer_between_appointments_minutes
+            buffer_between_appointments_minutes=buffer_between_appointments_minutes,
         )
         db.session.add(professional)
         db.session.commit()
         flash('Professionnel ajouté avec succès!')
         return redirect(url_for('admin.admin_products'))
 
-    # ✅ tes templates sont à la racine (pas /admin/)
     return render_template('add_product.html')
 
 @admin_bp.route('/products/edit/<int:product_id>', methods=['GET', 'POST'], endpoint='admin_edit_product')
@@ -264,32 +325,33 @@ def admin_edit_product(product_id):
         professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
         professional.social_links_approved = bool(request.form.get('social_links_approved'))
 
-        exp_raw = request.form.get('experience_years')
-        if exp_raw:
-            try:
-                professional.experience_years = int(exp_raw)
-            except ValueError:
-                flash("Expérience invalide", "error")
-
-        # ✅ Durée & buffer (ne change que si fournis)
+        # ✅ durée/buffer (si fournis)
         dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
-        if dur_raw != '':
+        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
+        if dur_raw:
             try:
                 professional.consultation_duration_minutes = max(5, min(240, int(dur_raw)))
             except ValueError:
                 flash("Durée invalide (minutes).", "error")
-        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
-        if buf_raw != '':
+        if buf_raw:
             try:
                 professional.buffer_between_appointments_minutes = max(0, min(120, int(buf_raw)))
             except ValueError:
-                flash("Délai/buffer invalide (minutes).", "error")
+                flash("Buffer invalide (minutes).", "error")
+
+        # ✅ upload fichier image (optionnel)
+        file = request.files.get('image_file')
+        if file and getattr(file, 'filename', ''):
+            try:
+                saved = _admin_process_and_save_profile_image(file)
+                professional.image_url = f"/media/profiles/{saved}"
+            except Exception as e:
+                flash(f"Image non enregistrée ({e}).", "warning")
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
         return redirect(url_for('admin.admin_products'))
 
-    # ✅ tes templates sont à la racine (pas /admin/)
     return render_template('edit_product.html', professional=professional)
 
 @admin_bp.route('/products/<int:product_id>/delete', methods=['POST'], endpoint='admin_delete_product')
@@ -339,7 +401,7 @@ def edit_professional(professional_id):
         if status in ('valide', 'en_attente', 'rejete'):
             professional.status = status
 
-        # Téléphone / Adresse
+        # Téléphone / Adresse / Ville
         professional.phone = (request.form.get('phone') or professional.phone or '').strip() or None
         professional.location = (request.form.get('location') or professional.location or '').strip()
         professional.address = (request.form.get('address') or professional.address or '').strip() or None
@@ -362,25 +424,33 @@ def edit_professional(professional_id):
         professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
         professional.social_links_approved = bool(request.form.get('social_links_approved'))
 
-        # ✅ Durée & buffer (optionnels)
+        # ✅ durée/buffer
         dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
-        if dur_raw != '':
+        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
+        if dur_raw:
             try:
                 professional.consultation_duration_minutes = max(5, min(240, int(dur_raw)))
             except ValueError:
                 flash("Durée invalide (minutes).", "error")
-        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
-        if buf_raw != '':
+        if buf_raw:
             try:
                 professional.buffer_between_appointments_minutes = max(0, min(120, int(buf_raw)))
             except ValueError:
-                flash("Délai/buffer invalide (minutes).", "error")
+                flash("Buffer invalide (minutes).", "error")
+
+        # ✅ upload image (optionnel)
+        file = request.files.get('image_file')
+        if file and getattr(file, 'filename', ''):
+            try:
+                saved = _admin_process_and_save_profile_image(file)
+                professional.image_url = f"/media/profiles/{saved}"
+            except Exception as e:
+                flash(f"Image non enregistrée ({e}).", "warning")
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
         return redirect(url_for('admin.admin_professionals'))
 
-    # ✅ tes templates sont à la racine (pas /admin/)
     return render_template('edit_product.html', professional=professional)
 
 @admin_bp.route('/professionals/delete/<int:professional_id>', endpoint='delete_professional')
@@ -404,6 +474,111 @@ def view_professional(professional_id):
     professional = Professional.query.get_or_404(professional_id)
     appointments = Appointment.query.filter_by(professional_id=professional_id).order_by(Appointment.appointment_date.desc()).all()
     return render_template('view_professional.html', professional=professional, appointments=appointments)
+
+# ---------- Gestion des disponibilités (ADMIN) ----------
+@admin_bp.route('/professionals/<int:professional_id>/availability', methods=['GET', 'POST'], endpoint='admin_professional_availability')
+@login_required
+def admin_professional_availability(professional_id):
+    if not current_user.is_admin:
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
+
+    professional = Professional.query.get_or_404(professional_id)
+
+    if request.method == 'POST':
+        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
+
+        def add_window(day, s, e, avail_flag):
+            s = (s or '').strip()
+            e = (e or '').strip()
+            if avail_flag and s and e:
+                av = ProfessionalAvailability(
+                    professional_id=professional.id,
+                    day_of_week=day,
+                    start_time=s,
+                    end_time=e,
+                    is_available=True
+                )
+                db.session.add(av)
+
+        for day in range(7):
+            base_flag = request.form.get(f'available_{day}') == 'on'
+            add_window(day, request.form.get(f'start_time_{day}', ''), request.form.get(f'end_time_{day}', ''), base_flag)
+            add_window(day, request.form.get(f'start_time_{day}_2', ''), request.form.get(f'end_time_{day}_2', ''), request.form.get(f'available_{day}_2') == 'on' or base_flag)
+            add_window(day, request.form.get(f'start_time_{day}_3', ''), request.form.get(f'end_time_{day}_3', ''), request.form.get(f'available_{day}_3') == 'on' or base_flag)
+
+        db.session.commit()
+        flash('Disponibilités mises à jour !')
+        return redirect(url_for('admin.admin_professional_availability', professional_id=professional.id))
+
+    all_avs = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
+    windows_by_day = {d: [] for d in range(7)}
+    for av in all_avs:
+        windows_by_day.get(av.day_of_week, []).append(av)
+    availability_dict = {d: (windows_by_day[d][0] if windows_by_day[d] else None) for d in range(7)}
+
+    return render_template('admin_professional_availability.html',
+                           professional=professional,
+                           availabilities=availability_dict,
+                           windows_by_day=windows_by_day)
+
+# ---------- Gestion des indisponibilités (ADMIN) ----------
+@admin_bp.route('/professionals/<int:professional_id>/unavailable-slots', methods=['GET', 'POST'], endpoint='admin_professional_unavailable_slots')
+@login_required
+def admin_professional_unavailable_slots(professional_id):
+    if not current_user.is_admin:
+        flash('Accès refusé'); return redirect(url_for('admin.admin_login'))
+
+    professional = Professional.query.get_or_404(professional_id)
+
+    if request.method == 'POST':
+        date_str = request.form.get('date', '')
+        start_time = request.form.get('start_time', '')
+        end_time = request.form.get('end_time', '')
+        reason = request.form.get('reason', '').strip()
+
+        try:
+            slot_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            flash('Format de date invalide'); return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional.id))
+
+        if slot_date < date.today():
+            flash('Impossible de bloquer une date passée'); return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional.id))
+
+        if not start_time or not end_time:
+            flash("Heure de début et de fin obligatoires."); return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional.id))
+
+        slot = UnavailableSlot(
+            professional_id=professional.id,
+            date=slot_date,
+            start_time=start_time,
+            end_time=end_time,
+            reason=reason
+        )
+        db.session.add(slot)
+        db.session.commit()
+        flash('Créneau indisponible ajouté.')
+        return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional.id))
+
+    unavailable_slots = UnavailableSlot.query.filter_by(professional_id=professional.id) \
+                                             .order_by(UnavailableSlot.date.desc()) \
+                                             .all()
+    return render_template('admin_professional_unavailable_slots.html',
+                           professional=professional,
+                           unavailable_slots=unavailable_slots)
+
+@admin_bp.route('/professionals/<int:professional_id>/unavailable-slots/<int:slot_id>/delete', methods=['POST'], endpoint='admin_delete_unavailable_slot')
+@login_required
+def admin_delete_unavailable_slot(professional_id, slot_id):
+    if not current_user.is_admin:
+        flash('Accès refusé'); return redirect(url_for('admin.admin_login'))
+    slot = UnavailableSlot.query.get_or_404(slot_id)
+    if slot.professional_id != professional_id:
+        flash('Accès refusé'); return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional_id))
+    db.session.delete(slot)
+    db.session.commit()
+    flash('Créneau supprimé.')
+    return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional_id))
 
 # --------------------- UTILISATEURS ---------------------
 @admin_bp.route('/users', endpoint='admin_users')
@@ -493,13 +668,11 @@ def edit_user(user_id):
         try:
             if user_type == 'professional':
                 pro = Professional.query.filter_by(name=username).first()
-
                 if not pro:
                     pro_old = Professional.query.filter_by(name=old_username).first()
                     if pro_old and old_username != username:
                         pro_old.name = username
                         pro = pro_old
-
                 if not pro:
                     pro = Professional(
                         name=username,
@@ -509,9 +682,7 @@ def edit_user(user_id):
                         experience_years=0,
                         consultation_fee=0.0,
                         phone=user.phone or None,
-                        status="en_attente",
-                        consultation_duration_minutes=45,
-                        buffer_between_appointments_minutes=15,
+                        status="en_attente"
                     )
                     db.session.add(pro)
         except Exception as e:
@@ -545,7 +716,6 @@ def admin_appointments():
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
     return render_template('admin_appointments.html', appointments=appointments)
 
-# ✅ Alias de compatibilité : certaines templates utilisent 'admin.admin_orders'
 @admin_bp.route('/orders', endpoint='admin_orders')
 @login_required
 def admin_orders():
