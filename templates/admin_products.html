@@ -1,381 +1,83 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Tighri — Admin · Professionnels</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
-  <style>
-    :root{ --primary:#6f42c1; --secondary:#8e44ad; --light:#f8f5ff; --ink:#2d1a47 }
-    body{ background:var(--light); color:var(--ink) }
-    .navbar{ background:linear-gradient(135deg,var(--primary),var(--secondary)) }
-    .brand{ font-weight:800 }
-    .card{ border:0; border-radius:16px; box-shadow:0 10px 24px rgba(111,66,193,.12) }
-    .badge-pill{ border-radius:999px }
-    .table> :not(caption)>*>*{ vertical-align:middle }
-    .avatar{
-      width:48px; height:48px; object-fit:cover; border-radius:10px;
-      border:2px solid #fff; box-shadow:0 4px 14px rgba(0,0,0,.12);
-    }
-    .filters .form-select, .filters .form-control{ border-radius:10px }
-    .btn-icon{ display:inline-flex; align-items:center; gap:.45rem }
-    .status-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:.4rem }
-    .status-valide{ background:#16a34a }
-    .status-attente{ background:#f59e0b }
-    .status-rejete{ background:#ef4444 }
-    .search-empty{ text-align:center; padding:3rem 1rem }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Professionnels</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body>
-<nav class="navbar navbar-dark">
-  <div class="container">
-    <a class="navbar-brand brand" href="{{ url_for('admin.admin_dashboard') }}">
-      <i class="fa-solid fa-shield-halved me-2"></i>Tighri — Administration
-    </a>
-    <div class="d-flex align-items-center gap-2">
-      <a class="btn btn-light btn-sm" href="{{ url_for('change_password') }}">
-        <i class="fa-solid fa-key me-1"></i>Changer mot de passe
-      </a>
-      <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin.admin_logout') }}">
-        <i class="fa-solid fa-right-from-bracket me-1"></i>Déconnexion
-      </a>
-    </div>
-  </div>
-</nav>
-
+<body class="bg-light">
 <div class="container py-4">
 
-  {% set _cats = {'success':'success','info':'info','warning':'warning','error':'danger','danger':'danger'} %}
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Professionnels</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-primary" href="{{ url_for('admin.admin_add_product') }}">+ Ajouter</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_dashboard') }}">← Tableau de bord</a>
+    </div>
+  </div>
+
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="mb-3">
         {% for cat, msg in messages %}
-          <div class="alert alert-{{ _cats.get(cat,'info') }} alert-dismissible fade show" role="alert">
-            <i class="fa-solid fa-circle-info me-2"></i>{{ msg }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
-          </div>
+          <div class="alert alert-{{ 'warning' if cat=='error' else cat }}">{{ msg }}</div>
         {% endfor %}
       </div>
     {% endif %}
   {% endwith %}
 
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-2 mb-md-0"><i class="fa-solid fa-briefcase-medical text-primary me-2"></i>Professionnels</h1>
-    <div class="d-flex gap-2">
-      <a href="{{ url_for('admin.admin_add_product') }}" class="btn btn-primary btn-icon">
-        <i class="fa-solid fa-plus"></i> Ajouter un professionnel
-      </a>
-      <button id="exportCsv" class="btn btn-outline-primary btn-icon">
-        <i class="fa-solid fa-file-export"></i> Export CSV
-      </button>
-    </div>
-  </div>
-
-  <div class="card mb-3">
-    <div class="card-body">
-      <div class="row g-2 align-items-end filters">
-        <div class="col-sm-6 col-lg-4">
-          <label class="form-label">Recherche</label>
-          <input id="searchInput" type="text" class="form-control" placeholder="Nom, spécialité, ville, téléphone…">
-        </div>
-        <div class="col-sm-4 col-lg-3">
-          <label class="form-label">Statut</label>
-          <select id="statusFilter" class="form-select">
-            <option value="">Tous</option>
-            <option value="valide">Validé</option>
-            <option value="en_attente">En attente</option>
-            <option value="rejete">Rejeté</option>
-          </select>
-        </div>
-        <div class="col-sm-4 col-lg-3">
-          <label class="form-label">Spécialité</label>
-          <select id="specialtyFilter" class="form-select">
-            <option value="">Toutes</option>
-            {% set specs = (professionals|map(attribute='specialty')|list if professionals else []) %}
-            {% for s in specs|unique|select|string|list|sort %}
-              {% if s %}<option value="{{ s|lower }}">{{ s }}</option>{% endif %}
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-sm-4 col-lg-2">
-          <label class="form-label">Ville</label>
-          <select id="cityFilter" class="form-select">
-            <option value="">Toutes</option>
-            {% set cities = (professionals|map(attribute='location')|list if professionals else []) %}
-            {% for c in cities|unique|select|string|list|sort %}
-              {% if c %}<option value="{{ c|lower }}">{{ c }}</option>{% endif %}
-            {% endfor %}
-          </select>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-body">
-      {% if professionals and professionals|length %}
-        <div class="table-responsive">
-          <table class="table align-middle" id="proTable">
-            <thead>
-              <tr>
-                <th style="width:64px;">Photo</th>
-                <th>Nom</th>
-                <th>Spécialité</th>
-                <th>Ville</th>
-                <th>Tarif</th>
-                <th>Exp.</th>
-                <th>Tél.</th>
-                <th>Statut</th>
-                <th style="width:280px;" class="text-end">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for p in professionals %}
-                {% set fee = (('%.0f'|format(p.consultation_fee)) ~ ' MAD') if p.consultation_fee is not none else '—' %}
-                {% set st = (p.status or 'en_attente') %}
-                <tr data-name="{{ (p.name or '')|lower }}"
-                    data-specialty="{{ (p.specialty or '')|lower }}"
-                    data-city="{{ (p.location or '')|lower }}"
-                    data-phone="{{ (p.phone or '')|lower }}"
-                    data-status="{{ st }}"
-                >
-                  <td>
-                    <img class="avatar"
-                         src="{{ (p.image_url or '')|trim or 'https://placehold.co/96x96?text=Pro' }}"
-                         alt="Photo {{ p.name }}"
-                         onerror="this.onerror=null;this.src='https://placehold.co/96x96?text=Pro';">
-                  </td>
-                  <td class="fw-semibold">
-                    <a class="text-decoration-none" href="{{ url_for('admin.view_professional', professional_id=p.id) }}">
-                      {{ p.name or '—' }}
-                    </a>
-                    <div class="small text-muted">
-                      {% if p.address %}<i class="fa-solid fa-location-dot me-1"></i>{{ p.address }}{% endif %}
-                    </div>
-                  </td>
-                  <td>{{ p.specialty or '—' }}</td>
-                  <td>{{ p.location or '—' }}</td>
-                  <td>{{ fee }}</td>
-                  <td>{{ p.experience_years or 0 }} ans</td>
-                  <td><a class="text-decoration-none" href="tel:{{ (p.phone or '')|replace(' ', '') }}">{{ p.phone or '—' }}</a></td>
-                  <td>
-                    {% if st == 'valide' %}
-                      <span class="status-dot status-valide"></span>
-                      <span class="badge bg-success">Validé</span>
-                    {% elif st == 'rejete' %}
-                      <span class="status-dot status-rejete"></span>
-                      <span class="badge bg-danger">Rejeté</span>
-                    {% else %}
-                      <span class="status-dot status-attente"></span>
-                      <span class="badge bg-warning text-dark">En attente</span>
-                    {% endif %}
-                  </td>
-                  <td class="text-end">
-                    <div class="btn-group" role="group">
-                      <a class="btn btn-sm btn-outline-secondary btn-icon"
-                         href="{{ url_for('admin.view_professional', professional_id=p.id) }}">
-                        <i class="fa-solid fa-eye"></i> Voir
-                      </a>
-                      <a class="btn btn-sm btn-outline-primary btn-icon"
-                         href="{{ url_for('admin.admin_edit_product', product_id=p.id) }}">
-                        <i class="fa-solid fa-pen-to-square"></i> Éditer
-                      </a>
-                      <button class="btn btn-sm btn-success btn-icon js-validate"
-                              data-id="{{ p.id }}" {% if st == 'valide' %}disabled{% endif %}>
-                        <i class="fa-solid fa-check"></i> Valider
-                      </button>
-                      <button class="btn btn-sm btn-outline-warning btn-icon js-reject"
-                              data-id="{{ p.id }}" {% if st == 'rejete' %}disabled{% endif %}>
-                        <i class="fa-solid fa-xmark"></i> Rejeter
-                      </button>
-                      <button class="btn btn-sm btn-outline-danger btn-icon js-delete" data-id="{{ p.id }}">
-                        <i class="fa-solid fa-trash"></i> Supprimer
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th style="width:60px;">Photo</th>
+          <th>Nom</th>
+          <th>Spécialité</th>
+          <th>Ville</th>
+          <th>Statut</th>
+          <th>Durée / Buffer</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for p in professionals %}
+        <tr>
+          <td><img src="{{ url_for('profile_photo', professional_id=p.id) }}" class="rounded" style="width:48px;height:48px;object-fit:cover;"></td>
+          <td><a href="{{ url_for('admin.view_professional', professional_id=p.id) }}">{{ p.name }}</a></td>
+          <td>{{ p.specialty or '-' }}</td>
+          <td>{{ p.location or '-' }}</td>
+          <td>
+            <span class="badge bg-{{ 'success' if p.status=='valide' else ('secondary' if p.status=='en_attente' else 'danger') }}">{{ p.status }}</span>
+          </td>
+          <td>{{ (p.consultation_duration_minutes or 45) }} / {{ (p.buffer_between_appointments_minutes or 15) }} min</td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.admin_edit_product', product_id=p.id) }}">Éditer</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_professional_availability', professional_id=p.id) }}">Disponibilités</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_professional_unavailable_slots', professional_id=p.id) }}">Indispo</a>
+            <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.view_professional', professional_id=p.id) }}">Voir</a>
+            <button class="btn btn-sm btn-outline-danger" onclick="delPro({{ p.id }})">Supprimer</button>
+          </td>
+        </tr>
       {% else %}
-        <div class="search-empty">
-          <i class="fa-solid fa-user-doctor fa-3x text-muted mb-3"></i>
-          <h2 class="h5">Aucun professionnel</h2>
-          <p class="text-muted">Ajoute un premier profil pour commencer.</p>
-          <a href="{{ url_for('admin.admin_add_product') }}" class="btn btn-primary">
-            <i class="fa-solid fa-plus me-2"></i>Ajouter
-          </a>
-        </div>
-      {% endif %}
-    </div>
+        <tr><td colspan="7" class="text-muted">Aucun résultat.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 
 <script>
-(function(){
-  const $q = (sel, ctx=document) => ctx.querySelector(sel);
-  const $$ = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
-
-  const searchInput = $q('#searchInput');
-  const statusFilter = $q('#statusFilter');
-  const specialtyFilter = $q('#specialtyFilter');
-  const cityFilter = $q('#cityFilter');
-  const table = $q('#proTable');
-
-  function matchRow(tr){
-    const q = (searchInput.value || '').trim().toLowerCase();
-    const st = (statusFilter.value || '').toLowerCase();
-    const sp = (specialtyFilter.value || '').toLowerCase();
-    const ci = (cityFilter.value || '').toLowerCase();
-
-    const name = tr.dataset.name || '';
-    const spec = tr.dataset.specialty || '';
-    const city = tr.dataset.city || '';
-    const phone = tr.dataset.phone || '';
-    const status = tr.dataset.status || '';
-
-    let ok = true;
-
-    if(q){
-      ok = (name.includes(q) || spec.includes(q) || city.includes(q) || phone.includes(q));
-    }
-    if(ok && st){ ok = (status === st); }
-    if(ok && sp){ ok = (spec === sp); }
-    if(ok && ci){ ok = (city === ci); }
-
-    return ok;
-  }
-
-  function applyFilters(){
-    if(!table) return;
-    const rows = $$('tbody tr', table);
-    let visible = 0;
-    rows.forEach(tr=>{
-      const ok = matchRow(tr);
-      tr.style.display = ok ? '' : 'none';
-      if(ok) visible++;
-    });
-  }
-
-  ['input','change'].forEach(evt=>{
-    if(searchInput) searchInput.addEventListener(evt, applyFilters);
-    if(statusFilter) statusFilter.addEventListener(evt, applyFilters);
-    if(specialtyFilter) specialtyFilter.addEventListener(evt, applyFilters);
-    if(cityFilter) cityFilter.addEventListener(evt, applyFilters);
+async function delPro(id) {
+  if (!confirm("Supprimer ce professionnel ?")) return;
+  const res = await fetch(`{{ url_for('admin.admin_delete_product', product_id=0) }}`.replace('0', id), {
+    method: 'POST',
+    headers: {'X-Requested-With': 'XMLHttpRequest'}
   });
-
-  // Actions AJAX : Valider / Rejeter / Supprimer
-  const getCSRF = () => {
-    const el = document.querySelector('input[name="csrf_token"]');
-    return el ? el.value : null;
-  };
-
-  async function postJSON(url, payload){
-    const headers = { 'Content-Type': 'application/json' };
-    const csrf = getCSRF();
-    if(csrf) headers['X-CSRFToken'] = csrf;
-    const res = await fetch(url, { method:'POST', headers, body: payload ? JSON.stringify(payload) : '{}' });
-    return res.json();
-  }
-
-  function updateStatusUI(btnRow, newStatus){
-    const td = btnRow.querySelector('td:nth-last-child(2)'); // colonne statut
-    if(!td) return;
-    td.innerHTML = (
-      newStatus === 'valide' ? '<span class="status-dot status-valide"></span><span class="badge bg-success">Validé</span>' :
-      newStatus === 'rejete' ? '<span class="status-dot status-rejete"></span><span class="badge bg-danger">Rejeté</span>' :
-      '<span class="status-dot status-attente"></span><span class="badge bg-warning text-dark">En attente</span>'
-    );
-    btnRow.dataset.status = newStatus;
-
-    // Désactiver/activer boutons
-    const btnValidate = btnRow.querySelector('.js-validate');
-    const btnReject = btnRow.querySelector('.js-reject');
-    if(btnValidate) btnValidate.disabled = (newStatus === 'valide');
-    if(btnReject) btnReject.disabled = (newStatus === 'rejete');
-  }
-
-  document.addEventListener('click', async (e)=>{
-    const btn = e.target.closest('.js-validate, .js-reject, .js-delete');
-    if(!btn) return;
-
-    const id = btn.dataset.id;
-    const tr = btn.closest('tr');
-    if(!id || !tr) return;
-
-    try{
-      if(btn.classList.contains('js-validate')){
-        const url = "{{ url_for('admin.validate_professional', professional_id=0) }}".replace('/0/', `/${id}/`);
-        const data = await postJSON(url);
-        if(data && data.success){
-          updateStatusUI(tr, 'valide');
-        }else{
-          alert(data && data.message ? data.message : 'Échec validation');
-        }
-      }else if(btn.classList.contains('js-reject')){
-        if(!confirm('Rejeter ce professionnel ?')) return;
-        const url = "{{ url_for('admin.reject_professional', professional_id=0) }}".replace('/0/', `/${id}/`);
-        const data = await postJSON(url);
-        if(data && data.success){
-          updateStatusUI(tr, 'rejete');
-        }else{
-          alert(data && data.message ? data.message : 'Échec rejet');
-        }
-      }else if(btn.classList.contains('js-delete')){
-        if(!confirm('Supprimer définitivement ce professionnel ?')) return;
-        const url = "{{ url_for('admin.admin_delete_product', product_id=0) }}".replace('/0', `/${id}`);
-        const data = await postJSON(url);
-        if(data && data.success){
-          tr.remove();
-        }else{
-          alert(data && data.message ? data.message : 'Échec suppression');
-        }
-      }
-    }catch(err){
-      console.error(err);
-      alert('Erreur réseau');
-    }
-  });
-
-  // Export CSV rapide (côté client)
-  const exportBtn = document.getElementById('exportCsv');
-  if(exportBtn && table){
-    exportBtn.addEventListener('click', ()=>{
-      const rows = Array.from(table.querySelectorAll('tbody tr')).filter(tr=> tr.style.display !== 'none');
-      const headers = ['Nom','Spécialité','Ville','Tarif','Expérience','Téléphone','Statut'];
-      const lines = [headers.join(';')];
-      rows.forEach(tr=>{
-        const tds = tr.querySelectorAll('td');
-        const name = tds[1]?.innerText.replace(/\n/g,' ').trim() || '';
-        const spec = tds[2]?.innerText.trim() || '';
-        const city = tds[3]?.innerText.trim() || '';
-        const fee  = tds[4]?.innerText.trim() || '';
-        const exp  = tds[5]?.innerText.trim() || '';
-        const tel  = tds[6]?.innerText.trim() || '';
-        const stat = tds[7]?.innerText.replace(/\s+/g,' ').trim() || '';
-        lines.push([name,spec,city,fee,exp,tel,stat].map(v => `"${v.replace(/"/g,'""')}"`).join(';'));
-      });
-      const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'professionnels.csv';
-      document.body.appendChild(a); a.click();
-      URL.revokeObjectURL(url); a.remove();
-    });
-  }
-
-  // Appliquer filtres au chargement (au cas où)
-  applyFilters();
-})();
+  const data = await res.json();
+  if (data.success) location.reload();
+  else alert(data.message || 'Erreur.');
+}
 </script>
-
-{% if csrf_token is defined %}
-  <!-- Injecte un token CSRF caché pour les POST AJAX si ton app utilise CSRFProtect -->
-  <form style="display:none"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"></form>
-{% endif %}
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
