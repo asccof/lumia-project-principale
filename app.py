@@ -339,16 +339,13 @@ def professional_register():
         fee_raw = request.form.get('consultation_fee', '0')
         phone = request.form.get('phone', '').strip()
 
-        try:
-            experience = int(experience_raw or 0)
-        except ValueError:
-            experience = 0
+        # Réseaux sociaux (présents dans le formulaire)
+        facebook_url  = (request.form.get('facebook_url')  or '').strip()
+        instagram_url = (request.form.get('instagram_url') or '').strip()
+        tiktok_url    = (request.form.get('tiktok_url')    or '').strip()
+        youtube_url   = (request.form.get('youtube_url')   or '').strip()
 
-        try:
-            consultation_fee = float((fee_raw or '0').replace(',', '.'))
-        except ValueError:
-            consultation_fee = 0.0
-
+        # Validations basiques
         if not username or not email or not password or not phone:
             flash("Tous les champs obligatoires (dont téléphone) ne sont pas remplis.")
             return redirect(url_for('professional_register'))
@@ -356,32 +353,56 @@ def professional_register():
         if User.query.filter_by(username=username).first():
             flash("Nom d'utilisateur déjà pris")
             return redirect(url_for('professional_register'))
-
         if User.query.filter_by(email=email).first():
             flash('Email déjà enregistré')
             return redirect(url_for('professional_register'))
 
-        user = User(
-            username=username,
-            email=email,
-            password_hash=generate_password_hash(password),
-            user_type='professional',
-            phone=phone
-        )
-        db.session.add(user)
-        db.session.commit()
+        try:
+            experience = int((experience_raw or '0').strip())
+        except ValueError:
+            experience = 0
+        try:
+            consultation_fee = float((fee_raw or '0').replace(',', '.'))
+        except ValueError:
+            consultation_fee = 0.0
 
-        professional = Professional(
-            name=username,
-            description=description or "Profil en cours de complétion.",
-            specialty=specialty or "Psychologue",
-            location=city or "Casablanca",
-            experience_years=experience,
-            consultation_fee=consultation_fee,
-            status='en_attente'
-        )
-        db.session.add(professional)
-        db.session.commit()
+        # ==== ATOMIQUE : création User + Professional dans une seule transaction ====
+        try:
+            # Créer l'utilisateur pro
+            user = User(
+                username=username,
+                email=email,
+                password_hash=generate_password_hash(password),
+                user_type='professional',
+                phone=phone
+            )
+            db.session.add(user)
+
+            # Créer le profil pro correspondant
+            professional = Professional(
+                name=username,  # cohérence avec l'espace pro existant (name == username)
+                description=description or "Profil en cours de complétion.",
+                specialty=specialty or "Psychologue",
+                location=city or "Casablanca",
+                experience_years=experience,
+                consultation_fee=consultation_fee,
+                phone=phone or None,
+                availability='disponible',
+                consultation_types='cabinet',
+                facebook_url=facebook_url or None,
+                instagram_url=instagram_url or None,
+                tiktok_url=tiktok_url or None,
+                youtube_url=youtube_url or None,
+                social_links_approved=False,
+                status='en_attente'
+            )
+            db.session.add(professional)
+
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            flash("Erreur lors de la création du compte professionnel. Réessayez.", "danger")
+            return redirect(url_for('professional_register'))
 
         flash('Compte professionnel créé avec succès! Un administrateur validera votre profil.')
         return redirect(url_for('login'))
