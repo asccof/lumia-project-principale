@@ -117,6 +117,8 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 # ======================
 class ProfessionalAvailability(db.Model):
     __tablename__ = "professional_availabilities"
+    __table_args__ = {'extend_existing': True}  # ✅ évite le conflit si déjà mappée
+
     id = db.Column(db.Integer, primary_key=True)
     professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
     day_of_week = db.Column(db.Integer, nullable=False)  # 0..6
@@ -127,6 +129,8 @@ class ProfessionalAvailability(db.Model):
 
 class UnavailableSlot(db.Model):
     __tablename__ = "unavailable_slots"
+    __table_args__ = {'extend_existing': True}  # ✅ idem
+
     id = db.Column(db.Integer, primary_key=True)
     professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
@@ -154,9 +158,9 @@ with app.app_context():
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS tiktok_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS youtube_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;"))
-        # ✅ durée & buffer (déjà présents si migration passée)
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 30;"))
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 0;"))
+        # ✅ Durée & buffer par défaut (45 / 15)
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 45;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 15;"))
 
         # users: téléphone
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"))
@@ -469,6 +473,47 @@ def forgot_password():
 # ===========================================================================
 
 # ======================
+# Helpers durée/buffer (lecture/écriture compatibles)
+# ======================
+def _get_duration_buffer_for_professional(pro):
+    """Lit durée & buffer même si les colonnes ne sont pas mappées dans le modèle."""
+    default_d, default_b = 45, 15
+    has_columns = hasattr(Professional, 'consultation_duration_minutes') and hasattr(Professional, 'buffer_between_appointments_minutes')
+    if has_columns:
+        try:
+            d = int(pro.consultation_duration_minutes or default_d)
+        except Exception:
+            d = default_d
+        try:
+            b = int(pro.buffer_between_appointments_minutes or default_b)
+        except Exception:
+            b = default_b
+        return d, b
+    # fallback: SELECT brut
+    row = db.session.execute(
+        text("SELECT consultation_duration_minutes, buffer_between_appointments_minutes FROM professionals WHERE id=:id"),
+        {'id': pro.id}
+    ).first()
+    if row:
+        d = int(row[0]) if row[0] is not None else default_d
+        b = int(row[1]) if row[1] is not None else default_b
+        return d, b
+    return default_d, default_b
+
+def _set_duration_buffer_for_professional(pro_id: int, d: int | None = None, b: int | None = None):
+    """Écrit durée/buffer de manière sûre (fonctionne même sans mapping ORM)."""
+    sets = []
+    params = {'id': pro_id}
+    if d is not None:
+        sets.append("consultation_duration_minutes=:d")
+        params['d'] = d
+    if b is not None:
+        sets.append("buffer_between_appointments_minutes=:b")
+        params['b'] = b
+    if sets:
+        db.session.execute(text(f"UPDATE professionals SET {', '.join(sets)} WHERE id=:id"), params)
+
+# ======================
 # Espace Professionnel
 # ======================
 @app.route('/professional_dashboard', endpoint='professional_dashboard')
@@ -487,9 +532,14 @@ def professional_dashboard():
                                     .order_by(Appointment.appointment_date.desc()) \
                                     .all()
 
+    # Pour affichage eventuel des valeurs dans le tableau de bord
+    duration, buffer_m = _get_duration_buffer_for_professional(professional)
+
     return render_template('professional_dashboard.html',
                            professional=professional,
-                           appointments=appointments)
+                           appointments=appointments,
+                           duration_minutes=duration,
+                           buffer_minutes=buffer_m)
 
 # --- EDIT PROFIL PRO: adresse / lat / lng + durée/buffer ---
 @app.route('/professional/profile', methods=['GET', 'POST'], endpoint='professional_edit_profile')
@@ -536,27 +586,35 @@ def professional_edit_profile():
         if hasattr(pro, "longitude"):
             pro.longitude = val_lng
 
-        # ✅ NOUVEAU : durée & buffer (facultatif)
+        # ✅ Durée & buffer (modifiables)
         dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
         buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
+        new_d = new_b = None
         if dur_raw:
             try:
-                d = max(5, min(240, int(dur_raw)))
-                pro.consultation_duration_minutes = d
+                new_d = max(5, min(240, int(dur_raw)))
             except ValueError:
                 flash("Durée invalide (minutes).", "error")
         if buf_raw:
             try:
-                b = max(0, min(120, int(buf_raw)))
-                pro.buffer_between_appointments_minutes = b
+                new_b = max(0, min(120, int(buf_raw)))
             except ValueError:
                 flash("Buffer invalide (minutes).", "error")
+
+        # Persistance sûre (fonctionne avec/ sans mapping ORM)
+        if new_d is not None or new_b is not None:
+            _set_duration_buffer_for_professional(pro.id, d=new_d, b=new_b)
 
         db.session.commit()
         flash("Profil mis à jour avec succès!")
         return redirect(url_for('professional_dashboard'))
 
-    return render_template('professional_edit_profile.html', professional=pro)
+    # Valeurs actuelles pour affichage
+    duration, buffer_m = _get_duration_buffer_for_professional(pro)
+    return render_template('professional_edit_profile.html',
+                           professional=pro,
+                           duration_minutes=duration,
+                           buffer_minutes=buffer_m)
 
 # ===== [TIGHRI_R1:PROFILE_PHOTO_UPLOAD] =====================================
 # Route média pour servir les photos locales
@@ -819,21 +877,24 @@ def _overlap(start1: dtime, end1: dtime, start2: dtime, end2: dtime) -> bool:
 @app.route('/api/professionals', endpoint='api_professionals')
 def api_professionals():
     pros = Professional.query.all()
-    return jsonify([{
-        'id': p.id,
-        'name': p.name,
-        'description': p.description,
-        'consultation_fee': p.consultation_fee,
-        'image_url': p.image_url,
-        'specialty': p.specialty,
-        'availability': p.availability,
-        'address': getattr(p, 'address', None),
-        'latitude': getattr(p, 'latitude', None),
-        'longitude': getattr(p, 'longitude', None),
-        # ✅ expose (optionnel)
-        'consultation_duration_minutes': getattr(p, 'consultation_duration_minutes', 30),
-        'buffer_between_appointments_minutes': getattr(p, 'buffer_between_appointments_minutes', 0),
-    } for p in pros])
+    out = []
+    for p in pros:
+        d, b = _get_duration_buffer_for_professional(p)
+        out.append({
+            'id': p.id,
+            'name': p.name,
+            'description': p.description,
+            'consultation_fee': p.consultation_fee,
+            'image_url': p.image_url,
+            'specialty': p.specialty,
+            'availability': p.availability,
+            'address': getattr(p, 'address', None),
+            'latitude': getattr(p, 'latitude', None),
+            'longitude': getattr(p, 'longitude', None),
+            'consultation_duration_minutes': d,
+            'buffer_between_appointments_minutes': b,
+        })
+    return jsonify(out)
 
 @app.route('/api/professional/<int:professional_id>/available-slots', endpoint='api_available_slots')
 def api_available_slots(professional_id):
@@ -866,9 +927,8 @@ def api_available_slots(professional_id):
         db.func.date(Appointment.appointment_date) == target_date
     ).all()
 
-    # ✅ durée/buffer
-    duration = int(getattr(professional, 'consultation_duration_minutes', 30) or 30)
-    buffer_m = int(getattr(professional, 'buffer_between_appointments_minutes', 0) or 0)
+    # ✅ durée/buffer via helper
+    duration, buffer_m = _get_duration_buffer_for_professional(professional)
     step = max(1, duration + buffer_m)
 
     slots = []
@@ -928,7 +988,7 @@ def book_appointment(professional_id):
         return redirect(url_for('professionals'))
 
     # ✅ durée/buffer
-    duration = int(getattr(professional, 'consultation_duration_minutes', 30) or 30)
+    duration, _buffer_unused = _get_duration_buffer_for_professional(professional)
 
     if request.method == 'POST':
         appointment_date = request.form.get('appointment_date', '')
@@ -1099,18 +1159,17 @@ def profile_photo(professional_id):
     pro = Professional.query.get_or_404(professional_id)
     raw_url = (pro.image_url or "").strip()
 
-    # Si on a déjà un fichier local : rediriger vers le service local (SANS forcer https)
+    # Si on a déjà un fichier local : rediriger vers le service local (HTTPS absolu)
     if raw_url.startswith("/media/profiles/"):
         fname = raw_url.split("/media/profiles/")[-1]
-        # ✅ FIX: pas de _external/_scheme -> fonctionne en dev (HTTP) et en prod (HTTPS)
-        return redirect(url_for('profile_media', filename=fname))
+        return redirect(url_for('profile_media', filename=fname, _external=True, _scheme='https'))
 
     # Pas d’URL => placeholder
     if not raw_url:
         return redirect(PHOTO_PLACEHOLDER)
 
-    # Upgrade http->https uniquement si le site est déjà en HTTPS (évite la casse en dev)
-    if raw_url.startswith("http://") and request.is_secure:
+    # Normalisation http -> https (évite mixed content)
+    if raw_url.startswith("http://"):
         raw_url = "https://" + raw_url[len("http://"):]
 
     # Sécurité: n’autorise que http(s)
