@@ -91,7 +91,7 @@ def _normalize_pg_uri(uri: str) -> str:
     return uri
 
 # --- Config DB ---
-from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
+from models import db, User, Professional, Appointment
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
 if not uri:
@@ -112,6 +112,29 @@ login_manager.login_view = 'login'
 from admin_server import admin_bp
 app.register_blueprint(admin_bp, url_prefix='/admin')
 
+# ======================
+# Modèles complémentaires (disponibilités/indispos)
+# ======================
+class ProfessionalAvailability(db.Model):
+    __tablename__ = "professional_availabilities"
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
+    day_of_week = db.Column(db.Integer, nullable=False)  # 0..6
+    start_time = db.Column(db.String(5), nullable=False)  # "HH:MM"
+    end_time = db.Column(db.String(5), nullable=False)    # "HH:MM"
+    is_available = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+class UnavailableSlot(db.Model):
+    __tablename__ = "unavailable_slots"
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    start_time = db.Column(db.String(5), nullable=False)
+    end_time = db.Column(db.String(5), nullable=False)
+    reason = db.Column(db.String(200))
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
 # --- User loader ---
 @login_manager.user_loader
 def load_user(user_id):
@@ -131,9 +154,9 @@ with app.app_context():
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS tiktok_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS youtube_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;"))
-        # ✅ Durée & buffer par défaut demandés: 45 et 15
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 45;"))
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 15;"))
+        # ✅ durée & buffer (déjà présents si migration passée)
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 30;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 0;"))
 
         # users: téléphone
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"))
@@ -592,6 +615,8 @@ def professional_availability():
         return redirect(url_for('index'))
 
     if request.method == 'POST':
+        # On accepte toujours l’ancien format (1 plage/jour)
+        # + ✅ NOUVEAU : jusqu’à 3 plages par jour via suffixes _2 et _3
         ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
 
         def add_window(day, s, e, avail_flag):
@@ -609,14 +634,17 @@ def professional_availability():
 
         for day in range(7):
             base_flag = request.form.get(f'available_{day}') == 'on'
+            # plage 1 (legacy)
             add_window(day,
                        request.form.get(f'start_time_{day}', ''),
                        request.form.get(f'end_time_{day}', ''),
                        base_flag)
+            # plage 2
             add_window(day,
                        request.form.get(f'start_time_{day}_2', ''),
                        request.form.get(f'end_time_{day}_2', ''),
                        request.form.get(f'available_{day}_2') == 'on' or base_flag)
+            # plage 3
             add_window(day,
                        request.form.get(f'start_time_{day}_3', ''),
                        request.form.get(f'end_time_{day}_3', ''),
@@ -626,16 +654,18 @@ def professional_availability():
         flash('Disponibilités mises à jour avec succès!')
         return redirect(url_for('professional_availability'))
 
+    # GET : on garde l’API compatible avec l’ancien template (un dict premier créneau)
     all_avs = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
     windows_by_day = {d: [] for d in range(7)}
     for av in all_avs:
         windows_by_day.get(av.day_of_week, []).append(av)
+    # Compat : premier créneau par jour (si le template actuel attend un seul objet)
     availability_dict = {d: (windows_by_day[d][0] if windows_by_day[d] else None) for d in range(7)}
 
     return render_template('professional_availability.html',
                            professional=professional,
-                           availabilities=availability_dict,
-                           windows_by_day=windows_by_day)
+                           availabilities=availability_dict,   # compat
+                           windows_by_day=windows_by_day)      # nouveau (optionnel template)
 
 @app.route('/professional/unavailable-slots', methods=['GET', 'POST'], endpoint='professional_unavailable_slots')
 @login_required
@@ -732,6 +762,10 @@ def professional_appointments():
 
 # ===== [TIGHRI_R1:NOTIFY_STUB] ==============================================
 def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
+    """
+    Stub de notifications (compte + téléphone).
+    kind: 'accepted' | 'refused' | 'reminder' | 'pending'
+    """
     app.logger.info("[NOTIFY] user=%s kind=%s ap_id=%s brand=%s",
                     user_id, kind, getattr(ap, 'id', None), BRAND_NAME)
 # ===========================================================================
@@ -776,6 +810,7 @@ def _add_minutes(t: dtime, minutes: int) -> dtime:
     return (datetime.combine(date.today(), t) + timedelta(minutes=minutes)).time()
 
 def _overlap(start1: dtime, end1: dtime, start2: dtime, end2: dtime) -> bool:
+    # [start1, end1) intersects [start2, end2)
     return start1 < end2 and start2 < end1
 
 # ======================
@@ -795,8 +830,9 @@ def api_professionals():
         'address': getattr(p, 'address', None),
         'latitude': getattr(p, 'latitude', None),
         'longitude': getattr(p, 'longitude', None),
-        'consultation_duration_minutes': getattr(p, 'consultation_duration_minutes', 45),
-        'buffer_between_appointments_minutes': getattr(p, 'buffer_between_appointments_minutes', 15),
+        # ✅ expose (optionnel)
+        'consultation_duration_minutes': getattr(p, 'consultation_duration_minutes', 30),
+        'buffer_between_appointments_minutes': getattr(p, 'buffer_between_appointments_minutes', 0),
     } for p in pros])
 
 @app.route('/api/professional/<int:professional_id>/available-slots', endpoint='api_available_slots')
@@ -830,8 +866,9 @@ def api_available_slots(professional_id):
         db.func.date(Appointment.appointment_date) == target_date
     ).all()
 
-    duration = int(getattr(professional, 'consultation_duration_minutes', 45) or 45)
-    buffer_m = int(getattr(professional, 'buffer_between_appointments_minutes', 15) or 15)
+    # ✅ durée/buffer
+    duration = int(getattr(professional, 'consultation_duration_minutes', 30) or 30)
+    buffer_m = int(getattr(professional, 'buffer_between_appointments_minutes', 0) or 0)
     step = max(1, duration + buffer_m)
 
     slots = []
@@ -844,11 +881,13 @@ def api_available_slots(professional_id):
             slot_start = current
             slot_end = _add_minutes(current, duration)
 
+            # indispo manuelles (overlap)
             is_unavailable = any(
                 _overlap(slot_start, slot_end, _str_to_time(u.start_time), _str_to_time(u.end_time))
                 for u in unavailable_slots
             )
 
+            # RDV confirmés (overlap en tenant compte de la même durée pro)
             is_booked = any(
                 _overlap(
                     slot_start, slot_end,
@@ -865,6 +904,7 @@ def api_available_slots(professional_id):
                     'available': True
                 })
 
+            # Avance = durée + buffer
             current = _add_minutes(current, step)
 
     return jsonify({
@@ -887,7 +927,8 @@ def book_appointment(professional_id):
         flash("Ce professionnel n'est pas encore validé par l'administration.")
         return redirect(url_for('professionals'))
 
-    duration = int(getattr(professional, 'consultation_duration_minutes', 45) or 45)
+    # ✅ durée/buffer
+    duration = int(getattr(professional, 'consultation_duration_minutes', 30) or 30)
 
     if request.method == 'POST':
         appointment_date = request.form.get('appointment_date', '')
@@ -913,6 +954,7 @@ def book_appointment(professional_id):
             flash("Format de date/heure invalide.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
+        # Vérifier disponibilités (toutes plages du jour)
         day_of_week = appointment_datetime.weekday()
         availabilities = ProfessionalAvailability.query.filter_by(
             professional_id=professional_id,
@@ -931,6 +973,7 @@ def book_appointment(professional_id):
             flash("Cette heure n'est pas disponible pour ce professionnel.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
+        # RDV confirmé qui chevauche ?
         existing_confirmed = Appointment.query.filter_by(
             professional_id=professional_id,
             status='confirme'
@@ -945,6 +988,7 @@ def book_appointment(professional_id):
             flash("Ce créneau est déjà réservé.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
+        # Indisponibilités du jour (chevauchement)
         day_unavailable = UnavailableSlot.query.filter_by(
             professional_id=professional_id,
             date=appointment_date_obj
@@ -957,6 +1001,7 @@ def book_appointment(professional_id):
             flash("Ce créneau est marqué comme indisponible.")
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
+        # Créer RDV (statut EN ATTENTE)
         appointment = Appointment(
             patient_id=current_user.id,
             professional_id=professional_id,
@@ -968,11 +1013,13 @@ def book_appointment(professional_id):
         db.session.add(appointment)
         db.session.commit()
 
+        # Notification (stub)
         notify_user_account_and_phone(user_id=current_user.id, kind='pending', ap=appointment)
 
         flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
         return redirect(url_for('my_appointments'))
 
+    # Affichage
     availabilities = ProfessionalAvailability.query.filter_by(
         professional_id=professional_id, is_available=True
     ).all()
@@ -1004,6 +1051,11 @@ def my_appointments():
 # ===== [TIGHRI_R1:CRON_REMINDER] ============================================
 @app.get('/cron/send-reminders-24h', endpoint='cron_send_reminders_24h')
 def cron_send_reminders_24h():
+    """
+    Endpoint de cron sécurisé :
+    appeler /cron/send-reminders-24h?token=XXX
+    où XXX = os.environ['CRON_TOKEN'].
+    """
     token = request.args.get('token', '')
     if token != os.environ.get('CRON_TOKEN', 'dev'):
         return jsonify({'ok': False, 'error': 'unauthorized'}), 403
@@ -1021,6 +1073,7 @@ def cron_send_reminders_24h():
         notify_user_account_and_phone(user_id=ap.patient_id, kind='reminder', ap=ap)
 
     return jsonify({'ok': True, 'reminders_sent': len(rows)})
+# ===========================================================================
 
 # ======================
 # Site Status
@@ -1032,7 +1085,7 @@ def site_status():
         'total_professionals': Professional.query.count(),
         'total_users': User.query.count(),
         'total_appointments': Appointment.query.count(),
-        'database_file': 'tighri.db',
+        'database_file': 'tighri.db',  # compat UI locale
         'server_port': 5000,
         'admin_port': 8080
     }
@@ -1046,20 +1099,26 @@ def profile_photo(professional_id):
     pro = Professional.query.get_or_404(professional_id)
     raw_url = (pro.image_url or "").strip()
 
+    # Si on a déjà un fichier local : rediriger vers le service local (SANS forcer https)
     if raw_url.startswith("/media/profiles/"):
         fname = raw_url.split("/media/profiles/")[-1]
-        return redirect(url_for('profile_media', filename=fname, _external=True, _scheme='https'))
+        # ✅ FIX: pas de _external/_scheme -> fonctionne en dev (HTTP) et en prod (HTTPS)
+        return redirect(url_for('profile_media', filename=fname))
 
+    # Pas d’URL => placeholder
     if not raw_url:
         return redirect(PHOTO_PLACEHOLDER)
 
-    if raw_url.startswith("http://"):
+    # Upgrade http->https uniquement si le site est déjà en HTTPS (évite la casse en dev)
+    if raw_url.startswith("http://") and request.is_secure:
         raw_url = "https://" + raw_url[len("http://"):]
 
+    # Sécurité: n’autorise que http(s)
     parsed = urlparse(raw_url)
     if parsed.scheme not in ("http", "https"):
         return redirect(PHOTO_PLACEHOLDER)
 
+    # Requête côté serveur (contourne hotlink)
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
         "Referer": "https://www.tighri.com",
@@ -1068,13 +1127,16 @@ def profile_photo(professional_id):
         r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
         r.raise_for_status()
     except Exception:
+        # En cas d’erreur (403/404/timeout...), placeholder
         return redirect(PHOTO_PLACEHOLDER)
 
     content_type = r.headers.get("Content-Type", "image/jpeg")
     data = r.content
 
     resp = Response(data, mimetype=content_type)
+    # Cache 24h
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
+# ===== Fin proxy d’images =====
 
 # Pas de bloc __main__ (gunicorn utilise app:app)
