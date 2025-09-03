@@ -45,6 +45,10 @@ class Professional(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
+    # Lien (optionnel) vers l'utilisateur propriétaire du profil pro
+    # NOTE: on ne met PAS de contrainte unique pour ne rien casser si des données existent déjà.
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+
     # Identité / contenu
     name = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text)
@@ -79,8 +83,16 @@ class Professional(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # Relation vers User (chargée en jointure pour les pages pro)
+    user = db.relationship(
+        'User',
+        backref=db.backref('professional_profile', uselist=False, lazy='select'),
+        lazy='joined'
+    )
+
     __table_args__ = (
         # Index utiles pour la recherche/front
+        db.Index('ix_professionals_user_id', 'user_id'),
         db.Index('ix_professionals_name', 'name'),
         db.Index('ix_professionals_specialty', 'specialty'),
         db.Index('ix_professionals_location', 'location'),
