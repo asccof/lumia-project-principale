@@ -27,7 +27,6 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
-        # Les UNIQUE créent déjà des index sur username/email.
         db.Index('ix_users_user_type', 'user_type'),
         db.Index('ix_users_is_admin', 'is_admin'),
         db.Index('ix_users_created_at', 'created_at'),
@@ -44,6 +43,9 @@ class Professional(db.Model):
     __tablename__ = "professionals"
 
     id = db.Column(db.Integer, primary_key=True)
+
+    # Lien (rétro-compatible : nullable pour les anciens enregistrements)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     # Identité / contenu
     name = db.Column(db.String(120), nullable=False)
@@ -80,7 +82,7 @@ class Professional(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
-        # Index utiles pour la recherche/front
+        db.Index('ix_professionals_user', 'user_id'),
         db.Index('ix_professionals_name', 'name'),
         db.Index('ix_professionals_specialty', 'specialty'),
         db.Index('ix_professionals_location', 'location'),
@@ -88,12 +90,11 @@ class Professional(db.Model):
         db.Index('ix_professionals_status', 'status'),
         db.Index('ix_professionals_availability', 'availability'),
         db.Index('ix_professionals_created_at', 'created_at'),
-        # Index multi-colonnes pour les filtres/search (LIKE sur plusieurs champs)
         db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
     )
 
     def __repr__(self):
-        return f"<Professional id={self.id} {self.name} [{self.specialty}] status={self.status}>"
+        return f"<Professional id={self.id} user_id={self.user_id} {self.name} [{self.specialty}] status={self.status}>"
 
 
 class Appointment(db.Model):
