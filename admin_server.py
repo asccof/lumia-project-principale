@@ -414,6 +414,10 @@ def edit_user(user_id):
     user = User.query.get_or_404(user_id)
 
     if request.method == 'POST':
+        # Conserver l’ancien état pour gérer la promotion et le renommage
+        old_username = user.username
+        old_type = user.user_type
+
         username = (request.form.get('username') or user.username).strip()
         email = (request.form.get('email') or user.email).strip().lower()
         user_type = (request.form.get('user_type') or user.user_type).strip()
@@ -421,6 +425,7 @@ def edit_user(user_id):
         new_pw = (request.form.get('new_password') or request.form.get('password') or '').strip()
         phone = (request.form.get('phone') or user.phone or '').strip()
 
+        # Unicité username/email (hors utilisateur courant)
         if User.query.filter(User.username == username, User.id != user.id).first():
             flash("Nom d'utilisateur déjà pris")
             return redirect(url_for('admin.edit_user', user_id=user.id))
@@ -428,14 +433,49 @@ def edit_user(user_id):
             flash("Email déjà enregistré")
             return redirect(url_for('admin.edit_user', user_id=user.id))
 
+        # Appliquer les modifications au User
         user.username = username
         user.email = email
         user.user_type = user_type
         user.is_admin = bool(is_admin)
         user.phone = phone or None
-
         if new_pw:
             user.password_hash = generate_password_hash(new_pw)
+
+        # ---- PROMOTION AUTO: patient -> professional (sans colonne user_id) ----
+        # Règle d’association existante dans app.py : on relie par le nom,
+        # via Professional.name == current_user.username.
+        # Donc si l’utilisateur devient "professional", on s’assure qu’un
+        # Professional(name=username) existe. Si on a renommé le username,
+        # on renomme aussi le Professional correspondant (si trouvé).
+        try:
+            if user_type == 'professional':
+                pro = Professional.query.filter_by(name=username).first()
+
+                if not pro:
+                    # Peut-être un pro existe avec l'ancien username => le renommer
+                    pro_old = Professional.query.filter_by(name=old_username).first()
+                    if pro_old and old_username != username:
+                        pro_old.name = username
+                        pro = pro_old
+
+                if not pro:
+                    # Créer un profil pro minimal et cohérent avec le site
+                    pro = Professional(
+                        name=username,
+                        description="Profil en cours de complétion.",
+                        specialty="Psychologue",
+                        location="Casablanca",
+                        experience_years=0,
+                        consultation_fee=0.0,
+                        phone=user.phone or None,
+                        status="en_attente"
+                    )
+                    db.session.add(pro)
+            # Si l’admin rétrograde en patient, on ne supprime rien pour éviter toute perte.
+        except Exception as e:
+            # On ne casse pas l’édition de l’utilisateur si la création du pro échoue.
+            flash(f"Attention: la synchronisation du profil professionnel a rencontré un souci: {e}", "warning")
 
         db.session.commit()
         flash('Utilisateur modifié avec succès!')
