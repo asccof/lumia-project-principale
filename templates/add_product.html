@@ -13,7 +13,8 @@
     <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">← Retour</a>
   </div>
 
-  <form method="post">
+  <!-- Ajout: enctype pour permettre l'upload -->
+  <form method="post" enctype="multipart/form-data">
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
     <div class="row g-3">
 
@@ -65,6 +66,13 @@
       <div class="col-12">
         <label class="form-label">Description</label>
         <textarea name="description" rows="3" class="form-control" placeholder="Présentation du professionnel…"></textarea>
+      </div>
+
+      <!-- Ajout: upload de fichier image (prioritaire sur l'URL si fourni) -->
+      <div class="col-12">
+        <label class="form-label">Importer une image (optionnel)</label>
+        <input type="file" name="image_file" accept="image/*" class="form-control">
+        <div class="form-text">JPG/PNG/GIF, max 5 Mo. Si vous uploadez un fichier, l’URL ci-dessous sera ignorée.</div>
       </div>
 
       <div class="col-12">
