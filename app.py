@@ -539,55 +539,47 @@ def professional_edit_profile():
     return render_template('professional_edit_profile.html', professional=pro)
 
 # ===== [TIGHRI_R1:PROFILE_PHOTO_UPLOAD] =====================================
-# ===== Proxy d’images pour photos de profils (robuste) =====
-PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
+# Route média pour servir les photos locales
+@app.route('/media/profiles/<path:filename>', endpoint='profile_media')
+def profile_media(filename):
+    return send_from_directory(str(UPLOAD_FOLDER), filename, as_attachment=False, max_age=31536000)
 
-@app.route("/media/profile/<int:professional_id>", endpoint='profile_photo')
-def profile_photo(professional_id):
-    pro = Professional.query.get_or_404(professional_id)
-    raw_url = (pro.image_url or "").strip()
+# Upload de photo de profil (fichier, pas lien)
+@app.route('/professional/profile/photo', methods=['GET', 'POST'], endpoint='professional_upload_photo')
+@login_required
+def professional_upload_photo():
+    if current_user.user_type != 'professional':
+        flash('Accès non autorisé')
+        return redirect(url_for('index'))
 
-    # 1) Cas fichier local enregistré en DB: "/media/profiles/<fname>"
-    if raw_url.startswith("/media/profiles/"):
-        fname = raw_url.split("/media/profiles/")[-1].strip("/")
-        local_path = UPLOAD_FOLDER / fname
-        if local_path.exists():
-            # Sert directement le fichier (évite 302 puis 404)
-            return send_from_directory(str(UPLOAD_FOLDER), fname, as_attachment=False, max_age=31536000)
-        else:
-            app.logger.warning("Photo locale manquante: %s", local_path)
-            return redirect(PHOTO_PLACEHOLDER)
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé")
+        return redirect(url_for('professional_dashboard'))
 
-    # 2) Pas d’image enregistrée
-    if not raw_url:
-        return redirect(PHOTO_PLACEHOLDER)
+    if request.method == 'POST':
+        file = request.files.get('photo')
+        if not file:
+            flash("Veuillez sélectionner une image.", "warning")
+            return redirect(url_for('professional_upload_photo'))
+        try:
+            saved_name = _process_and_save_profile_image(file)
+            # Conserver compatibilité : on stocke l'URL locale dans image_url
+            pro.image_url = f"/media/profiles/{saved_name}"
+            db.session.commit()
+            flash("Photo de profil mise à jour avec succès.", "success")
+            return redirect(url_for('professional_dashboard'))
+        except RuntimeError:
+            app.logger.exception("PIL manquant pour traitement image.")
+            flash("Le traitement d'image nécessite Pillow. Merci d'installer la dépendance.", "danger")
+        except ValueError as e:
+            flash(str(e), "danger")
+        except Exception:
+            app.logger.exception("Erreur interne lors du traitement de l'image")
+            flash("Erreur interne lors du traitement de l'image.", "danger")
+            return redirect(url_for('professional_upload_photo'))
 
-    # 3) URL externe : on proxifie (avec headers) et on gère les erreurs proprement
-    if raw_url.startswith("http://"):
-        raw_url = "https://" + raw_url[len("http://"):]
-    parsed = urlparse(raw_url)
-    if parsed.scheme not in ("http", "https"):
-        return redirect(PHOTO_PLACEHOLDER)
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
-        "Referer": "https://www.tighri.com",
-        "Accept": "image/avif,image/webp,image/*,*/*;q=0.8",
-    }
-    try:
-        r = requests.get(raw_url, headers=headers, timeout=8)
-        if r.status_code >= 400 or not r.content:
-            app.logger.info("Image externe KO (%s): %s", r.status_code, raw_url)
-            return redirect(PHOTO_PLACEHOLDER)
-    except Exception as e:
-        app.logger.info("Erreur image externe: %s | %s", e, raw_url)
-        return redirect(PHOTO_PLACEHOLDER)
-
-    content_type = r.headers.get("Content-Type", "image/jpeg")
-    resp = Response(r.content, mimetype=content_type)
-    resp.headers["Cache-Control"] = "public, max-age=86400"
-    return resp
-
+    return render_template('upload_photo.html')
 # ===========================================================================
 
 @app.route('/professional/availability', methods=['GET', 'POST'], endpoint='professional_availability')
