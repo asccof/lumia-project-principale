@@ -30,7 +30,7 @@ def _admin_upload_dir() -> Path:
     """
     Toujours le même dossier que celui servi par app.py :
     - Si app.config['UPLOAD_FOLDER'] est défini, on l'utilise.
-    - Sinon, fallback sur <root_path>/uploads/profiles (pas de .parent !)
+    - Sinon, fallback sur <root_path>/uploads/profiles
     """
     cfg = current_app.config.get('UPLOAD_FOLDER')
     if cfg:
@@ -729,6 +729,58 @@ def admin_appointments():
 def admin_orders():
     return redirect(url_for('admin.admin_appointments'))
 
+# ===== Notifications admin -> patient/pro =====
+def _build_notif(kind: str, ap: Appointment, role: str = 'patient') -> tuple[str, str]:
+    dt = ap.appointment_date.strftime('%d/%m/%Y %H:%M')
+    pro = ap.professional
+    who = f"{pro.name} — {pro.specialty or ''}".strip() if pro else "le professionnel"
+    if kind == 'pending':
+        if role == 'patient':
+            return ("Votre RDV est en attente de confirmation",
+                    f"Bonjour,\n\nVotre demande de RDV ({dt}) avec {who} est bien enregistrée et en attente de confirmation.\n\nTighri")
+        else:
+            return ("Nouveau RDV à confirmer",
+                    f"Bonjour,\n\nNouveau RDV à confirmer le {dt} avec le patient #{ap.patient_id}.\n\nTighri")
+    if kind == 'accepted':
+        return ("Votre RDV est confirmé",
+                f"Bonjour,\n\nVotre RDV le {dt} avec {who} est CONFIRMÉ.\n\nTighri")
+    if kind == 'refused':
+        return ("Votre RDV a été annulé",
+                f"Bonjour,\n\nVotre RDV le {dt} avec {who} a été annulé.\n\nTighri")
+    if kind == 'reminder':
+        if role == 'patient':
+            return ("Rappel : votre RDV est dans 24h",
+                    f"Bonjour,\n\nRappel : RDV le {dt} avec {who} dans ~24h.\n\nTighri")
+        else:
+            return ("Rappel : RDV (pro) dans 24h",
+                    f"Bonjour,\n\nRappel : vous avez un RDV le {dt} (patient #{ap.patient_id}).\n\nTighri")
+    return ("Notification", f"Bonjour,\n\nMise à jour RDV ({dt}).\n\nTighri")
+
+def _notify_patient(kind: str, ap: Appointment):
+    from notifications import send_email, send_sms, send_whatsapp
+    subject, text = _build_notif(kind, ap, role='patient')
+    user = User.query.get(ap.patient_id)
+    send_email(getattr(user, 'email', None), subject, text)
+    phone = getattr(user, 'phone', None)
+    send_sms(phone, text)
+    send_whatsapp(phone, text)
+
+def _notify_pro(kind: str, ap: Appointment):
+    from notifications import send_email, send_sms, send_whatsapp
+    pro = ap.professional or Professional.query.get(ap.professional_id)
+    if not pro:
+        return
+    subject, text = _build_notif(kind, ap, role='pro')
+    # email pro via user lié (username == pro.name)
+    pro_user = None
+    try:
+        pro_user = User.query.filter_by(username=pro.name).first()
+    except Exception:
+        pro_user = None
+    send_email(getattr(pro_user, 'email', None), subject, text)
+    send_sms(getattr(pro, 'phone', None), text)
+    send_whatsapp(getattr(pro, 'phone', None), text)
+
 @admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'], endpoint='update_appointment_status')
 @login_required
 def update_appointment_status(appointment_id):
@@ -742,6 +794,16 @@ def update_appointment_status(appointment_id):
         appointment = Appointment.query.get_or_404(appointment_id)
         appointment.status = new_status
         db.session.commit()
+
+        # Envoi notifications
+        if new_status == 'confirme':
+            _notify_patient('accepted', appointment)
+        elif new_status == 'annule':
+            _notify_patient('refused', appointment)
+        elif new_status == 'en_attente':
+            _notify_patient('pending', appointment)
+            _notify_pro('pending', appointment)
+
         return jsonify({'success': True, 'message': f'Rendez-vous {new_status}'})
     except Exception as e:
         db.session.rollback()
