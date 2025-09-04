@@ -11,7 +11,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
+    <!-- Mobile overrides -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+
     <style>
         :root {
             --primary-color: #6b46c1;
@@ -24,11 +26,7 @@
             --danger-color: #e53e3e;
         }
         
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         
         body {
             font-family: 'Inter', sans-serif;
@@ -60,6 +58,20 @@
             color: white !important;
             transform: translateY(-2px);
         }
+
+        /* Assure la visibilité/clic du bouton burger en mobile */
+        @media (max-width: 991.98px) {
+          .navbar .navbar-toggler {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-color: rgba(255,255,255,.35);
+            padding: .25rem .5rem;
+          }
+          .navbar .navbar-toggler:focus {
+            box-shadow: 0 0 0 .2rem rgba(255,255,255,.25);
+          }
+        }
         
         .hero-section {
             background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
@@ -68,17 +80,8 @@
             text-align: center;
         }
         
-        .hero-section h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-        }
-        
-        .hero-section p {
-            font-size: 1.2rem;
-            margin-bottom: 2rem;
-            opacity: 0.9;
-        }
+        .hero-section h1 { font-size: 3.5rem; font-weight: 700; margin-bottom: 1rem; }
+        .hero-section p { font-size: 1.2rem; margin-bottom: 2rem; opacity: 0.9; }
         
         .btn-primary {
             background: var(--primary-color);
@@ -103,25 +106,10 @@
             overflow: hidden;
         }
         
-        .card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
-        }
-        
-        .card-img-top {
-            height: 200px;
-            object-fit: cover;
-        }
-        
-        .product-card {
-            height: 100%;
-        }
-        
-        .price {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--primary-color);
-        }
+        .card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); }
+        .card-img-top { height: 200px; object-fit: cover; }
+        .product-card { height: 100%; }
+        .price { font-size: 1.5rem; font-weight: 700; color: var(--primary-color); }
         
         .footer {
             background: var(--dark-color);
@@ -130,20 +118,9 @@
             margin-top: 4rem;
         }
         
-        .footer h5 {
-            color: var(--accent-color);
-            margin-bottom: 1rem;
-        }
-        
-        .footer a {
-            color: rgba(255, 255, 255, 0.8);
-            text-decoration: none;
-            transition: color 0.3s ease;
-        }
-        
-        .footer a:hover {
-            color: var(--accent-color);
-        }
+        .footer h5 { color: var(--accent-color); margin-bottom: 1rem; }
+        .footer a { color: rgba(255, 255, 255, 0.8); text-decoration: none; transition: color 0.3s ease; }
+        .footer a:hover { color: var(--accent-color); }
         
         .social-links a {
             display: inline-block;
@@ -158,15 +135,8 @@
             transition: all 0.3s ease;
         }
         
-        .social-links a:hover {
-            background: var(--accent-color);
-            transform: translateY(-2px);
-        }
-        
-        .alert {
-            border-radius: 10px;
-            border: none;
-        }
+        .social-links a:hover { background: var(--accent-color); transform: translateY(-2px); }
+        .alert { border-radius: 10px; border: none; }
         
         .form-control {
             border-radius: 10px;
@@ -175,36 +145,15 @@
             transition: all 0.3s ease;
         }
         
-        .form-control:focus {
-            border-color: var(--primary-color);
-            box-shadow: 0 0 0 0.2rem rgba(0, 120, 212, 0.25);
-        }
+        .form-control:focus { border-color: var(--primary-color); box-shadow: 0 0 0 0.2rem rgba(0, 120, 212, 0.25); }
         
-        .section-title {
-            text-align: center;
-            margin-bottom: 3rem;
-        }
-        
-        .section-title h2 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: var(--dark-color);
-            margin-bottom: 1rem;
-        }
-        
-        .section-title p {
-            color: #6c757d;
-            font-size: 1.1rem;
-        }
+        .section-title { text-align: center; margin-bottom: 3rem; }
+        .section-title h2 { font-size: 2.5rem; font-weight: 700; color: var(--dark-color); margin-bottom: 1rem; }
+        .section-title p { color: #6c757d; font-size: 1.1rem; }
         
         @media (max-width: 768px) {
-            .hero-section h1 {
-                font-size: 2.5rem;
-            }
-            
-            .section-title h2 {
-                font-size: 2rem;
-            }
+            .hero-section h1 { font-size: 2.5rem; }
+            .section-title h2 { font-size: 2rem; }
         }
     </style>
     
@@ -213,20 +162,20 @@
 <body>
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
+        <div class="container align-items-center">
             <a class="navbar-brand" href="{{ url_for('index') }}">
                 <i class="fas fa-heart me-2"></i>Tighri
             </a>
 
-            <!-- 🔔 Burger Mobile (OFFCANVAS) — visible uniquement < lg -->
+            <!-- Bouton burger (mobile only) -> Offcanvas -->
             <button class="navbar-toggler d-lg-none" type="button"
                     data-bs-toggle="offcanvas" data-bs-target="#mobileMenu"
                     aria-controls="mobileMenu" aria-label="Ouvrir le menu">
-                <span class="navbar-toggler-icon"></span>
+                <i class="fas fa-bars fa-lg" style="color:#fff"></i>
             </button>
             
-            <!-- Barre desktop (inchangée) -->
-            <div class="collapse navbar-collapse" id="navbarNav">
+            <!-- Menu desktop (on cache en mobile) -->
+            <div class="collapse navbar-collapse d-none d-lg-flex" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('index') }}">Accueil</a>
@@ -253,7 +202,7 @@
                             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                                 <i class="fas fa-user me-1"></i>{{ current_user.username }}
                             </a>
-                            <ul class="dropdown-menu">
+                            <ul class="dropdown-menu dropdown-menu-end">
                                 <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>Profil</a></li>
                                 <li><a class="dropdown-item" href="#"><i class="fas fa-shopping-cart me-2"></i>Commandes</a></li>
                                 <li><hr class="dropdown-divider"></li>
@@ -277,27 +226,43 @@
         </div>
     </nav>
 
-    <!-- 🧭 Offcanvas Mobile Menu -->
+    <!-- Offcanvas mobile -->
     <div class="offcanvas offcanvas-end" tabindex="-1" id="mobileMenu" aria-labelledby="mobileMenuLabel">
-        <div class="offcanvas-header">
-            <h5 class="offcanvas-title" id="mobileMenuLabel">
-                <i class="fas fa-heart me-2 text-primary"></i>Menu
-            </h5>
-            <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
+      <div class="offcanvas-header">
+        <h5 class="offcanvas-title" id="mobileMenuLabel"><i class="fas fa-heart me-2 text-primary"></i>Tighri</h5>
+        <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
+      </div>
+      <div class="offcanvas-body">
+        <div class="list-group">
+          <!-- Liens demandés, cibles existantes inchangées -->
+          <a class="list-group-item list-group-item-action" href="{{ url_for('about') }}">
+            <i class="fas fa-circle-info me-2"></i>À propos
+          </a>
+          <a class="list-group-item list-group-item-action" href="{{ url_for('professionals') }}">
+            <i class="fas fa-briefcase-medical me-2"></i>Services
+          </a>
+          <a class="list-group-item list-group-item-action" href="{{ url_for('contact') }}">
+            <i class="fas fa-envelope me-2"></i>Contact
+          </a>
         </div>
-        <div class="offcanvas-body">
-            <div class="list-group list-group-flush">
-                <a class="list-group-item list-group-item-action py-3" href="{{ url_for('about') }}">
-                    <i class="fa-solid fa-circle-info me-2"></i> À propos
-                </a>
-                <a class="list-group-item list-group-item-action py-3" href="{{ url_for('index') }}#services">
-                    <i class="fa-solid fa-briefcase-medical me-2"></i> Services
-                </a>
-                <a class="list-group-item list-group-item-action py-3" href="{{ url_for('contact') }}">
-                    <i class="fa-solid fa-envelope me-2"></i> Contact
-                </a>
-            </div>
-        </div>
+
+        <hr class="my-3">
+
+        {% if current_user.is_authenticated %}
+          <a class="btn btn-outline-primary w-100 mb-2" href="{{ url_for('logout') }}">
+            <i class="fas fa-sign-out-alt me-2"></i>Déconnexion
+          </a>
+        {% else %}
+          <div class="d-grid gap-2">
+            <a class="btn btn-primary" href="{{ url_for('login') }}">
+              <i class="fas fa-sign-in-alt me-2"></i>Connexion
+            </a>
+            <a class="btn btn-outline-primary" href="{{ url_for('register') }}">
+              <i class="fas fa-user-plus me-2"></i>Inscription
+            </a>
+          </div>
+        {% endif %}
+      </div>
     </div>
 
     <!-- Flash Messages -->
@@ -436,7 +401,6 @@
 
     // Fonction utilitaire pour afficher des notifications dans le site (sans alert natifs)
     window.showSiteNotification = function(message, type = 'info') {
-        // Créer la notification
         const notification = document.createElement('div');
         notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
         notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
@@ -444,21 +408,9 @@
             ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
         `;
-        
-        // Ajouter au body
         document.body.appendChild(notification);
-        
-        // Auto-supprimer après 5 secondes
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.remove();
-            }
-        }, 5000);
-        
-        // Permettre la fermeture manuelle
-        notification.querySelector('.btn-close').addEventListener('click', () => {
-            notification.remove();
-        });
+        setTimeout(() => { if (notification.parentNode) notification.remove(); }, 5000);
+        notification.querySelector('.btn-close').addEventListener('click', () => notification.remove());
     }
     </script>
     
