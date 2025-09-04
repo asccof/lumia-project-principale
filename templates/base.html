@@ -47,7 +47,7 @@
       }
     }
 
-    /* Divers styles de la page (inchangés) */
+    /* Styles génériques existants */
     .hero-section{background:linear-gradient(135deg,var(--primary-color),var(--accent-color));color:#fff;padding:4rem 0;text-align:center}
     .hero-section h1{font-size:3.5rem;font-weight:700;margin-bottom:1rem}
     .hero-section p{font-size:1.2rem;margin-bottom:2rem;opacity:.9}
@@ -97,7 +97,7 @@
         <span class="navbar-toggler-icon"></span>
       </button>
 
-      <!-- Menu desktop (collapse visible ≥ lg) -->
+      <!-- Menu desktop -->
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav me-auto">
           <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Accueil</a></li>
@@ -128,7 +128,7 @@
     </div>
   </nav>
 
-  <!-- Offcanvas mobile -->
+  <!-- Offcanvas mobile avec 3 liens (mêmes cibles fonctionnelles) -->
   <div class="offcanvas offcanvas-end" tabindex="-1" id="mobileMenu" aria-labelledby="mobileMenuLabel">
     <div class="offcanvas-header">
       <h5 class="offcanvas-title" id="mobileMenuLabel">
@@ -138,20 +138,16 @@
     </div>
     <div class="offcanvas-body">
       <div class="list-group">
-        <!-- 3 liens demandés, mêmes cibles que ta home -->
         <a class="list-group-item list-group-item-action"
-           href="{% if request.endpoint=='index' %}#about{% else %}{{ url_for('about') }}{% endif %}"
-           data-bs-dismiss="offcanvas">
+           href="{{ url_for('index') }}#about" data-bs-dismiss="offcanvas">
           <i class="fas fa-circle-info me-2"></i>À propos
         </a>
         <a class="list-group-item list-group-item-action"
-           href="{% if request.endpoint=='index' %}#services{% else %}{{ url_for('professionals') }}{% endif %}"
-           data-bs-dismiss="offcanvas">
+           href="{{ url_for('index') }}#services" data-bs-dismiss="offcanvas">
           <i class="fas fa-briefcase-medical me-2"></i>Services
         </a>
         <a class="list-group-item list-group-item-action"
-           href="{% if request.endpoint=='index' %}#contact{% else %}{{ url_for('contact') }}{% endif %}"
-           data-bs-dismiss="offcanvas">
+           href="{{ url_for('index') }}#contact" data-bs-dismiss="offcanvas">
           <i class="fas fa-envelope me-2"></i>Contact
         </a>
       </div>
