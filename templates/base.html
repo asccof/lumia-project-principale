@@ -218,13 +218,15 @@
                 <i class="fas fa-heart me-2"></i>Tighri
             </a>
 
-            <!-- Toggler mobile -> Offcanvas (mobile only) -->
-            <button class="navbar-toggler d-lg-none" type="button" data-bs-toggle="offcanvas" data-bs-target="#mobileMenu" aria-controls="mobileMenu" aria-label="Ouvrir le menu">
+            <!-- 🔔 Burger Mobile (OFFCANVAS) — visible uniquement < lg -->
+            <button class="navbar-toggler d-lg-none" type="button"
+                    data-bs-toggle="offcanvas" data-bs-target="#mobileMenu"
+                    aria-controls="mobileMenu" aria-label="Ouvrir le menu">
                 <span class="navbar-toggler-icon"></span>
             </button>
-
-            <!-- Menu desktop (inchangé) -->
-            <div class="collapse navbar-collapse d-none d-lg-flex" id="navbarNav">
+            
+            <!-- Barre desktop (inchangée) -->
+            <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('index') }}">Accueil</a>
@@ -251,7 +253,7 @@
                             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                                 <i class="fas fa-user me-1"></i>{{ current_user.username }}
                             </a>
-                            <ul class="dropdown-menu dropdown-menu-end">
+                            <ul class="dropdown-menu">
                                 <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>Profil</a></li>
                                 <li><a class="dropdown-item" href="#"><i class="fas fa-shopping-cart me-2"></i>Commandes</a></li>
                                 <li><hr class="dropdown-divider"></li>
@@ -275,27 +277,26 @@
         </div>
     </nav>
 
-    <!-- Offcanvas Mobile Menu (3 liens uniquement) -->
-    <div class="offcanvas offcanvas-start d-lg-none" tabindex="-1" id="mobileMenu" aria-labelledby="mobileMenuLabel">
+    <!-- 🧭 Offcanvas Mobile Menu -->
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="mobileMenu" aria-labelledby="mobileMenuLabel">
         <div class="offcanvas-header">
-            <h5 class="offcanvas-title" id="mobileMenuLabel">Menu</h5>
+            <h5 class="offcanvas-title" id="mobileMenuLabel">
+                <i class="fas fa-heart me-2 text-primary"></i>Menu
+            </h5>
             <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
         </div>
         <div class="offcanvas-body">
-            <ul class="navbar-nav">
-                <li class="nav-item">
-                    <!-- À propos -->
-                    <a class="nav-link" href="{{ url_for('about') }}" data-bs-dismiss="offcanvas">À propos</a>
-                </li>
-                <li class="nav-item">
-                    <!-- Services -> on conserve la cible existante : liste des pros -->
-                    <a class="nav-link" href="{{ url_for('professionals') }}" data-bs-dismiss="offcanvas">Services</a>
-                </li>
-                <li class="nav-item">
-                    <!-- Contact -->
-                    <a class="nav-link" href="{{ url_for('contact') }}" data-bs-dismiss="offcanvas">Contact</a>
-                </li>
-            </ul>
+            <div class="list-group list-group-flush">
+                <a class="list-group-item list-group-item-action py-3" href="{{ url_for('about') }}">
+                    <i class="fa-solid fa-circle-info me-2"></i> À propos
+                </a>
+                <a class="list-group-item list-group-item-action py-3" href="{{ url_for('index') }}#services">
+                    <i class="fa-solid fa-briefcase-medical me-2"></i> Services
+                </a>
+                <a class="list-group-item list-group-item-action py-3" href="{{ url_for('contact') }}">
+                    <i class="fa-solid fa-envelope me-2"></i> Contact
+                </a>
+            </div>
         </div>
     </div>
 
