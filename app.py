@@ -60,6 +60,7 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = True  # Render est en HTTPS
 app.config['PREFERRED_URL_SCHEME'] = 'https'  # URLs absolues en https
+app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)  # ✅ cohérence admin/upload
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)  # X-Forwarded-Proto/Host
 
 # Taille max d'upload
@@ -228,7 +229,7 @@ else:
 @app.route('/', endpoint='index')
 def index():
     featured_professionals = Professional.query.limit(6).all()
-    return render_template('index.html', professionals=featured_professionals)
+    return render_template('index.html', professionals=featured_professionals')
 
 @app.route('/professionals', endpoint='professionals')
 def professionals():
@@ -730,10 +731,72 @@ def professional_appointments():
                            professional=professional,
                            appointments=appointments)
 
-# ===== [TIGHRI_R1:NOTIFY_STUB] ==============================================
+# ===== [TIGHRI_R1:NOTIFICATIONS] ============================================
+# Helpers de texte (rôle: 'patient' | 'pro')
+def _build_notif(kind: str, ap: Appointment, role: str = 'patient') -> tuple[str, str]:
+    dt = ap.appointment_date.strftime('%d/%m/%Y %H:%M')
+    pro = ap.professional
+    who = f"{pro.name} — {pro.specialty or ''}".strip() if pro else "le professionnel"
+    if kind == 'pending':
+        if role == 'patient':
+            return ("Votre RDV est en attente de confirmation",
+                    f"Bonjour,\n\nVotre demande de RDV ({dt}) avec {who} est bien enregistrée et en attente de confirmation.\n\n{BRAND_NAME}")
+        else:
+            return ("Nouveau RDV à confirmer",
+                    f"Bonjour,\n\nNouveau RDV à confirmer le {dt} avec le patient #{ap.patient_id}.\n\n{BRAND_NAME}")
+    if kind == 'accepted':
+        return ("Votre RDV est confirmé",
+                f"Bonjour,\n\nVotre RDV le {dt} avec {who} est CONFIRMÉ.\n\n{BRAND_NAME}")
+    if kind == 'refused':
+        return ("Votre RDV a été annulé",
+                f"Bonjour,\n\nVotre RDV le {dt} avec {who} a été annulé.\n\n{BRAND_NAME}")
+    if kind == 'reminder':
+        if role == 'patient':
+            return ("Rappel : votre RDV est dans 24h",
+                    f"Bonjour,\n\nRappel : RDV le {dt} avec {who} dans ~24h.\n\n{BRAND_NAME}")
+        else:
+            return ("Rappel : RDV (pro) dans 24h",
+                    f"Bonjour,\n\nRappel : vous avez un RDV le {dt} (patient #{ap.patient_id}).\n\n{BRAND_NAME}")
+    # fallback
+    return ("Notification", f"Bonjour,\n\nMise à jour RDV ({dt}).\n\n{BRAND_NAME}")
+
 def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
-    app.logger.info("[NOTIFY] user=%s kind=%s ap_id=%s brand=%s",
-                    user_id, kind, getattr(ap, 'id', None), BRAND_NAME)
+    """Envoie mail + SMS + WhatsApp au patient."""
+    from notifications import send_email, send_sms, send_whatsapp, normalize_phone
+    user = User.query.get(user_id)
+    subject, text = _build_notif(kind, ap, role='patient')
+
+    # Email patient
+    to_email = getattr(user, 'email', None)
+    send_email(to_email, subject, text)
+
+    # Téléphone (SMS + WA)
+    to_phone = getattr(user, 'phone', None)
+    send_sms(to_phone, text)
+    send_whatsapp(to_phone, text)
+
+def notify_professional(kind: str, ap: Appointment):
+    """Envoie mail + SMS + WhatsApp au pro (pour pending + reminder)."""
+    from notifications import send_email, send_sms, send_whatsapp
+    pro = ap.professional or Professional.query.get(ap.professional_id)
+    if not pro:
+        return
+    subject, text = _build_notif(kind, ap, role='pro')
+
+    # Email pro : on tente de retrouver l'utilisateur lié par username==pro.name
+    pro_user = None
+    try:
+        pro_user = User.query.filter_by(username=pro.name).first()
+    except Exception:
+        pro_user = None
+    to_email = getattr(pro_user, 'email', None)
+
+    send_email(to_email, subject, text)
+
+    # Téléphone du pro (depuis table professionals)
+    to_phone = getattr(pro, 'phone', None)
+    send_sms(to_phone, text)
+    send_whatsapp(to_phone, text)
 # ===========================================================================
 
 @app.route('/professional/appointment/<int:appointment_id>/<action>', methods=['POST'], endpoint='professional_appointment_action')
@@ -757,6 +820,7 @@ def professional_appointment_action(appointment_id, action):
         appointment.status = 'confirme'
         db.session.commit()
         notify_user_account_and_phone(user_id=appointment.patient_id, kind='accepted', ap=appointment)
+        # (Optionnel) notifier le pro ? non demandé, on s’en tient aux specs
         flash('Rendez-vous accepté!')
     elif action == 'reject':
         appointment.status = 'annule'
@@ -968,7 +1032,9 @@ def book_appointment(professional_id):
         db.session.add(appointment)
         db.session.commit()
 
-        notify_user_account_and_phone(user_id=current_user.id, kind='pending', ap=appointment)
+        # Notifications
+        notify_user_account_and_phone(user_id=current_user.id, kind='pending', ap=appointment)  # patient
+        notify_professional(kind='pending', ap=appointment)  # pro
 
         flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
         return redirect(url_for('my_appointments'))
@@ -1018,7 +1084,8 @@ def cron_send_reminders_24h():
                     Appointment.appointment_date < end)
             .all())
     for ap in rows:
-        notify_user_account_and_phone(user_id=ap.patient_id, kind='reminder', ap=ap)
+        notify_user_account_and_phone(user_id=ap.patient_id, kind='reminder', ap=ap)  # patient
+        notify_professional(kind='reminder', ap=ap)  # pro
 
     return jsonify({'ok': True, 'reminders_sent': len(rows)})
 
