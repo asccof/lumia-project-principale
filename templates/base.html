@@ -109,7 +109,7 @@
         <ul class="navbar-nav me-auto">
           <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Accueil</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('professionals') }}">Professionnels</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('about') }}">À propos</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}#about">À propos</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('contact') }}">Contact</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('site_status') }}"><i class="fas fa-server me-1"></i>Statut</a></li>
         </ul>
@@ -144,10 +144,10 @@
     <div class="offcanvas-body">
       <div class="list-group">
         <!-- 3 liens demandés, cibles identiques -->
-        <a class="list-group-item list-group-item-action" href="{{ url_for('about') }}">
+        <a class="list-group-item list-group-item-action" href="{{ url_for('index') }}#about">
           <i class="fas fa-circle-info me-2"></i>À propos
         </a>
-        <a class="list-group-item list-group-item-action" href="{{ url_for('professionals') }}">
+        <a class="list-group-item list-group-item-action" href="{{ url_for('index') }}#services">
           <i class="fas fa-briefcase-medical me-2"></i>Services
         </a>
         <a class="list-group-item list-group-item-action" href="{{ url_for('contact') }}">
