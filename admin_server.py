@@ -27,8 +27,16 @@ def _ext_ok(filename: str) -> bool:
     return ext in ALLOWED_IMAGE_EXT
 
 def _admin_upload_dir() -> Path:
-    base = Path(current_app.root_path).parent  # projet/
-    up = base / 'uploads' / 'profiles'
+    """
+    Toujours le même dossier que celui servi par app.py :
+    - Si app.config['UPLOAD_FOLDER'] est défini, on l'utilise.
+    - Sinon, fallback sur <root_path>/uploads/profiles (pas de .parent !)
+    """
+    cfg = current_app.config.get('UPLOAD_FOLDER')
+    if cfg:
+        up = Path(cfg)
+    else:
+        up = Path(current_app.root_path) / 'uploads' / 'profiles'
     up.mkdir(parents=True, exist_ok=True)
     return up
 
