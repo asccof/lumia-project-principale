@@ -111,9 +111,7 @@
     .section-title h2 { font-size: 2.5rem; font-weight: 700; color: var(--dark-color); margin-bottom: 1rem; }
     .section-title p { color: #6c757d; font-size: 1.1rem; }
 
-    /* Affichage mobile : le burger est visible uniquement < lg */
     @media (max-width: 991.98px) {
-      /* Rien à changer : on utilise d-lg-none sur le bouton */
       .section-title h2 { font-size: 2rem; }
     }
   </style>
@@ -128,11 +126,10 @@
         <i class="fas fa-heart me-2"></i>Tighri
       </a>
 
-      <!-- Bouton burger (VISIBLE UNIQUEMENT MOBILE) -->
+      <!-- Burger mobile (ouvre l’offcanvas) -->
       <button class="navbar-toggler d-lg-none" type="button"
               data-bs-toggle="offcanvas" data-bs-target="#mobileMenu"
               aria-controls="mobileMenu" aria-label="Ouvrir le menu">
-        <!-- Icône burger en SVG (toujours visible en navbar-dark) -->
         <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M3 6h18M3 12h18M3 18h18"
                 stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
@@ -175,7 +172,7 @@
     </div>
   </nav>
 
-  <!-- Offcanvas mobile (3 liens demandés, cibles inchangées) -->
+  <!-- Offcanvas mobile : liens vers les ancres de la home -->
   <div class="offcanvas offcanvas-end" tabindex="-1" id="mobileMenu" aria-labelledby="mobileMenuLabel">
     <div class="offcanvas-header">
       <h5 class="offcanvas-title" id="mobileMenuLabel">
@@ -186,15 +183,15 @@
     <div class="offcanvas-body">
       <div class="list-group">
         <a class="list-group-item list-group-item-action"
-           href="{{ url_for('about') }}" data-bs-dismiss="offcanvas">
+           href="{{ url_for('index') }}#about" data-bs-dismiss="offcanvas">
           <i class="fas fa-circle-info me-2"></i>À propos
         </a>
         <a class="list-group-item list-group-item-action"
-           href="{{ url_for('professionals') }}" data-bs-dismiss="offcanvas">
+           href="{{ url_for('index') }}#services" data-bs-dismiss="offcanvas">
           <i class="fas fa-briefcase-medical me-2"></i>Services
         </a>
         <a class="list-group-item list-group-item-action"
-           href="{{ url_for('contact') }}" data-bs-dismiss="offcanvas">
+           href="{{ url_for('index') }}#contact" data-bs-dismiss="offcanvas">
           <i class="fas fa-envelope me-2"></i>Contact
         </a>
       </div>
@@ -332,7 +329,6 @@
   </div>
 
   <script>
-    // Confirmation stylée
     window.showSiteConfirm = function(message, onConfirm) {
       document.getElementById('confirmModalMessage').textContent = message || 'Êtes-vous sûr ?';
       const modalEl = document.getElementById('confirmModal');
@@ -344,7 +340,6 @@
       modal.show();
     };
 
-    // Notifications stylées
     window.showSiteNotification = function(message, type='info') {
       const n = document.createElement('div');
       n.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
