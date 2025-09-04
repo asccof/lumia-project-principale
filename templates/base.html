@@ -14,72 +14,113 @@
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- Feuille mobile existante -->
+  <!-- CSS mobile existant -->
   <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 
   <style>
     :root {
-      --primary-color:#6b46c1; --secondary-color:#553c9a; --accent-color:#9f7aea;
-      --dark-color:#2d3748; --light-color:#f7fafc; --success-color:#38a169;
-      --warning-color:#ed8936; --danger-color:#e53e3e;
-    }
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Inter',sans-serif;line-height:1.6;color:var(--dark-color);background:#fff}
-
-    /* NAVBAR */
-    .navbar{
-      background:linear-gradient(135deg,var(--primary-color),var(--secondary-color));
-      box-shadow:0 2px 10px rgba(0,0,0,.1);
-      padding:1rem 0;
-    }
-    .navbar-brand{font-weight:700;font-size:1.8rem;color:#fff!important}
-    .navbar-nav .nav-link{color:rgba(255,255,255,.9)!important;font-weight:500;margin:0 .5rem;transition:.3s}
-    .navbar-nav .nav-link:hover{color:#fff!important;transform:translateY(-2px)}
-
-    /* Affiche explicitement le burger uniquement < lg */
-    @media (max-width: 991.98px){
-      .navbar .navbar-toggler{
-        display:inline-flex !important;
-        align-items:center;justify-content:center;
-        gap:.35rem;padding:.4rem .6rem;
-        border:1px solid rgba(255,255,255,.4);
-        border-radius:.5rem;background:transparent;
-      }
+      --primary-color: #6b46c1;
+      --secondary-color: #553c9a;
+      --accent-color: #9f7aea;
+      --dark-color: #2d3748;
+      --light-color: #f7fafc;
+      --success-color: #38a169;
+      --warning-color: #ed8936;
+      --danger-color: #e53e3e;
     }
 
-    /* Styles génériques existants */
-    .hero-section{background:linear-gradient(135deg,var(--primary-color),var(--accent-color));color:#fff;padding:4rem 0;text-align:center}
-    .hero-section h1{font-size:3.5rem;font-weight:700;margin-bottom:1rem}
-    .hero-section p{font-size:1.2rem;margin-bottom:2rem;opacity:.9}
-    .btn-primary{background:var(--primary-color);border:none;padding:.75rem 2rem;border-radius:50px;font-weight:600;transition:.3s}
-    .btn-primary:hover{background:var(--secondary-color);transform:translateY(-2px);box-shadow:0 5px 15px rgba(0,120,212,.3)}
-    .card{border:none;border-radius:15px;box-shadow:0 5px 20px rgba(0,0,0,.1);transition:.3s;overflow:hidden}
-    .card:hover{transform:translateY(-5px);box-shadow:0 10px 30px rgba(0,0,0,.15)}
-    .card-img-top{height:200px;object-fit:cover}
-    .product-card{height:100%}
-    .price{font-size:1.5rem;font-weight:700;color:var(--primary-color)}
-    .footer{background:var(--dark-color);color:#fff;padding:3rem 0 1rem;margin-top:4rem}
-    .footer h5{color:var(--accent-color);margin-bottom:1rem}
-    .footer a{color:rgba(255,255,255,.8);text-decoration:none;transition:color .3s}
-    .footer a:hover{color:var(--accent-color)}
-    .social-links a{display:inline-block;width:40px;height:40px;background:var(--primary-color);color:#fff;text-align:center;line-height:40px;border-radius:50%;margin-right:10px;transition:.3s}
-    .social-links a:hover{background:var(--accent-color);transform:translateY(-2px)}
-    .alert{border-radius:10px;border:none}
-    .form-control{border-radius:10px;border:2px solid #e9ecef;padding:.75rem 1rem;transition:.3s}
-    .form-control:focus{border-color:var(--primary-color);box-shadow:0 0 0 .2rem rgba(0,120,212,.25)}
-    .section-title{text-align:center;margin-bottom:3rem}
-    .section-title h2{font-size:2.5rem;font-weight:700;color:var(--dark-color);margin-bottom:1rem}
-    .section-title p{color:#6c757d;font-size:1.1rem}
-    @media (max-width:768px){
-      .hero-section h1{font-size:2.5rem}
-      .section-title h2{font-size:2rem}
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      line-height: 1.6;
+      color: var(--dark-color);
+      background-color: #ffffff;
+    }
+
+    .navbar {
+      background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      padding: 1rem 0;
+    }
+
+    .navbar-brand {
+      font-weight: 700;
+      font-size: 1.8rem;
+      color: white !important;
+    }
+
+    .navbar-nav .nav-link {
+      color: rgba(255, 255, 255, 0.9) !important;
+      font-weight: 500;
+      margin: 0 0.5rem;
+      transition: all 0.3s ease;
+    }
+
+    .navbar-nav .nav-link:hover {
+      color: white !important;
+      transform: translateY(-2px);
+    }
+
+    .hero-section {
+      background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+      color: white;
+      padding: 4rem 0;
+      text-align: center;
+    }
+
+    .hero-section h1 { font-size: 3.5rem; font-weight: 700; margin-bottom: 1rem; }
+    .hero-section p { font-size: 1.2rem; margin-bottom: 2rem; opacity: 0.9; }
+
+    .btn-primary {
+      background: var(--primary-color);
+      border: none;
+      padding: 0.75rem 2rem;
+      border-radius: 50px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    .btn-primary:hover { background: var(--secondary-color); transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0, 120, 212, 0.3); }
+
+    .card { border: none; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); transition: .3s; overflow: hidden; }
+    .card:hover { transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
+
+    .card-img-top { height: 200px; object-fit: cover; }
+    .product-card { height: 100%; }
+    .price { font-size: 1.5rem; font-weight: 700; color: var(--primary-color); }
+
+    .footer { background: var(--dark-color); color: white; padding: 3rem 0 1rem; margin-top: 4rem; }
+    .footer h5 { color: var(--accent-color); margin-bottom: 1rem; }
+    .footer a { color: rgba(255,255,255,0.8); text-decoration: none; transition: color .3s; }
+    .footer a:hover { color: var(--accent-color); }
+
+    .social-links a {
+      display: inline-block; width: 40px; height: 40px; background: var(--primary-color);
+      color: white; text-align: center; line-height: 40px; border-radius: 50%; margin-right: 10px; transition: .3s;
+    }
+    .social-links a:hover { background: var(--accent-color); transform: translateY(-2px); }
+
+    .alert { border-radius: 10px; border: none; }
+
+    .form-control {
+      border-radius: 10px; border: 2px solid #e9ecef; padding: .75rem 1rem; transition: .3s;
+    }
+    .form-control:focus { border-color: var(--primary-color); box-shadow: 0 0 0 .2rem rgba(0, 120, 212, 0.25); }
+
+    .section-title { text-align: center; margin-bottom: 3rem; }
+    .section-title h2 { font-size: 2.5rem; font-weight: 700; color: var(--dark-color); margin-bottom: 1rem; }
+    .section-title p { color: #6c757d; font-size: 1.1rem; }
+
+    /* Affichage mobile : le burger est visible uniquement < lg */
+    @media (max-width: 991.98px) {
+      /* Rien à changer : on utilise d-lg-none sur le bouton */
+      .section-title h2 { font-size: 2rem; }
     }
   </style>
 
   {% block extra_css %}{% endblock %}
 </head>
 <body>
-
   <!-- NAVBAR -->
   <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container align-items-center justify-content-between">
@@ -87,17 +128,18 @@
         <i class="fas fa-heart me-2"></i>Tighri
       </a>
 
-      <!-- Burger mobile (offcanvas) -->
-      <button class="navbar-toggler d-lg-none"
-              type="button"
-              data-bs-toggle="offcanvas"
-              data-bs-target="#mobileMenu"
-              aria-controls="mobileMenu"
-              aria-label="Ouvrir le menu">
-        <span class="navbar-toggler-icon"></span>
+      <!-- Bouton burger (VISIBLE UNIQUEMENT MOBILE) -->
+      <button class="navbar-toggler d-lg-none" type="button"
+              data-bs-toggle="offcanvas" data-bs-target="#mobileMenu"
+              aria-controls="mobileMenu" aria-label="Ouvrir le menu">
+        <!-- Icône burger en SVG (toujours visible en navbar-dark) -->
+        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 6h18M3 12h18M3 18h18"
+                stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+        </svg>
       </button>
 
-      <!-- Menu desktop -->
+      <!-- Menu desktop (inchangé) -->
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav me-auto">
           <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Accueil</a></li>
@@ -106,6 +148,7 @@
           <li class="nav-item"><a class="nav-link" href="{{ url_for('contact') }}">Contact</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('site_status') }}"><i class="fas fa-server me-1"></i>Statut</a></li>
         </ul>
+
         <ul class="navbar-nav">
           {% if current_user.is_authenticated %}
             <li class="nav-item dropdown">
@@ -120,15 +163,19 @@
               </ul>
             </li>
           {% else %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}"><i class="fas fa-sign-in-alt me-1"></i>Connexion</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('register') }}"><i class="fas fa-user-plus me-1"></i>Inscription</a></li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('login') }}"><i class="fas fa-sign-in-alt me-1"></i>Connexion</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('register') }}"><i class="fas fa-user-plus me-1"></i>Inscription</a>
+            </li>
           {% endif %}
         </ul>
       </div>
     </div>
   </nav>
 
-  <!-- Offcanvas mobile avec 3 liens (mêmes cibles fonctionnelles) -->
+  <!-- Offcanvas mobile (3 liens demandés, cibles inchangées) -->
   <div class="offcanvas offcanvas-end" tabindex="-1" id="mobileMenu" aria-labelledby="mobileMenuLabel">
     <div class="offcanvas-header">
       <h5 class="offcanvas-title" id="mobileMenuLabel">
@@ -139,15 +186,15 @@
     <div class="offcanvas-body">
       <div class="list-group">
         <a class="list-group-item list-group-item-action"
-           href="{{ url_for('index') }}#about" data-bs-dismiss="offcanvas">
+           href="{{ url_for('about') }}" data-bs-dismiss="offcanvas">
           <i class="fas fa-circle-info me-2"></i>À propos
         </a>
         <a class="list-group-item list-group-item-action"
-           href="{{ url_for('index') }}#services" data-bs-dismiss="offcanvas">
+           href="{{ url_for('professionals') }}" data-bs-dismiss="offcanvas">
           <i class="fas fa-briefcase-medical me-2"></i>Services
         </a>
         <a class="list-group-item list-group-item-action"
-           href="{{ url_for('index') }}#contact" data-bs-dismiss="offcanvas">
+           href="{{ url_for('contact') }}" data-bs-dismiss="offcanvas">
           <i class="fas fa-envelope me-2"></i>Contact
         </a>
       </div>
@@ -155,15 +202,18 @@
       <hr class="my-3">
 
       {% if current_user.is_authenticated %}
-        <a class="btn btn-outline-primary w-100 mb-2" href="{{ url_for('logout') }}" data-bs-dismiss="offcanvas">
+        <a class="btn btn-outline-primary w-100 mb-2"
+           href="{{ url_for('logout') }}" data-bs-dismiss="offcanvas">
           <i class="fas fa-sign-out-alt me-2"></i>Déconnexion
         </a>
       {% else %}
         <div class="d-grid gap-2">
-          <a class="btn btn-primary" href="{{ url_for('login') }}" data-bs-dismiss="offcanvas">
+          <a class="btn btn-primary"
+             href="{{ url_for('login') }}" data-bs-dismiss="offcanvas">
             <i class="fas fa-sign-in-alt me-2"></i>Connexion
           </a>
-          <a class="btn btn-outline-primary" href="{{ url_for('register') }}" data-bs-dismiss="offcanvas">
+          <a class="btn btn-outline-primary"
+             href="{{ url_for('register') }}" data-bs-dismiss="offcanvas">
             <i class="fas fa-user-plus me-2"></i>Inscription
           </a>
         </div>
@@ -282,7 +332,7 @@
   </div>
 
   <script>
-    // Helpers globaux
+    // Confirmation stylée
     window.showSiteConfirm = function(message, onConfirm) {
       document.getElementById('confirmModalMessage').textContent = message || 'Êtes-vous sûr ?';
       const modalEl = document.getElementById('confirmModal');
@@ -293,6 +343,8 @@
       newOkBtn.addEventListener('click', function(){ modal.hide(); if(typeof onConfirm==='function') onConfirm(); });
       modal.show();
     };
+
+    // Notifications stylées
     window.showSiteNotification = function(message, type='info') {
       const n = document.createElement('div');
       n.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
