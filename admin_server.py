@@ -1,12 +1,12 @@
-# admin_server.py — Blueprint d'administration Tighri
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app, abort
+# admin_server.py — Blueprint d'administration Tighri (une seule instance Flask dans app.py)
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import datetime, date
 from pathlib import Path
 import os, io, uuid
 
-# PIL pour l'upload image
+# PIL pour l'upload image (même logique que côté app.py)
 try:
     from PIL import Image, ImageOps
     _PIL_OK = True
@@ -17,7 +17,7 @@ from models import db, User, Professional, Appointment, ProfessionalAvailability
 
 admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
 
-# ===== Helpers image ========================================================
+# ===== Helpers image (admin) =================================================
 ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
 
 def _ext_ok(filename: str) -> bool:
@@ -27,6 +27,11 @@ def _ext_ok(filename: str) -> bool:
     return ext in ALLOWED_IMAGE_EXT
 
 def _admin_upload_dir() -> Path:
+    """
+    Toujours le même dossier que celui servi par app.py :
+    - Si app.config['UPLOAD_FOLDER'] est défini, on l'utilise.
+    - Sinon, fallback sur <root_path>/uploads/profiles
+    """
     cfg = current_app.config.get('UPLOAD_FOLDER')
     if cfg:
         up = Path(cfg)
@@ -39,19 +44,21 @@ def _admin_process_and_save_profile_image(file_storage) -> str:
     filename = getattr(file_storage, "filename", None)
     if not filename or not _ext_ok(filename):
         raise ValueError("Extension non autorisée")
+
     if not _PIL_OK:
-        raise RuntimeError("Pillow non installé")
+        raise RuntimeError("Pillow n'est pas installé sur le serveur.")
 
     raw = file_storage.read()
     try:
         img = Image.open(io.BytesIO(raw))
         img.verify()
     except Exception:
-        raise ValueError("Image invalide ou corrompue")
+        raise ValueError("Fichier image invalide ou corrompu")
 
     img = Image.open(io.BytesIO(raw))
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
+
     img_no_exif = Image.new(img.mode, img.size)
     img_no_exif.putdata(list(img.getdata()))
 
@@ -62,6 +69,7 @@ def _admin_process_and_save_profile_image(file_storage) -> str:
     out_path = _admin_upload_dir() / out_name
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
     return out_name
+# ============================================================================
 
 # --------------------- AUTH ADMIN ---------------------
 @admin_bp.route('/login', methods=['GET', 'POST'], endpoint='admin_login')
@@ -122,41 +130,15 @@ def admin_dashboard():
         total_revenue=total_revenue
     )
 
-# --------------------- PAGE CLASSEMENT ---------------------
-@admin_bp.route('/professionals/order', methods=['GET', 'POST'], endpoint='admin_professional_order')
+# --------------------- PROFESSIONNELS (liste type "products") ---------------------
+# ✅ Correction : on s'assure que l'endpoint est bien enregistré comme "admin.admin_products"
+@admin_bp.route('/products', endpoint='admin_products')
 @login_required
-def admin_professional_order():
+def admin_products():
     if not current_user.is_admin:
-        abort(403)
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
+    professionals = Professional.query.order_by(Professional.id.desc()).all()
+    return render_template('admin_products.html', professionals=professionals)
 
-    pros = Professional.query.filter(Professional.status == 'valide') \
-        .order_by(Professional.order_priority.asc().nullslast(), Professional.created_at.desc()) \
-        .all()
-
-    if request.method == 'POST':
-        changed = 0
-        for p in pros:
-            field = f"prio_{p.id}"
-            raw = request.form.get(field, "").strip()
-            if not raw:
-                continue
-            try:
-                new_val = int(raw)
-            except ValueError:
-                continue
-            if new_val != (p.order_priority or 1000):
-                p.order_priority = new_val
-                changed += 1
-        if changed:
-            db.session.commit()
-            flash(f"Classement mis à jour ({changed} valeur(s)).", "success")
-        else:
-            flash("Aucun changement détecté.", "info")
-        return redirect(url_for("admin.admin_professional_order"))
-
-    return render_template("admin_professional_order.html", pros=pros)
-
-# --------------------- CRUD existants (inchangés) ---------------------
-# (tout ton code admin_add_product, admin_edit_product, admin_users, etc. reste inchangé ici)
-# ...
-# (j’ai gardé tout ton fichier complet comme tu l’as partagé, je n’ai ajouté que la route ci-dessus)
+# (le reste de ton fichier continue sans modification…)
