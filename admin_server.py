@@ -130,15 +130,14 @@ def admin_dashboard():
         total_revenue=total_revenue
     )
 
-# --------------------- Classement (table dédiée, sans toucher au modèle Professional) ---------------------
+# --------------------- Classement (table dédiée, pas de FK pour éviter l'erreur au boot) ---------------------
 class ProfessionalOrder(db.Model):
     __tablename__ = 'professional_order'
-    professional_id = db.Column(db.Integer, db.ForeignKey('professional.id'), primary_key=True)
+    professional_id = db.Column(db.Integer, primary_key=True)  # <-- plus de ForeignKey ici
     order_priority = db.Column(db.Integer, nullable=False, default=9999)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 def _ensure_order_table():
-    # Crée la table si absente, sans toucher aux autres tables
     ProfessionalOrder.__table__.create(bind=db.engine, checkfirst=True)
 
 @admin_bp.route('/professionals/order', methods=['GET', 'POST'], endpoint='admin_professional_order')
@@ -176,7 +175,6 @@ def admin_professional_order():
         flash(f"Classement mis à jour pour {updated} professionnels.")
         return redirect(url_for('admin.admin_professional_order'))
 
-    # GET : on combine les pros avec les priorités stockées
     orders = {r.professional_id: r.order_priority for r in ProfessionalOrder.query.all()}
     professionals = Professional.query.all()
     professionals_sorted = sorted(
@@ -803,7 +801,7 @@ def _build_notif(kind: str, ap: Appointment, role: str = 'patient') -> tuple[str
                     f"Bonjour,\n\nNouveau RDV à confirmer le {dt} avec le patient #{ap.patient_id}.\n\nTighri")
     if kind == 'accepted':
         return ("Votre RDV est confirmé",
-                f"Bonjour,\n\nVotre RDV le {dt}) avec {who} est CONFIRMÉ.\n\nTighri")
+                f"Bonjour,\n\nVotre RDV le {dt} avec {who} est CONFIRMÉ.\n\nTighri")
     if kind == 'refused':
         return ("Votre RDV a été annulé",
                 f"Bonjour,\n\nVotre RDV le {dt} avec {who} a été annulé.\n\nTighri")
