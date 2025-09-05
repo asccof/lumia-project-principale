@@ -109,8 +109,8 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# --- Admin en Blueprint (+ modèle d’ordre) ---
-from admin_server import admin_bp, ProfessionalOrder
+# --- Admin en Blueprint ---
+from admin_server import admin_bp, ProfessionalOrder  # <— NOTE: on importe aussi la classe de classement
 app.register_blueprint(admin_bp, url_prefix='/admin')
 
 # --- User loader ---
@@ -120,6 +120,7 @@ def load_user(user_id):
 
 # ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
 with app.app_context():
+    # create_all va aussi créer la table 'professional_order' car ProfessionalOrder est importé ci-dessus
     db.create_all()
     try:
         # professionals: adresse + géoloc + téléphone + réseaux sociaux
@@ -141,12 +142,6 @@ with app.app_context():
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
-
-    # ✅ s’assurer que la table d’ordre existe (utile si create_all n’a pas vu la classe)
-    try:
-        ProfessionalOrder.__table__.create(bind=db.engine, checkfirst=True)
-    except Exception as e:
-        app.logger.warning(f"Création table professional_order (checkfirst) : {e}")
 
     # Seed admin si absent
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
@@ -234,20 +229,37 @@ else:
 # ======================
 @app.route('/', endpoint='index')
 def index():
-    # ✅ tri par ordre admin (professional_order), puis featured_rank, puis is_featured, puis récent
-    featured_professionals = (
-        db.session.query(Professional)
-        .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
-        .filter(Professional.status == 'valide')
-        .order_by(
-            ProfessionalOrder.order_priority.asc().nullslast(),
-            Professional.featured_rank.asc().nullslast(),
-            Professional.is_featured.desc(),
-            Professional.created_at.desc(),
+    """
+    Accueil : affiche 6 pros en respectant le classement admin (professional_order.order_priority ASC),
+    puis des tiebreakers stables. Fallback sûr si la table d'ordre n'existe pas encore.
+    """
+    try:
+        # tri principal : ordre admin, puis featured, puis featured_rank, puis récents
+        featured_professionals = (
+            db.session.query(Professional)
+            .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
+            .filter(Professional.status == 'valide')
+            .order_by(
+                db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc(),
+                Professional.is_featured.desc(),
+                db.func.coalesce(Professional.featured_rank, 999999).asc(),
+                Professional.created_at.desc(),
+                Professional.id.desc()
+            )
+            .limit(6)
+            .all()
         )
-        .limit(6)
-        .all()
-    )
+    except Exception as e:
+        # En cas d'erreur (ex: table non présente), on ne casse pas l'accueil
+        app.logger.warning("Classement admin indisponible (%s), fallback 'featured puis récents'.", e)
+        featured_professionals = (
+            Professional.query
+            .filter_by(status='valide')
+            .order_by(Professional.is_featured.desc(), Professional.created_at.desc(), Professional.id.desc())
+            .limit(6)
+            .all()
+        )
+
     return render_template('index.html', professionals=featured_professionals)
 
 @app.route('/professionals', endpoint='professionals')
@@ -255,11 +267,7 @@ def professionals():
     specialty = request.args.get('specialty', 'all')
     search_query = request.args.get('q', '')
 
-    base_query = (
-        db.session.query(Professional)
-        .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
-        .filter(Professional.status == 'valide')
-    )
+    base_query = Professional.query.filter_by(status='valide')
 
     if search_query:
         like = f'%{search_query}%'
@@ -271,21 +279,11 @@ def professionals():
         ]
         if hasattr(Professional, "address"):
             conditions.insert(2, Professional.address.ilike(like))
-        q = base_query.filter(or_(*conditions))
+        pros = base_query.filter(or_(*conditions)).all()
     elif specialty != 'all':
-        q = base_query.filter(Professional.specialty == specialty)
+        pros = base_query.filter_by(specialty=specialty).all()
     else:
-        q = base_query
-
-    pros = (
-        q.order_by(
-            ProfessionalOrder.order_priority.asc().nullslast(),
-            Professional.featured_rank.asc().nullslast(),
-            Professional.is_featured.desc(),
-            Professional.created_at.desc(),
-        )
-        .all()
-    )
+        pros = base_query.all()
 
     return render_template('professionals.html', professionals=pros, specialty=specialty, search_query=search_query)
 
@@ -806,17 +804,7 @@ def _overlap(start1: dtime, end1: dtime, start2: dtime, end2: dtime) -> bool:
 # ======================
 @app.route('/api/professionals', endpoint='api_professionals')
 def api_professionals():
-    pros = (
-        db.session.query(Professional)
-        .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
-        .order_by(
-            ProfessionalOrder.order_priority.asc().nullslast(),
-            Professional.featured_rank.asc().nullslast(),
-            Professional.is_featured.desc(),
-            Professional.created_at.desc(),
-        )
-        .all()
-    )
+    pros = Professional.query.all()
     return jsonify([{
         'id': p.id,
         'name': p.name,
