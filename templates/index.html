@@ -119,7 +119,7 @@
               src="{{ url_for('profile_photo', professional_id=professional.id) }}"
               alt="Photo de {{ professional.name|e }}"
               width="96" height="96" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer"
-              onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
+              onerror="this.onerror=null;this.src='{{ url_for('static', filename='img/default-avatar.png') }}';">
           </div>
 
           <h4>{{ professional.name }}</h4>
