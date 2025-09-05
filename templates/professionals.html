@@ -162,15 +162,24 @@
         {% for professional in professionals %}
           <article class="card">
             <div class="thumb-box">
-              <img
-                class="thumb-img"
-                src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-                alt="Photo de {{ professional.name|e }}"
-                referrerpolicy="no-referrer"
-                loading="lazy"
-                decoding="async"
-                width="400" height="200"
-                onerror="this.onerror=null;this.src='https://placehold.co/800x400?text=Photo+indisponible';">
+              <picture>
+                <source type="image/webp"
+                        srcset="
+                          {{ url_for('avatar', professional_id=professional.id, s=192, f='webp', v=professional.updated_at|default(0)) }} 192w,
+                          {{ url_for('avatar', professional_id=professional.id, s=384, f='webp', v=professional.updated_at|default(0)) }} 384w">
+                <source type="image/jpeg"
+                        srcset="
+                          {{ url_for('avatar', professional_id=professional.id, s=192, f='jpg', v=professional.updated_at|default(0)) }} 192w,
+                          {{ url_for('avatar', professional_id=professional.id, s=384, f='jpg', v=professional.updated_at|default(0)) }} 384w">
+                <img
+                  class="thumb-img"
+                  src="{{ url_for('avatar', professional_id=professional.id, s=384, f='jpg', v=professional.updated_at|default(0)) }}"
+                  alt="Photo de {{ professional.name|e }}"
+                  referrerpolicy="no-referrer"
+                  loading="lazy"
+                  decoding="async"
+                  width="400" height="200">
+              </picture>
             </div>
             <div class="content">
               <h3 class="name">{{ professional.name }}</h3>
