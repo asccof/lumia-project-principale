@@ -4,6 +4,7 @@ from flask import (
 )
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+    # ...
 from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime, date, timedelta, time as dtime
 from sqlalchemy import or_, text
@@ -137,6 +138,9 @@ with app.app_context():
         # ✅ Durée & buffer par défaut demandés: 45 et 15
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 45;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 15;"))
+        # ✅ NOUVEAU : classement admin
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE;"))
+        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS featured_rank INTEGER;"))
 
         # users: téléphone
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"))
@@ -175,9 +179,8 @@ def _ext_ok(filename: str) -> bool:
 
 def _process_and_save_profile_image(file_storage) -> str:
     """
-    Traite l'image: vérif + carrée + dérive JPG & WEBP en 96/192/384px.
-    Sauve dans UPLOAD_FOLDER et retourne le nom du fichier principal JPG (ex: 'a1b2c3.jpg').
-    Variantes sauvegardées: a1b2c3_{96,192,384}.jpg et .webp
+    Traite l'image de profil (vérif + carré 512 + JPEG qualité) et sauvegarde dans UPLOAD_FOLDER.
+    Retourne le nom de fichier (ex: 'a1b2c3.jpg').
     """
     filename = getattr(file_storage, "filename", None)
     if not filename or not _ext_ok(filename):
@@ -189,7 +192,7 @@ def _process_and_save_profile_image(file_storage) -> str:
 
     try:
         img = Image.open(io.BytesIO(raw))
-        img.verify()
+        img.verify()  # intégrité
     except Exception:
         raise ValueError("Fichier image invalide ou corrompu")
 
@@ -197,31 +200,17 @@ def _process_and_save_profile_image(file_storage) -> str:
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
 
-    # strip EXIF
+    # Supprimer EXIF (recréation)
     img_no_exif = Image.new(img.mode, img.size)
     img_no_exif.putdata(list(img.getdata()))
 
-    # carré master haute qualité
-    MASTER_SIZE = (1024, 1024)
-    master = ImageOps.fit(img_no_exif, MASTER_SIZE, Image.Resampling.LANCZOS)
+    img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
-    base_name = f"{uuid.uuid4().hex}"
-    out_jpg = UPLOAD_FOLDER / f"{base_name}.jpg"
-    master.save(out_jpg, format="JPEG", quality=88, optimize=True)
+    out_name = f"{uuid.uuid4().hex}.jpg"
+    out_path = UPLOAD_FOLDER / out_name
+    img_square.save(out_path, format="JPEG", quality=88, optimize=True)
 
-    # Dérivés multi-tailles
-    SIZES = [96, 192, 384]
-    for s in SIZES:
-        thumb = ImageOps.fit(master, (s, s), Image.Resampling.LANCZOS)
-        # JPG
-        thumb.save(UPLOAD_FOLDER / f"{base_name}_{s}.jpg", format="JPEG", quality=86, optimize=True)
-        # WEBP (si dispo)
-        try:
-            thumb.save(UPLOAD_FOLDER / f"{base_name}_{s}.webp", format="WEBP", quality=80, method=6)
-        except Exception:
-            pass
-
-    return f"{base_name}.jpg"
+    return out_name
 # ===========================================================================
 
 # ===== [TIGHRI_R1:PACK_REGISTRATION_SAFE] ===================================
@@ -245,8 +234,27 @@ else:
 # ======================
 @app.route('/', endpoint='index')
 def index():
-    featured_professionals = Professional.query.limit(6).all()
-    return render_template('index.html', professionals=featured_professionals)
+    # Modes d’ordre (optionnels pour test): rank (défaut), recent, alpha, random
+    mode = (request.args.get('order') or 'rank').lower()
+
+    base = Professional.query.filter_by(status='valide')
+
+    if mode == 'recent':
+        q = base.order_by(Professional.created_at.desc())
+    elif mode == 'alpha':
+        q = base.order_by(Professional.name.asc())
+    elif mode == 'random':
+        q = base.order_by(db.func.random())
+    else:
+        # 'rank' : d'abord les mis en avant triés par featured_rank, puis les autres par created_at desc
+        q = base.order_by(
+            text("CASE WHEN is_featured THEN 0 ELSE 1 END ASC"),
+            text("featured_rank ASC NULLS LAST"),
+            Professional.created_at.desc()
+        )
+
+    featured_professionals = q.limit(20).all()
+    return render_template('index.html', professionals=featured_professionals, order_mode=mode)
 
 @app.route('/professionals', endpoint='professionals')
 def professionals():
@@ -815,6 +823,9 @@ def api_professionals():
         'longitude': getattr(p, 'longitude', None),
         'consultation_duration_minutes': getattr(p, 'consultation_duration_minutes', 45),
         'buffer_between_appointments_minutes': getattr(p, 'buffer_between_appointments_minutes', 15),
+        # Expose aussi les nouveaux champs si tu veux les voir côté front/API
+        'is_featured': getattr(p, 'is_featured', False),
+        'featured_rank': getattr(p, 'featured_rank', None),
     } for p in pros])
 
 @app.route('/api/professional/<int:professional_id>/available-slots', endpoint='api_available_slots')
@@ -836,7 +847,7 @@ def api_available_slots(professional_id):
         is_available=True
     ).all()
 
-    UnavailableSlot_q = UnavailableSlot.query.filter_by(
+    unavailable_slots = UnavailableSlot.query.filter_by(
         professional_id=professional_id,
         date=target_date
     ).all()
@@ -864,7 +875,7 @@ def api_available_slots(professional_id):
 
             is_unavailable = any(
                 _overlap(slot_start, slot_end, _str_to_time(u.start_time), _str_to_time(u.end_time))
-                for u in UnavailableSlot_q
+                for u in unavailable_slots
             )
 
             is_booked = any(
@@ -1058,7 +1069,6 @@ def site_status():
 
 # ===== Proxy d’images pour photos de profils =====
 PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
-DEFAULT_AVATAR_PATH = (Path(app.root_path) / "static" / "img" / "default-avatar.png")
 
 @app.route("/media/profile/<int:professional_id>", endpoint='profile_photo')
 def profile_photo(professional_id):
@@ -1095,87 +1105,5 @@ def profile_photo(professional_id):
     resp = Response(data, mimetype=content_type)
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
-
-# ===== Nouvelle route avatar “intelligente” (multi-tailles + fallback sûr) ===
-@app.route("/avatar/<int:professional_id>", endpoint="avatar")
-def avatar(professional_id):
-    """
-    Sert la meilleure variante locale (ou proxy si image distante).
-    Paramètres optionnels:
-      s: taille (96, 192, 384). Défaut 96.
-      f: format ('webp' ou 'jpg'). Si non fourni -> détecte via Accept.
-      v: cache-busting (timestamp).
-    """
-    pro = Professional.query.get_or_404(professional_id)
-    raw_url = (pro.image_url or "").strip()
-
-    # Taille demandée
-    try:
-        s = int(request.args.get("s", "96"))
-    except Exception:
-        s = 96
-    if s not in (96, 192, 384):
-        s = 96
-
-    # Choix format
-    req_f = (request.args.get("f", "") or "").lower()
-    accept = request.headers.get("Accept", "")
-    prefer_webp = ("image/webp" in accept) or (req_f == "webp")
-    ext = "webp" if prefer_webp else "jpg"
-    mime = "image/webp" if prefer_webp else "image/jpeg"
-
-    # Avatar défaut
-    default_path = DEFAULT_AVATAR_PATH
-    def _send_default():
-        if default_path.is_file():
-            resp = send_from_directory(str(default_path.parent), default_path.name, mimetype="image/png", max_age=2592000)
-            if hasattr(resp, "headers"):
-                resp.headers["Cache-Control"] = "public, max-age=2592000, immutable"
-            return resp
-        # sécurité ultime
-        return redirect(PHOTO_PLACEHOLDER)
-
-    # Si image locale dérivée
-    if raw_url.startswith("/media/profiles/"):
-        base = raw_url.rsplit("/", 1)[-1]  # ex: a1b2c3.jpg
-        stem = base.rsplit(".", 1)[0]      # a1b2c3
-        candidate = UPLOAD_FOLDER / f"{stem}_{s}.{ext}"
-        # si la variante demandée n'existe pas (ancien upload), fallback JPG ou master
-        if not candidate.is_file():
-            candidate = UPLOAD_FOLDER / f"{stem}_{s}.jpg"
-            if not candidate.is_file():
-                candidate = UPLOAD_FOLDER / f"{stem}.jpg"
-                if not candidate.is_file():
-                    return _send_default()
-        resp = send_from_directory(str(candidate.parent), candidate.name, mimetype=mime, max_age=2592000)
-        if hasattr(resp, "headers"):
-            resp.headers["Cache-Control"] = "public, max-age=2592000, immutable"
-        return resp
-
-    # Si pas d'URL -> défaut local
-    if not raw_url:
-        return _send_default()
-
-    # URL externe: proxy soft avec fallback défaut
-    if raw_url.startswith("http://"):
-        raw_url = "https://" + raw_url[len("http://"):]
-    parsed = urlparse(raw_url)
-    if parsed.scheme not in ("http", "https"):
-        return _send_default()
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
-        "Referer": "https://www.tighri.com",
-    }
-    try:
-        r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
-        r.raise_for_status()
-        ct = r.headers.get("Content-Type", "image/jpeg")
-        data = r.content
-        resp = Response(data, mimetype=ct)
-        resp.headers["Cache-Control"] = "public, max-age=86400"
-        return resp
-    except Exception:
-        return _send_default()
 
 # Pas de bloc __main__ (gunicorn utilise app:app)
