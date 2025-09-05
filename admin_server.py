@@ -130,7 +130,17 @@ def admin_dashboard():
         total_revenue=total_revenue
     )
 
-# --------------------- NOUVELLE ROUTE : CLASSEMENT DES PROFESSIONNELS ---------------------
+# --------------------- Classement (table dédiée, sans toucher au modèle Professional) ---------------------
+class ProfessionalOrder(db.Model):
+    __tablename__ = 'professional_order'
+    professional_id = db.Column(db.Integer, db.ForeignKey('professional.id'), primary_key=True)
+    order_priority = db.Column(db.Integer, nullable=False, default=9999)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+def _ensure_order_table():
+    # Crée la table si absente, sans toucher aux autres tables
+    ProfessionalOrder.__table__.create(bind=db.engine, checkfirst=True)
+
 @admin_bp.route('/professionals/order', methods=['GET', 'POST'], endpoint='admin_professional_order')
 @login_required
 def admin_professional_order():
@@ -138,35 +148,47 @@ def admin_professional_order():
         flash('Accès refusé')
         return redirect(url_for('admin.admin_login'))
 
+    _ensure_order_table()
+
     if request.method == 'POST':
         updated = 0
-        for p in Professional.query.all():
-            raw_val = request.form.get(f'order_priority_{p.id}')
-            if raw_val is not None:
-                try:
-                    p.order_priority = int(raw_val)
-                    updated += 1
-                except ValueError:
-                    continue
+        for key, val in request.form.items():
+            if not key.startswith('order_priority_'):
+                continue
+            try:
+                pro_id = int(key.split('_')[-1])
+            except ValueError:
+                continue
+            try:
+                priority = int(val.strip()) if val.strip() != '' else 9999
+            except ValueError:
+                priority = 9999
+
+            row = ProfessionalOrder.query.get(pro_id)
+            if row is None:
+                row = ProfessionalOrder(professional_id=pro_id, order_priority=priority)
+                db.session.add(row)
+            else:
+                row.order_priority = priority
+            updated += 1
+
         db.session.commit()
         flash(f"Classement mis à jour pour {updated} professionnels.")
         return redirect(url_for('admin.admin_professional_order'))
 
-    # nulls_last pour que les None aillent en bas (PostgreSQL/SQLAlchemy 2)
-    try:
-        professionals = Professional.query.order_by(
-            Professional.order_priority.asc().nulls_last(),
-            Professional.name.asc()
-        ).all()
-    except Exception:
-        # fallback compatible si nulls_last indisponible
-        professionals = Professional.query.order_by(
-            (Professional.order_priority == None),  # noqa: E711
-            Professional.order_priority.asc(),
-            Professional.name.asc()
-        ).all()
+    # GET : on combine les pros avec les priorités stockées
+    orders = {r.professional_id: r.order_priority for r in ProfessionalOrder.query.all()}
+    professionals = Professional.query.all()
+    professionals_sorted = sorted(
+        professionals,
+        key=lambda p: (orders.get(p.id, 9999), (p.name or '').lower())
+    )
 
-    return render_template('admin_professional_order.html', professionals=professionals)
+    return render_template(
+        'admin_professional_order.html',
+        professionals=professionals_sorted,
+        orders=orders
+    )
 
 # --------------------- PROFESSIONNELS (liste type "products") ---------------------
 @admin_bp.route('/products', endpoint='admin_products')
@@ -781,7 +803,7 @@ def _build_notif(kind: str, ap: Appointment, role: str = 'patient') -> tuple[str
                     f"Bonjour,\n\nNouveau RDV à confirmer le {dt} avec le patient #{ap.patient_id}.\n\nTighri")
     if kind == 'accepted':
         return ("Votre RDV est confirmé",
-                f"Bonjour,\n\nVotre RDV le {dt} avec {who} est CONFIRMÉ.\n\nTighri")
+                f"Bonjour,\n\nVotre RDV le {dt}) avec {who} est CONFIRMÉ.\n\nTighri")
     if kind == 'refused':
         return ("Votre RDV a été annulé",
                 f"Bonjour,\n\nVotre RDV le {dt} avec {who} a été annulé.\n\nTighri")
@@ -915,3 +937,4 @@ def social_approval(professional_id):
         db.session.commit()
         return jsonify({'success': True, 'approved': approved})
     return jsonify({'success': False, 'message': 'Champ social_links_approved non disponible'}), 400
+
