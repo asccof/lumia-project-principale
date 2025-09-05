@@ -27,7 +27,6 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
-        # Les UNIQUE créent déjà des index sur username/email.
         db.Index('ix_users_user_type', 'user_type'),
         db.Index('ix_users_is_admin', 'is_admin'),
         db.Index('ix_users_created_at', 'created_at'),
@@ -77,18 +76,17 @@ class Professional(db.Model):
     # Validation par l’admin: 'valide' | 'en_attente' | 'rejete'
     status = db.Column(db.String(20), default='en_attente')
 
-    # ✅ Durée par défaut 45 min et buffer 15 min (modifiables pro + admin)
+    # Durée par défaut 45 min et buffer 15 min
     consultation_duration_minutes = db.Column(db.Integer, default=45)
     buffer_between_appointments_minutes = db.Column(db.Integer, default=15)
 
-    # ✅ Nouveau : mise en avant & rang d’affichage (contrôle admin)
+    # Mise en avant locale
     is_featured = db.Column(db.Boolean, default=False)
-    featured_rank = db.Column(db.Integer)  # 1 = tout en haut, puis 2, 3, ...
+    featured_rank = db.Column(db.Integer)  # 1 = top
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
-        # Index utiles pour la recherche/front
         db.Index('ix_professionals_name', 'name'),
         db.Index('ix_professionals_specialty', 'specialty'),
         db.Index('ix_professionals_location', 'location'),
@@ -96,9 +94,7 @@ class Professional(db.Model):
         db.Index('ix_professionals_status', 'status'),
         db.Index('ix_professionals_availability', 'availability'),
         db.Index('ix_professionals_created_at', 'created_at'),
-        # Index multi-colonnes pour les filtres/search (LIKE sur plusieurs champs)
         db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
-        # ✅ Index pour le classement admin
         db.Index('ix_professionals_is_featured', 'is_featured'),
         db.Index('ix_professionals_featured_rank', 'featured_rank'),
     )
@@ -127,7 +123,6 @@ class Appointment(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relations (jointes pour éviter le N+1 dans les listes)
     patient = db.relationship('User', backref='appointments', lazy='joined')
     professional = db.relationship('Professional', backref='appointments', lazy='joined')
 
@@ -142,7 +137,6 @@ class Appointment(db.Model):
         return f"<Appt id={self.id} pro={self.professional_id} patient={self.patient_id} at={self.appointment_date} status={self.status}>"
 
 
-# ✅ Déplacés ici depuis app.py pour être accessibles aussi côté admin
 class ProfessionalAvailability(db.Model):
     __tablename__ = "professional_availabilities"
     id = db.Column(db.Integer, primary_key=True)
