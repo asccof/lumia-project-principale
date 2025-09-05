@@ -1,225 +1,105 @@
 {% extends "base.html" %}
-{% block title %}{{ professional.name }} - Fiche professionnelle{% endblock %}
+{% block title %}Profil — {{ professional.name|e }}{% endblock %}
 
 {% block extra_css %}
 <style>
-  :root{ --primary:#6f42c1; --primary-2:#8b5cf6; --light:#f8f5ff; --ink:#1f1430; }
-  body{ background:var(--light); color:var(--ink); }
-  .pro-header{ background:#fff; border-radius:16px; box-shadow:0 10px 25px rgba(111,66,193,.08); }
-
-  .avatar-box{
-    position:relative; width:100%; max-width:320px; margin-inline:auto;
-    border-radius:16px; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,.06);
-    background:#f3f3f8;
+  :root{
+    --primary:#8B5CF6; --primary-dark:#6D28D9;
+    --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa;
   }
-  .avatar-box::before{ content:""; display:block; padding-top:100%; } /* carré */
-  .avatar{
-    position:absolute; inset:0; display:block; width:100%; height:100%;
-    object-fit:cover; object-position:center center; background:transparent;
-  }
+  .page{max-width:1000px;margin:0 auto;padding:1rem 1rem 2.5rem}
+  .back a{color:var(--primary);text-decoration:none}
+  .back a:hover{text-decoration:underline}
 
-  .badge-chip{ background:rgba(111,66,193,.1); color:var(--primary); border-radius:999px; padding:.35rem .75rem; display:inline-flex; align-items:center; gap:.4rem; margin:.15rem .25rem .15rem 0; white-space:nowrap; }
-  .price{ font-size:1.6rem; font-weight:700; color:var(--primary); }
-  .cta a{ min-width:220px; }
-  .socials a{ display:inline-flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.08); margin-right:.5rem; border:1px solid #eee; color:#444; }
-  .socials a:hover{ transform: translateY(-2px); color:var(--primary-2); }
-  @media (max-width:480px){ .avatar-box{ max-width:260px; } }
+  .prof-header{display:flex;gap:1.25rem;align-items:center;margin:1rem 0}
+  .prof-avatar{width:112px;height:112px;border-radius:50%;overflow:hidden;background:#eee;flex:0 0 112px}
+  .prof-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+
+  .badge{display:inline-block;margin:.25rem .4rem .25rem 0;padding:.25rem .6rem;border-radius:999px;background:#f4f0ff;color:#6D28D9;font-weight:700;font-size:.85rem}
+
+  .section{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;margin:1rem 0}
+  .section h2{margin:0 0 .5rem;color:#6D28D9}
+
+  .cta{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem}
+  .btn{display:inline-flex;align-items:center;gap:.5rem;padding:.65rem 1.1rem;border-radius:999px;border:2px solid transparent;cursor:pointer;font-weight:700;text-decoration:none}
+  .btn-primary{background:var(--primary);color:#fff}
+  .btn-primary:hover{background:var(--primary-dark)}
+  .btn-ghost{background:#fff;border-color:#eee;color:#6D28D9}
+  .btn-ghost:hover{border-color:#d8cfff}
+
+  @media (max-width:720px){
+    .prof-header{align-items:flex-start}
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  {% if professional.status != 'valide' %}
-    <div class="alert alert-warning mb-4">
-      <i class="fas fa-info-circle me-2"></i>
-      Ce profil est <strong>en attente de validation</strong> par l’administration.
+<div class="page">
+  <div class="back">
+    <a href="{{ url_for('index') }}">&larr; Retour</a>
+  </div>
+
+  <div class="prof-header">
+    <div class="prof-avatar">
+      <img
+        src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+        alt="Photo de {{ professional.name|e }}"
+        loading="lazy" width="112" height="112"
+        onerror="this.onerror=null;this.src='https://placehold.co/224x224?text=Photo';">
     </div>
-  {% endif %}
+    <div>
+      <h1 style="margin:.2rem 0 0">{{ professional.name }}</h1>
+      <div style="color:#6D28D9;font-weight:600">{{ professional.specialty or 'Professionnel' }}</div>
+      {% if professional.location %}<span class="badge" title="Ville">{{ professional.location }}</span>{% endif %}
+      {% if professional.status %}<span class="badge" title="Statut">{{ professional.status }}</span>{% endif %}
 
-  {% set placeholder = 'https://placehold.co/600x600?text=Photo+indisponible' %}
-  {% set primary_src = url_for('profile_photo', professional_id=professional.id) %}
-  {% if professional.image_url and professional.image_url.startswith('/media/profiles/') %}
-    {% set local_fname = professional.image_url.split('/media/profiles/')[1] %}
-    {% set fallback_local = url_for('profile_media', filename=local_fname) %}
-  {% else %}
-    {% set fallback_local = None %}
-  {% endif %}
-
-  <div class="pro-header p-4 p-lg-5">
-    <div class="row g-4 align-items-start">
-      <div class="col-lg-4 text-center">
-        <div class="avatar-box">
-          <img
-            class="avatar"
-            alt="Photo de {{ professional.name }}"
-            src="{{ primary_src }}"
-            referrerpolicy="no-referrer"
-            loading="eager"
-            decoding="async"
-            width="600" height="600"
-            onerror="
-              if (this.dataset.step!=='1' && '{{ fallback_local|default('') }}' !== '') {
-                this.dataset.step='1'; this.src='{{ fallback_local }}';
-              } else if (this.dataset.step!=='2') {
-                this.dataset.step='2'; this.src='{{ placeholder }}';
-              } else { this.onerror=null; }
-            ">
-        </div>
-      </div>
-
-      <div class="col-lg-8">
-        <h1 class="h2 mb-2 text-capitalize">{{ professional.name }}</h1>
-
-        <div class="mb-2">
-          <span class="badge-chip"><i class="fas fa-user-md"></i>{{ professional.specialty or 'Spécialité non renseignée' }}</span>
-          {% if professional.experience_years %}
-            <span class="badge-chip"><i class="fas fa-briefcase"></i>{{ professional.experience_years }} ans d’expérience</span>
-          {% endif %}
-        </div>
-
-        {% if professional.consultation_types %}
-          <div class="mb-2">
-            {% for t in professional.consultation_types.split(',') %}
-              {% set tt = t.strip() %}
-              <span class="badge-chip">
-                <i class="fas fa-stethoscope"></i>
-                {% if tt=='cabinet' %}Cabinet
-                {% elif tt=='domicile' %}Domicile
-                {% elif tt in ['en_ligne','video','vidéo'] %}En ligne
-                {% else %}{{ t }}{% endif %}
-              </span>
-            {% endfor %}
-          </div>
-        {% endif %}
-
-        {% set has_coords = (professional.latitude is not none) and (professional.longitude is not none) %}
-        {% if has_coords %}
-          {% set maps_url = 'https://www.google.com/maps?q=' ~ professional.latitude ~ ',' ~ professional.longitude %}
-        {% else %}
-          {% set maps_q = (professional.address or professional.location or '') %}
-          {% set maps_url = 'https://www.google.com/maps/search/?api=1&query=' ~ maps_q %}
-        {% endif %}
-
-        <div class="mb-2">
-          <i class="fas fa-map-marker-alt me-2 text-danger"></i>
-          {{ professional.address or professional.location or 'Adresse non renseignée' }}
-          {% if has_coords %}<small class="text-muted"> ({{ professional.latitude }}, {{ professional.longitude }})</small>{% endif %}
-          {% if (professional.address or has_coords or professional.location) %} ·
-            <a href="{{ maps_url }}" target="_blank" rel="noopener" class="link-primary">Voir sur Google Maps</a>
-          {% endif %}
-        </div>
-
-        {% if professional.phone %}
-          <div class="mb-2">
-            <i class="fas fa-phone me-2 text-success"></i>
-            <a href="tel:{{ professional.phone | replace(' ', '') }}" class="text-decoration-none">{{ professional.phone }}</a>
-          </div>
-        {% endif %}
-
-        {% if professional.consultation_fee is not none %}
-          <div class="mb-3">
-            <span class="price">{{ '%.0f'|format(professional.consultation_fee) }} MAD</span>
-            <small class="text-muted">/ séance</small>
-          </div>
-        {% endif %}
-
-        {% set has_socials = professional.facebook_url or professional.instagram_url or professional.tiktok_url or professional.youtube_url %}
-        {% if has_socials %}
-          {% if professional.social_links_approved %}
-            <div class="socials mb-3">
-              {% if professional.facebook_url %}<a href="{{ professional.facebook_url }}" target="_blank" rel="noopener" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>{% endif %}
-              {% if professional.instagram_url %}<a href="{{ professional.instagram_url }}" target="_blank" rel="noopener" aria-label="Instagram"><i class="fab fa-instagram"></i></a>{% endif %}
-              {% if professional.tiktok_url %}<a href="{{ professional.tiktok_url }}" target="_blank" rel="noopener" aria-label="TikTok"><i class="fab fa-tiktok"></i></a>{% endif %}
-              {% if professional.youtube_url %}<a href="{{ professional.youtube_url }}" target="_blank" rel="noopener" aria-label="YouTube"><i class="fab fa-youtube"></i></a>{% endif %}
-            </div>
-          {% else %}
-            <div class="alert alert-info py-2 mb-3"><i class="fa-solid fa-hourglass-half me-2"></i>Les liens réseaux sociaux sont en attente de validation.</div>
-          {% endif %}
-        {% endif %}
-
-        <div class="cta d-flex flex-wrap gap-2 mt-3">
-          {% if professional.status == 'valide' %}
-            <a class="btn btn-primary" href="{{ url_for('book_appointment', professional_id=professional.id) }}"><i class="fas fa-calendar-plus me-2"></i>Prendre rendez-vous</a>
-          {% else %}
-            <button class="btn btn-secondary" disabled><i class="fas fa-lock me-2"></i>Prendre rendez-vous (profil non validé)</button>
-          {% endif %}
-          {% if professional.phone %}
-            <a class="btn btn-outline-success" href="tel:{{ professional.phone | replace(' ', '') }}"><i class="fas fa-phone me-2"></i>Appeler</a>
-          {% endif %}
-        </div>
+      <div class="cta">
+        <a class="btn btn-primary" href="{{ url_for('book_appointment', professional_id=professional.id) }}">Prendre rendez-vous</a>
+        {% if professional.phone %}<a class="btn btn-ghost" href="tel:{{ professional.phone|replace(' ','') }}">Appeler</a>{% endif %}
       </div>
     </div>
   </div>
 
-  <div class="mt-4">
-    <div class="card shadow-sm">
-      <div class="card-header bg-white">
-        <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>À propos</h5>
-      </div>
-      <div class="card-body">
-        <p class="mb-0">{{ professional.description or 'Pas encore de description.' }}</p>
-      </div>
-    </div>
+  <div class="section">
+    <h2>À propos</h2>
+    <p style="margin:0;line-height:1.7">{{ professional.description or '—' }}</p>
   </div>
 
-  <div class="mt-4">
-    <div class="card shadow-sm">
-      <div class="card-header bg-white d-flex align-items-center justify-content-between">
-        <h5 class="mb-0"><i class="fa-solid fa-star me-2 text-warning"></i>Avis & évaluations</h5>
-        {% if avg_rating %}
-          <span class="badge bg-warning text-dark">Moyenne : {{ avg_rating }}/5</span>
-        {% endif %}
-      </div>
-      <div class="card-body">
-        {% if reviews %}
-          <div class="list-group mb-3">
-            {% for r in reviews %}
-              <div class="list-group-item">
-                <div class="d-flex justify-content-between">
-                  <strong>{{ r.user.username }}</strong>
-                  <small class="text-muted">{{ r.created_at.strftime('%d/%m/%Y %H:%M') if r.created_at else '' }}</small>
-                </div>
-                <div class="mb-1">
-                  <span class="text-warning">
-                    {% for i in range(0, r.rating) %}★{% endfor %}{% for i in range(r.rating, 5) %}☆{% endfor %}
-                  </span>
-                </div>
-                <div>{{ r.comment }}</div>
-              </div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <p class="text-muted">Pas encore d’avis pour ce professionnel.</p>
-        {% endif %}
+  <div class="section">
+    <h2>Informations</h2>
+    <ul style="margin:0;padding-left:1rem;line-height:1.8">
+      <li>Tarif : {{ (professional.consultation_fee or 0)|int }} MAD</li>
+      <li>Expérience : {{ professional.experience_years or 0 }} an(s)</li>
+      <li>Types de consultation : {{ (professional.consultation_types or 'cabinet').replace(',', ', ') }}</li>
+      {% if professional.address %}<li>Adresse : {{ professional.address }}</li>{% endif %}
+      {% if professional.latitude and professional.longitude %}
+        <li>GPS : {{ professional.latitude }}, {{ professional.longitude }}</li>
+      {% endif %}
+    </ul>
+  </div>
 
-        {% if current_user.is_authenticated and current_user.user_type == 'patient' %}
-          <hr>
-          <form method="post" action="{{ url_for('add_review', professional_id=professional.id) }}">
-            {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-            <div class="row g-3">
-              <div class="col-md-3">
-                <label class="form-label">Note</label>
-                <select name="rating" class="form-select" required>
-                  <option value="">Choisir…</option>
-                  <option value="5">5 - Excellent</option>
-                  <option value="4">4 - Très bien</option>
-                  <option value="3">3 - Bien</option>
-                  <option value="2">2 - Moyen</option>
-                  <option value="1">1 - Insuffisant</option>
-                </select>
-              </div>
-              <div class="col-md-9">
-                <label class="form-label">Commentaire</label>
-                <textarea name="comment" rows="2" class="form-control" placeholder="Partagez votre expérience…" required></textarea>
-              </div>
-            </div>
-            <button class="btn btn-primary mt-3"><i class="fa-solid fa-paper-plane me-2"></i>Envoyer</button>
-          </form>
-        {% else %}
-          <p class="text-muted mt-3">Connectez-vous en tant que patient pour laisser un avis.</p>
-        {% endif %}
+  <!-- Bloc Avis : affichage uniquement, pas de POST vers un endpoint inexistant -->
+  <div id="reviews" class="section">
+    <h2>Avis</h2>
+    {% if reviews %}
+      <div style="display:grid;gap:.75rem">
+        {% for r in reviews %}
+          <div style="border:1px solid #eee;border-radius:10px;padding:.75rem">
+            <div style="font-weight:700">{{ r.author or 'Utilisateur' }}</div>
+            <div style="opacity:.8">Note : {{ r.rating or '—' }}/5</div>
+            <p style="margin:.4rem 0 0">{{ r.text or '' }}</p>
+          </div>
+        {% endfor %}
       </div>
-    </div>
+    {% else %}
+      <p style="margin:.5rem 0 0;opacity:.8">Pas encore d’avis.</p>
+    {% endif %}
+
+    {# 
+      NOTE: l’ancien template postait vers `url_for('add_review')` qui n’existe pas côté serveur,
+      ce qui provoquait un 500 dès l’affichage. Ici, on NE poste plus (affichage seul).
+      Quand tu auras un endpoint pour créer des avis, on branchera un <form> dessus.
+    #}
   </div>
 </div>
 {% endblock %}
