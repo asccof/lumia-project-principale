@@ -87,6 +87,10 @@
                         <a class="nav-link {% if request.endpoint == 'admin.admin_orders' %}active{% endif %}" href="{{ url_for('admin.admin_orders') }}">
                             <i class="fas fa-calendar-check"></i>Rendez-vous
                         </a>
+                        <!-- ✅ Nouveau bouton Classement -->
+                        <a class="nav-link {% if request.endpoint == 'admin.admin_professional_order' %}active{% endif %}" href="{{ url_for('admin.admin_professional_order') }}">
+                            <i class="fas fa-sort-amount-up-alt"></i>Classement
+                        </a>
                         <a class="nav-link" href="https://www.tighri.com" target="_blank" rel="noopener">
                             <i class="fas fa-external-link-alt"></i>Voir le site
                         </a>
