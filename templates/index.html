@@ -1,41 +1,226 @@
 {% extends "base.html" %}
+{% block title %}Tighri – Trouvez un psychologue, thérapeute ou coach près de chez vous{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* Hero */
+  .hero{
+    background:linear-gradient(135deg,var(--primary-color),var(--accent-color));
+    color:#fff;
+    padding:clamp(2.5rem,5vw,4rem) 0;
+    text-align:center;
+    border-bottom: 1px solid rgba(255,255,255,.15);
+  }
+  .hero h1{font-weight:800;letter-spacing:.2px;margin-bottom:.5rem}
+  .hero p{opacity:.95;margin-bottom:1.25rem}
+  .hero .search{
+    max-width: 820px; margin:.75rem auto 0; display:flex; gap:.5rem; padding:.35rem;
+    background:#fff; border-radius:999px; box-shadow:0 6px 20px rgba(0,0,0,.15)
+  }
+  .hero .search input{
+    flex:1; border:0; outline:0; padding:.9rem 1.1rem; border-radius:999px; font-size:1rem
+  }
+  .hero .search button{
+    border:0; padding:.75rem 1.25rem; border-radius:999px; font-weight:700;
+    background:var(--primary-color); color:#fff
+  }
+  .hero .search button:hover{ background:var(--secondary-color) }
+
+  /* Titres de sections */
+  .section-title{text-align:center;margin:2.25rem 0 1rem}
+  .section-title h2{font-weight:800;color:var(--dark-color);margin:0}
+  .section-title p{color:#6b7280;margin:.25rem 0 0}
+
+  /* Cartes pros */
+  .pro-card{display:flex;flex-direction:column;height:100%;background:#fff;border-radius:16px;box-shadow:0 6px 18px rgba(0,0,0,.08);overflow:hidden}
+  .pro-thumb{position:relative;width:100%;padding-top:66.66%;background:#f3f0ff}
+  .pro-thumb img{
+    position:absolute; inset:0; width:100%; height:100%;
+    object-fit:cover; object-position:center center; display:block
+  }
+  .pro-body{padding:1rem}
+  .pro-name{font-weight:800; color:var(--dark-color); margin-bottom:.15rem}
+  .pro-spec{color:var(--primary-color); font-weight:700; margin:0 0 .25rem}
+  .pro-loc{color:#6b7280; margin:0 0 .35rem}
+  .pro-desc{color:#4b5563; margin:0 0 .5rem}
+  .pro-fee{color:var(--primary-color); font-weight:800}
+  .pro-actions{display:flex; gap:.5rem; margin-top:.6rem}
+  .pro-actions .btn{flex:1}
+
+  @media (max-width:768px){
+    .hero .search{flex-direction:column; border-radius:16px}
+    .hero .search input, .hero .search button{border-radius:12px}
+  }
+
+  /* Petit bloc services */
+  .services .card{border-radius:16px}
+  .services .icon{
+    width:44px;height:44px;border-radius:50%;
+    background:rgba(111,66,193,.12);display:flex;align-items:center;justify-content:center;
+    color:var(--primary-color)
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 
-<div class="container py-5">
-  <div class="text-center mb-5">
-    <h1 class="fw-bold text-primary">Bienvenue sur Tighri</h1>
-    <p class="lead text-muted">Trouvez et prenez rendez-vous avec les meilleurs psychologues, thérapeutes et coachs.</p>
-  </div>
+<!-- HERO -->
+<section class="hero">
+  <div class="container">
+    <h1 class="display-5">Prenez rendez-vous en toute simplicité</h1>
+    <p>Trouvez des psychologues, thérapeutes et coachs certifiés au Maroc — en cabinet, à domicile ou en ligne.</p>
 
-  <!-- Section professionnels en vedette -->
-  <div class="row g-4">
-    {% for professional in professionals %}
-      <div class="col-md-4">
-        <div class="card h-100 shadow-sm border-0">
-          <div class="ratio ratio-1x1">
-            <img
-              src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-              class="card-img-top"
-              alt="Photo de {{ professional.name|e }}"
-              loading="lazy"
-              decoding="async"
-              referrerpolicy="no-referrer"
-              onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=Photo+indisponible';">
-          </div>
-          <div class="card-body d-flex flex-column">
-            <h5 class="card-title">{{ professional.name }}</h5>
-            <p class="card-text text-muted mb-2">{{ professional.specialty or 'Spécialité non renseignée' }}</p>
-            <p class="card-text small flex-grow-1">
-              {% set d = professional.description or '' %}
-              {{ d[:100] }}{% if d|length > 100 %}…{% endif %}
-            </p>
-            <a href="{{ url_for('professional_detail', professional_id=professional.id) }}"
-               class="btn btn-primary mt-auto">Voir le profil</a>
+    <form class="search" action="{{ url_for('professionals') }}" method="get" role="search">
+      <input type="text" name="q" placeholder="Nom, spécialité, ville…" aria-label="Recherche">
+      <button type="submit">Rechercher</button>
+    </form>
+
+    <div class="mt-3">
+      <a class="btn btn-light btn-sm rounded-pill me-2" href="{{ url_for('professionals', specialty='Psychologue') }}">Psychologues</a>
+      <a class="btn btn-light btn-sm rounded-pill me-2" href="{{ url_for('professionals', specialty='Thérapeute') }}">Thérapeutes</a>
+      <a class="btn btn-light btn-sm rounded-pill" href="{{ url_for('professionals', specialty='Coach') }}">Coachs</a>
+    </div>
+  </div>
+</section>
+
+<!-- Services courts -->
+<section class="container services mt-4">
+  <div class="row g-3">
+    <div class="col-md-4">
+      <div class="card p-3 h-100">
+        <div class="d-flex align-items-center gap-3">
+          <div class="icon"><i class="fas fa-video"></i></div>
+          <div>
+            <div class="fw-bold">Consultation en ligne</div>
+            <div class="text-muted small">Prenez RDV en visioconférence en toute sécurité.</div>
           </div>
         </div>
       </div>
-    {% endfor %}
+    </div>
+    <div class="col-md-4">
+      <div class="card p-3 h-100">
+        <div class="d-flex align-items-center gap-3">
+          <div class="icon"><i class="fas fa-building"></i></div>
+          <div>
+            <div class="fw-bold">En cabinet</div>
+            <div class="text-muted small">Des spécialistes proches de chez vous.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card p-3 h-100">
+        <div class="d-flex align-items-center gap-3">
+          <div class="icon"><i class="fas fa-house-chimney-medical"></i></div>
+          <div>
+            <div class="fw-bold">À domicile</div>
+            <div class="text-muted small">Quand vous ne pouvez pas vous déplacer.</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-</div>
+</section>
 
+<!-- Professionnels en vedette -->
+<section class="container">
+  <div class="section-title">
+    <h2>Professionnels en vedette</h2>
+    <p>Une sélection de profils disponibles dès maintenant</p>
+  </div>
+
+  {% if professionals %}
+    <div class="row g-3">
+      {% for professional in professionals %}
+        <div class="col-12 col-sm-6 col-lg-4">
+          <article class="pro-card">
+            <div class="pro-thumb">
+              <img
+                src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+                alt="Photo de {{ professional.name|e }}"
+                referrerpolicy="no-referrer"
+                loading="lazy"
+                decoding="async"
+                width="600" height="400"
+                onerror="this.onerror=null;this.src='https://placehold.co/800x533?text=Photo+indisponible';">
+            </div>
+            <div class="pro-body">
+              <h3 class="h5 pro-name">{{ professional.name }}</h3>
+              <p class="pro-spec">{{ professional.specialty or '—' }}</p>
+              <p class="pro-loc">📍 {{ professional.address or professional.location or '—' }}</p>
+              <p class="pro-desc">
+                {% set d = professional.description or '' %}
+                {{ d[:110] }}{% if d|length > 110 %}…{% endif %}
+              </p>
+              {% if professional.consultation_fee is not none %}
+                <div class="pro-fee">{{ '%.0f'|format(professional.consultation_fee) }} MAD / séance</div>
+              {% endif %}
+              <div class="pro-actions">
+                <a class="btn btn-outline-primary"
+                   href="{{ url_for('professional_detail', professional_id=professional.id) }}">
+                  Voir le profil
+                </a>
+                {% if professional.status == 'valide' %}
+                  <a class="btn btn-primary"
+                     href="{{ url_for('book_appointment', professional_id=professional.id) }}">
+                    Prendre RDV
+                  </a>
+                {% else %}
+                  <button class="btn btn-secondary" disabled>En attente</button>
+                {% endif %}
+              </div>
+            </div>
+          </article>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="text-center mt-4">
+      <a class="btn btn-outline-primary rounded-pill px-4" href="{{ url_for('professionals') }}">
+        Voir tous les professionnels
+      </a>
+    </div>
+  {% else %}
+    <div class="alert alert-info text-center">
+      Aucun professionnel à afficher pour le moment.
+      <a href="{{ url_for('professionals') }}" class="alert-link">Parcourir la liste complète</a>.
+    </div>
+  {% endif %}
+</section>
+
+<!-- Bloc “À propos” court -->
+<section class="container mt-4">
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card h-100">
+        <div class="card-body">
+          <h5 class="card-title"><i class="fas fa-heart text-primary me-2"></i>Pourquoi Tighri ?</h5>
+          <p class="mb-2">Tighri est une plateforme marocaine de prise de rendez-vous dédiée à la psychologie et l’accompagnement. Notre mission est de faciliter l’accès à des professionnels qualifiés, en présentiel comme en ligne.</p>
+          <a class="btn btn-outline-primary btn-sm rounded-pill" href="{{ url_for('about') }}">
+            En savoir plus
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <h5 class="card-title"><i class="fas fa-envelope text-primary me-2"></i>Besoin d’aide ?</h5>
+          <p class="mb-2">Des questions sur la prise de rendez-vous, les tarifs ou les disponibilités ?</p>
+          <a class="btn btn-primary btn-sm rounded-pill" href="{{ url_for('contact') }}">
+            Contacter le support
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Rien de critique ici : le JS offcanvas de base.html gère le menu mobile.
+  // On pourrait ajouter de la télémétrie ou des animations plus tard.
+</script>
 {% endblock %}
