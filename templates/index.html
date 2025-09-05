@@ -114,12 +114,24 @@
       {% for professional in professionals %}
         <div class="professional-card">
           <div class="avatar-box">
-            <img
-              class="avatar-img"
-              src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-              alt="Photo de {{ professional.name|e }}"
-              width="96" height="96" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer"
-              onerror="this.onerror=null;this.src='{{ url_for('static', filename='img/default-avatar.png') }}';">
+            <picture>
+              <source type="image/webp"
+                      srcset="
+                        {{ url_for('avatar', professional_id=professional.id, s=96,  f='webp', v=professional.updated_at|default(0)) }} 96w,
+                        {{ url_for('avatar', professional_id=professional.id, s=192, f='webp', v=professional.updated_at|default(0)) }} 192w,
+                        {{ url_for('avatar', professional_id=professional.id, s=384, f='webp', v=professional.updated_at|default(0)) }} 384w">
+              <source type="image/jpeg"
+                      srcset="
+                        {{ url_for('avatar', professional_id=professional.id, s=96,  f='jpg', v=professional.updated_at|default(0)) }} 96w,
+                        {{ url_for('avatar', professional_id=professional.id, s=192, f='jpg', v=professional.updated_at|default(0)) }} 192w,
+                        {{ url_for('avatar', professional_id=professional.id, s=384, f='jpg', v=professional.updated_at|default(0)) }} 384w">
+              <img
+                class="avatar-img"
+                src="{{ url_for('avatar', professional_id=professional.id, s=96, f='jpg', v=professional.updated_at|default(0)) }}"
+                alt="Photo de {{ professional.name|e }}"
+                width="96" height="96"
+                loading="lazy" decoding="async" fetchpriority="low">
+            </picture>
           </div>
 
           <h4>{{ professional.name }}</h4>
