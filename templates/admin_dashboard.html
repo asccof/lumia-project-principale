@@ -4,7 +4,7 @@
 {% block content %}
 <div class="container-fluid py-3">
 
-  {# ==== Compteurs (calculs côté template pour éviter de toucher le serveur) ==== #}
+  {# ==== Compteurs ==== #}
   {% set pending_pros_list = professionals|selectattr('status','equalto','en_attente')|list %}
   {% set confirmed_appts_list = appointments|selectattr('status','equalto','confirme')|list %}
   {% set pending_appts_list = appointments|selectattr('status','equalto','en_attente')|list %}
@@ -15,122 +15,87 @@
       <p class="text-muted mb-3">Vue d’ensemble de l’activité.</p>
     </div>
 
-    <!-- Cartes Stats -->
+    <!-- Stats -->
     <div class="col-sm-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <div class="text-muted small">Professionnels</div>
-              <div class="h4 mb-0">{{ total_professionals }}</div>
-            </div>
-            <i class="fas fa-user-md fa-lg text-secondary"></i>
-          </div>
-          <a href="{{ url_for('admin.admin_products') }}" class="stretched-link"></a>
+      <div class="card h-100"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div><div class="text-muted small">Professionnels</div><div class="h4 mb-0">{{ total_professionals }}</div></div>
+          <i class="fas fa-user-md fa-lg text-secondary"></i>
         </div>
-      </div>
+        <a href="{{ url_for('admin.admin_products') }}" class="stretched-link"></a>
+      </div></div>
     </div>
 
     <div class="col-sm-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <div class="text-muted small">Pros en attente</div>
-              <div class="h4 mb-0">{{ pending_pros_list|length }}</div>
-            </div>
-            <i class="fas fa-hourglass-half fa-lg text-warning"></i>
-          </div>
-          <a href="{{ url_for('admin.pending_professionals') }}" class="stretched-link"></a>
+      <div class="card h-100"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div><div class="text-muted small">Pros en attente</div><div class="h4 mb-0">{{ pending_pros_list|length }}</div></div>
+          <i class="fas fa-hourglass-half fa-lg text-warning"></i>
         </div>
-      </div>
+        <a href="{{ url_for('admin.pending_professionals') }}" class="stretched-link"></a>
+      </div></div>
     </div>
 
     <div class="col-sm-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <div class="text-muted small">Utilisateurs</div>
-              <div class="h4 mb-0">{{ total_users }}</div>
-            </div>
-            <i class="fas fa-users fa-lg text-primary"></i>
-          </div>
-          <a href="{{ url_for('admin.admin_users') }}" class="stretched-link"></a>
+      <div class="card h-100"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div><div class="text-muted small">Utilisateurs</div><div class="h4 mb-0">{{ total_users }}</div></div>
+          <i class="fas fa-users fa-lg text-primary"></i>
         </div>
-      </div>
+        <a href="{{ url_for('admin.admin_users') }}" class="stretched-link"></a>
+      </div></div>
     </div>
 
     <div class="col-sm-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <div class="text-muted small">RDV totaux</div>
-              <div class="h4 mb-0">{{ total_appointments }}</div>
-            </div>
-            <i class="fas fa-calendar-check fa-lg text-success"></i>
-          </div>
-          <a href="{{ url_for('admin.admin_appointments') }}" class="stretched-link"></a>
+      <div class="card h-100"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div><div class="text-muted small">RDV totaux</div><div class="h4 mb-0">{{ total_appointments }}</div></div>
+          <i class="fas fa-calendar-check fa-lg text-success"></i>
         </div>
-      </div>
+        <a href="{{ url_for('admin.admin_appointments') }}" class="stretched-link"></a>
+      </div></div>
     </div>
 
     <div class="col-sm-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <div class="text-muted small">RDV confirmés</div>
-              <div class="h4 mb-0">{{ confirmed_appts_list|length }}</div>
-            </div>
-            <i class="fas fa-check fa-lg text-success"></i>
-          </div>
-          <a href="{{ url_for('admin.admin_appointments') }}" class="stretched-link"></a>
+      <div class="card h-100"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div><div class="text-muted small">RDV confirmés</div><div class="h4 mb-0">{{ confirmed_appts_list|length }}</div></div>
+          <i class="fas fa-check fa-lg text-success"></i>
         </div>
-      </div>
+        <a href="{{ url_for('admin.admin_appointments') }}" class="stretched-link"></a>
+      </div></div>
     </div>
 
     <div class="col-sm-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <div class="text-muted small">RDV en attente</div>
-              <div class="h4 mb-0">{{ pending_appts_list|length }}</div>
-            </div>
-            <i class="fas fa-clock fa-lg text-warning"></i>
-          </div>
-          <a href="{{ url_for('admin.admin_appointments') }}" class="stretched-link"></a>
+      <div class="card h-100"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div><div class="text-muted small">RDV en attente</div><div class="h4 mb-0">{{ pending_appts_list|length }}</div></div>
+          <i class="fas fa-clock fa-lg text-warning"></i>
         </div>
-      </div>
+        <a href="{{ url_for('admin.admin_appointments') }}" class="stretched-link"></a>
+      </div></div>
     </div>
 
     <div class="col-sm-6 col-lg-3">
-      <div class="card h-100">
-        <div class="card-body">
-          <div class="d-flex justify-content-between align-items-center">
-            <div>
-              <div class="text-muted small">Revenu total (estim.)</div>
-              <div class="h4 mb-0">{{ '%.0f'|format(total_revenue or 0) }} MAD</div>
-            </div>
-            <i class="fas fa-coins fa-lg text-info"></i>
-          </div>
+      <div class="card h-100"><div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div><div class="text-muted small">Revenu total (estim.)</div><div class="h4 mb-0">{{ '%.0f'|format(total_revenue or 0) }} MAD</div></div>
+          <i class="fas fa-coins fa-lg text-info"></i>
         </div>
-      </div>
+      </div></div>
     </div>
   </div>
 
   <!-- Actions rapides -->
   <div class="card mt-3">
-    <div class="card-header">
-      <i class="fas fa-bolt me-2"></i>Actions rapides
-    </div>
+    <div class="card-header"><i class="fas fa-bolt me-2"></i>Actions rapides</div>
     <div class="card-body">
       <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-sm btn-primary" href="{{ url_for('admin.admin_add_product') }}"><i class="fas fa-user-plus me-1"></i> Ajouter un professionnel</a>
         <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.admin_products') }}"><i class="fas fa-list me-1"></i> Tous les professionnels</a>
         <a class="btn btn-sm btn-outline-warning" href="{{ url_for('admin.pending_professionals') }}"><i class="fas fa-hourglass-start me-1"></i> Pros en attente</a>
+        <!-- ✅ Nouveau bouton Classement -->
+        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.admin_professional_order') }}"><i class="fas fa-sort me-1"></i> Classement</a>
 
         <a class="btn btn-sm btn-success" href="{{ url_for('admin.add_user') }}"><i class="fas fa-user-plus me-1"></i> Créer un utilisateur</a>
         <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.admin_users') }}"><i class="fas fa-users me-1"></i> Tous les utilisateurs</a>
@@ -138,20 +103,17 @@
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_appointments') }}"><i class="fas fa-calendar me-1"></i> Tous les RDV</a>
         <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.admin_orders') }}"><i class="fas fa-receipt me-1"></i> Commandes (alias RDV)</a>
 
-        {# Liens “bonus” vers pages éventuelles si vous les (ré)activez plus tard.
-           Utilisés en URL directe pour ne pas casser si l’endpoint n’existe pas. #}
         <a class="btn btn-sm btn-outline-dark" href="/admin/reviews/pending"><i class="fas fa-comments me-1"></i> Avis en attente</a>
         <a class="btn btn-sm btn-outline-dark" href="/admin/social/pending"><i class="fas fa-share-alt me-1"></i> Réseaux sociaux à valider</a>
       </div>
       <p class="text-muted small mb-0 mt-2">
-        Astuce&nbsp;: pour gérer disponibilités / indisponibilités / RDV d’un pro, ouvrez
-        <strong>“Voir”</strong> puis <strong>“Modifier”</strong> depuis la table ci-dessous.
+        Astuce : pour gérer disponibilités / indisponibilités / RDV d’un pro, ouvrez <strong>“Voir”</strong> puis <strong>“Modifier”</strong>.
       </p>
     </div>
   </div>
 
+  <!-- Derniers pros -->
   <div class="row g-3 mt-1">
-    <!-- Derniers professionnels -->
     <div class="col-12 col-xl-6">
       <div class="card h-100">
         <div class="card-header d-flex justify-content-between align-items-center">
@@ -161,15 +123,7 @@
         <div class="card-body p-0">
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>ID</th>
-                  <th>Nom</th>
-                  <th>Spécialité</th>
-                  <th>Statut</th>
-                  <th class="text-end">Actions</th>
-                </tr>
-              </thead>
+              <thead class="table-light"><tr><th>ID</th><th>Nom</th><th>Spécialité</th><th>Statut</th><th class="text-end">Actions</th></tr></thead>
               <tbody>
               {% for p in professionals[:8] %}
                 <tr>
@@ -210,26 +164,14 @@
         <div class="card-body p-0">
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>ID</th>
-                  <th>Patient</th>
-                  <th>Pro</th>
-                  <th>Date</th>
-                  <th>Statut</th>
-                </tr>
-              </thead>
+              <thead class="table-light"><tr><th>ID</th><th>Patient</th><th>Pro</th><th>Date</th><th>Statut</th></tr></thead>
               <tbody>
               {% for a in appointments[:8] %}
                 <tr>
                   <td>{{ a.id }}</td>
                   <td>{{ a.patient.username if a.patient else '-' }}</td>
                   <td>{{ a.professional.name if a.professional else '-' }}</td>
-                  <td>
-                    {% if a.appointment_date %}
-                      {{ a.appointment_date.strftime('%d/%m/%Y %H:%M') }}
-                    {% else %}-{% endif %}
-                  </td>
+                  <td>{% if a.appointment_date %}{{ a.appointment_date.strftime('%d/%m/%Y %H:%M') }}{% else %}-{% endif %}</td>
                   <td>
                     {% if a.status == 'confirme' %}
                       <span class="badge bg-success">Confirmé</span>
@@ -260,15 +202,7 @@
         <div class="card-body p-0">
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
-              <thead class="table-light">
-                <tr>
-                  <th>ID</th>
-                  <th>Nom</th>
-                  <th>Email</th>
-                  <th>Type</th>
-                  <th>Admin</th>
-                </tr>
-              </thead>
+              <thead class="table-light"><tr><th>ID</th><th>Nom</th><th>Email</th><th>Type</th><th>Admin</th></tr></thead>
               <tbody>
               {% for u in users[:10] %}
                 <tr>
@@ -299,7 +233,6 @@
         </div>
       </div>
     </div>
-
-  </div><!-- /row -->
-</div><!-- /container -->
+  </div>
+</div>
 {% endblock %}
