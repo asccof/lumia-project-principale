@@ -133,12 +133,17 @@ def admin_dashboard():
 # --------------------- Classement (table dédiée, pas de FK pour éviter l'erreur au boot) ---------------------
 class ProfessionalOrder(db.Model):
     __tablename__ = 'professional_order'
-    professional_id = db.Column(db.Integer, primary_key=True)  # <-- plus de ForeignKey ici
+    professional_id = db.Column(db.Integer, primary_key=True)  # <-- pas de ForeignKey ici
     order_priority = db.Column(db.Integer, nullable=False, default=9999)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 def _ensure_order_table():
     ProfessionalOrder.__table__.create(bind=db.engine, checkfirst=True)
+
+def _load_order_map() -> dict[int, int]:
+    """Retourne {professional_id: order_priority}"""
+    rows = ProfessionalOrder.query.all()
+    return {r.professional_id: (r.order_priority if r.order_priority is not None else 9999) for r in rows}
 
 @admin_bp.route('/professionals/order', methods=['GET', 'POST'], endpoint='admin_professional_order')
 @login_required
@@ -159,7 +164,7 @@ def admin_professional_order():
             except ValueError:
                 continue
             try:
-                priority = int(val.strip()) if val.strip() != '' else 9999
+                priority = int(val.strip()) if (val is not None and val.strip() != '') else 9999
             except ValueError:
                 priority = 9999
 
@@ -175,12 +180,18 @@ def admin_professional_order():
         flash(f"Classement mis à jour pour {updated} professionnels.")
         return redirect(url_for('admin.admin_professional_order'))
 
-    orders = {r.professional_id: r.order_priority for r in ProfessionalOrder.query.all()}
+    orders = _load_order_map()
     professionals = Professional.query.all()
+
+    # Tri d'affichage : ordre admin d'abord, puis nom (stable)
     professionals_sorted = sorted(
         professionals,
         key=lambda p: (orders.get(p.id, 9999), (p.name or '').lower())
     )
+
+    # Injection d'un attribut temporaire pour simplifier le template si besoin
+    for p in professionals_sorted:
+        setattr(p, 'order_priority', orders.get(p.id, 9999))
 
     return render_template(
         'admin_professional_order.html',
@@ -391,7 +402,7 @@ def admin_edit_product(product_id):
         professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
         professional.social_links_approved = bool(request.form.get('social_links_approved'))
 
-        # ✅ durée/buffer (si fournis)
+        # ✅ durée/buffer
         dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
         buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
         if dur_raw:
