@@ -937,4 +937,3 @@ def social_approval(professional_id):
         db.session.commit()
         return jsonify({'success': True, 'approved': approved})
     return jsonify({'success': False, 'message': 'Champ social_links_approved non disponible'}), 400
-
