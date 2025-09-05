@@ -71,21 +71,26 @@
       <!-- Photo -->
       <div class="col-lg-4 text-center">
         <div class="avatar-box">
-          <img
-            class="avatar"
-            alt="Photo de {{ professional.name }}"
-            src="{{ primary_src }}"
-            referrerpolicy="no-referrer"
-            loading="eager"
-            decoding="async"
-            width="600" height="600"
-            onerror="
-              if (this.dataset.step!=='1' && '{{ fallback_local|default('') }}' !== '') {
-                this.dataset.step='1'; this.src='{{ fallback_local }}';
-              } else if (this.dataset.step!=='2') {
-                this.dataset.step='2'; this.src='{{ placeholder }}';
-              } else { this.onerror=null; }
-            ">
+          <picture>
+            <source type="image/webp"
+                    srcset="
+                      {{ url_for('avatar', professional_id=professional.id, s=96,  f='webp', v=professional.updated_at|default(0)) }} 96w,
+                      {{ url_for('avatar', professional_id=professional.id, s=192, f='webp', v=professional.updated_at|default(0)) }} 192w,
+                      {{ url_for('avatar', professional_id=professional.id, s=384, f='webp', v=professional.updated_at|default(0)) }} 384w">
+            <source type="image/jpeg"
+                    srcset="
+                      {{ url_for('avatar', professional_id=professional.id, s=96,  f='jpg', v=professional.updated_at|default(0)) }} 96w,
+                      {{ url_for('avatar', professional_id=professional.id, s=192, f='jpg', v=professional.updated_at|default(0)) }} 192w,
+                      {{ url_for('avatar', professional_id=professional.id, s=384, f='jpg', v=professional.updated_at|default(0)) }} 384w">
+            <img
+              class="avatar"
+              alt="Photo de {{ professional.name }}"
+              src="{{ url_for('avatar', professional_id=professional.id, s=192, f='jpg', v=professional.updated_at|default(0)) }}"
+              referrerpolicy="no-referrer"
+              loading="eager"
+              decoding="async"
+              width="600" height="600">
+          </picture>
         </div>
       </div>
 
