@@ -130,8 +130,32 @@ def admin_dashboard():
         total_revenue=total_revenue
     )
 
+# --------------------- NOUVELLE ROUTE : CLASSEMENT DES PROFESSIONNELS ---------------------
+@admin_bp.route('/professionals/order', methods=['GET', 'POST'], endpoint='admin_professional_order')
+@login_required
+def admin_professional_order():
+    if not current_user.is_admin:
+        flash('Accès refusé')
+        return redirect(url_for('admin.admin_login'))
+
+    if request.method == 'POST':
+        updated = 0
+        for p in Professional.query.all():
+            raw_val = request.form.get(f'order_priority_{p.id}')
+            if raw_val is not None:
+                try:
+                    p.order_priority = int(raw_val)
+                    updated += 1
+                except ValueError:
+                    continue
+        db.session.commit()
+        flash(f"Classement mis à jour pour {updated} professionnels.")
+        return redirect(url_for('admin.admin_professional_order'))
+
+    professionals = Professional.query.order_by(Professional.order_priority.asc().nullsLast(), Professional.name.asc()).all()
+    return render_template('admin_professional_order.html', professionals=professionals)
+
 # --------------------- PROFESSIONNELS (liste type "products") ---------------------
-# ✅ Correction : on s'assure que l'endpoint est bien enregistré comme "admin.admin_products"
 @admin_bp.route('/products', endpoint='admin_products')
 @login_required
 def admin_products():
@@ -141,4 +165,4 @@ def admin_products():
     professionals = Professional.query.order_by(Professional.id.desc()).all()
     return render_template('admin_products.html', professionals=professionals)
 
-# (le reste de ton fichier continue sans modification…)
+# (... le reste de ton fichier admin_server.py reste inchangé ...)
