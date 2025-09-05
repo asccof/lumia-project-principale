@@ -81,6 +81,10 @@ class Professional(db.Model):
     consultation_duration_minutes = db.Column(db.Integer, default=45)
     buffer_between_appointments_minutes = db.Column(db.Integer, default=15)
 
+    # ✅ Nouveau : mise en avant & rang d’affichage (contrôle admin)
+    is_featured = db.Column(db.Boolean, default=False)
+    featured_rank = db.Column(db.Integer)  # 1 = tout en haut, puis 2, 3, ...
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     __table_args__ = (
@@ -94,6 +98,9 @@ class Professional(db.Model):
         db.Index('ix_professionals_created_at', 'created_at'),
         # Index multi-colonnes pour les filtres/search (LIKE sur plusieurs champs)
         db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
+        # ✅ Index pour le classement admin
+        db.Index('ix_professionals_is_featured', 'is_featured'),
+        db.Index('ix_professionals_featured_rank', 'featured_rank'),
     )
 
     def __repr__(self):
