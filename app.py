@@ -4,6 +4,7 @@ from flask import (
 )
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+    # noqa
 from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime, date, timedelta, time as dtime
 from sqlalchemy import or_, text
@@ -25,10 +26,17 @@ try:
 except NameError:
     BASE_DIR = Path(__file__).resolve().parent
 
+# NEW: racine persistante des uploads (monte un Render Disk et mets UPLOAD_ROOT=/var/data/uploads)
+try:
+    UPLOAD_ROOT
+except NameError:
+    UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
+
 try:
     UPLOAD_FOLDER
 except NameError:
-    UPLOAD_FOLDER = BASE_DIR / 'uploads' / 'profiles'
+    # Les photos de profil seront dans <UPLOAD_ROOT>/profiles
+    UPLOAD_FOLDER = Path(UPLOAD_ROOT) / 'profiles'
 
 try:
     ALLOWED_IMAGE_EXT
@@ -68,9 +76,10 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
 app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
 
-# Crée le dossier si besoin
+# Crée le dossier si besoin (racine + profiles)
 try:
-    UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+    Path(UPLOAD_ROOT).mkdir(parents=True, exist_ok=True)
+    Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
 except Exception as e:
     app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
 
@@ -204,7 +213,8 @@ def _process_and_save_profile_image(file_storage) -> str:
     img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
     out_name = f"{uuid.uuid4().hex}.jpg"
-    out_path = UPLOAD_FOLDER / out_name
+    out_path = Path(UPLOAD_FOLDER) / out_name
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
 
     return out_name
@@ -560,10 +570,37 @@ def professional_edit_profile():
 
     return render_template('professional_edit_profile.html', professional=pro)
 
+# ===== Helpers d'avatar / fallback sûrs =====
+PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
+AVATAR_DEFAULT_REL = "img/avatar-default.png"  # à placer dans static/img/
+
+def _avatar_fallback_response():
+    """Retourne l'avatar par défaut si présent dans static, sinon un placeholder neutre."""
+    static_avatar = Path(app.static_folder or (BASE_DIR / "static")) / AVATAR_DEFAULT_REL
+    if static_avatar.exists():
+        # Cache 1 jour
+        resp = send_from_directory(app.static_folder, AVATAR_DEFAULT_REL, conditional=True)
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
+    # Sinon placeholder externe (évite 404)
+    return redirect(PHOTO_PLACEHOLDER)
+
 # ===== Photos de profil =====
 @app.route('/media/profiles/<path:filename>', endpoint='profile_media')
 def profile_media(filename):
-    return send_from_directory(str(UPLOAD_FOLDER), filename, as_attachment=False, max_age=31536000)
+    """
+    Sert un fichier de profil depuis le stockage persistant.
+    Si absent → avatar par défaut (au lieu d'un 404).
+    """
+    # sécurise le path
+    safe_name = os.path.basename(filename)
+    file_path = Path(UPLOAD_FOLDER) / safe_name
+    if file_path.exists() and file_path.is_file():
+        resp = send_from_directory(str(UPLOAD_FOLDER), safe_name, as_attachment=False, conditional=True)
+        resp.headers["Cache-Control"] = "public, max-age=31536000"
+        return resp
+    # fallback propre (évite les 404 observés dans les logs)
+    return _avatar_fallback_response()
 
 @app.route('/professional/profile/photo', methods=['GET', 'POST'], endpoint='professional_upload_photo')
 @login_required
@@ -751,6 +788,29 @@ def professional_appointments():
                            professional=professional,
                            appointments=appointments)
 
+# ===== [EMAIL GUARD] ========================================================
+def email_config_ok() -> bool:
+    """Vérifie la présence de la config SMTP avant d'envoyer quoi que ce soit."""
+    required = ["EMAIL_ENABLED", "EMAIL_HOST", "EMAIL_PORT", "EMAIL_USER", "EMAIL_PASS", "EMAIL_FROM"]
+    missing = [k for k in required if not os.getenv(k)]
+    enabled = os.getenv("EMAIL_ENABLED", "").lower() == "true"
+    if missing or not enabled:
+        app.logger.warning("[NOTIF][EMAIL] Config incomplète (enabled=%s) ; manquants=%s", enabled, missing)
+        return False
+    return True
+
+def safe_send_email(to_addr: str, subject: str, body: str):
+    """Wrap d'envoi d'e-mail: ne tente pas si config incomplète ou destinataire vide."""
+    if not to_addr:
+        app.logger.warning("[NOTIF][EMAIL] destinataire manquant")
+        return
+    if not email_config_ok():
+        return
+    try:
+        send_email(to_addr, subject, body)
+    except Exception as e:
+        app.logger.warning("[NOTIF][EMAIL] échec envoi: %s", e)
+
 # ===== [TIGHRI_R1:NOTIFY_STUB] ==============================================
 def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
     """
@@ -767,7 +827,7 @@ def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
     try:
         if user and getattr(user, 'email', None):
             subject, text = _build_notif(kind, ap, role='patient')
-            send_email(user.email, subject, text)
+            safe_send_email(user.email, subject, text)
     except Exception as e:
         app.logger.warning("Notify patient email failed: %s", e)
 
@@ -789,7 +849,7 @@ def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
         if pro_email:
             try:
                 subject, text = _build_notif('pending', ap, role='pro')
-                send_email(pro_email, subject, text)
+                safe_send_email(pro_email, subject, text)
             except Exception as e:
                 app.logger.warning("Notify pro email failed: %s", e)
 
@@ -1103,8 +1163,6 @@ def site_status():
     return render_template('site_status.html', status=status, stats=stats)
 
 # ===== Proxy d’images pour photos de profils =====
-PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
-
 @app.route("/media/profile/<int:professional_id>", endpoint='profile_photo')
 def profile_photo(professional_id):
     pro = Professional.query.get_or_404(professional_id)
@@ -1112,17 +1170,18 @@ def profile_photo(professional_id):
 
     if raw_url.startswith("/media/profiles/"):
         fname = raw_url.split("/media/profiles/")[-1]
+        # si le fichier local n'existe pas, on renverra le fallback via profile_media
         return redirect(url_for('profile_media', filename=fname, _external=True, _scheme='https'))
 
     if not raw_url:
-        return redirect(PHOTO_PLACEHOLDER)
+        return _avatar_fallback_response()
 
     if raw_url.startswith("http://"):
         raw_url = "https://" + raw_url[len("http://"):]
 
     parsed = urlparse(raw_url)
     if parsed.scheme not in ("http", "https"):
-        return redirect(PHOTO_PLACEHOLDER)
+        return _avatar_fallback_response()
 
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
@@ -1132,7 +1191,7 @@ def profile_photo(professional_id):
         r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
         r.raise_for_status()
     except Exception:
-        return redirect(PHOTO_PLACEHOLDER)
+        return _avatar_fallback_response()
 
     content_type = r.headers.get("Content-Type", "image/jpeg")
     data = r.content
@@ -1146,11 +1205,22 @@ def profile_photo(professional_id):
 def avatar_alias_qs():
     pid = request.args.get("professional_id", type=int)
     if not pid:
-        return redirect(PHOTO_PLACEHOLDER)
+        return _avatar_fallback_response()
     return redirect(url_for("profile_photo", professional_id=pid))
 
 @app.route("/avatar/<int:professional_id>")
 def avatar_alias_path(professional_id):
     return redirect(url_for("profile_photo", professional_id=professional_id))
+
+# ===== Favicon (évite le 404 vu dans les logs) ==============================
+@app.route("/favicon.ico")
+def favicon():
+    # essaie de servir static/favicon.ico, sinon rien (204) pour éviter 404
+    fav_path = Path(app.static_folder or (BASE_DIR / "static")) / "favicon.ico"
+    if fav_path.exists():
+        resp = send_from_directory(app.static_folder, "favicon.ico", conditional=True)
+        resp.headers["Cache-Control"] = "public, max-age=604800"
+        return resp
+    return ("", 204)
 
 # Pas de bloc __main__ (gunicorn utilise app:app)
