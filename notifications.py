@@ -1,32 +1,94 @@
 # notifications.py
-# Envoi d’e-mails via SMTP Zoho (gratuit). SMS/WhatsApp gardés en stubs pour plus tard.
+# Envoi d’e-mails via SMTP (Zoho, Gmail, SendGrid SMTP, etc.). SMS/WhatsApp restent des stubs.
 
-import os, smtplib, ssl
+import os
+import smtplib
+import ssl
 from email.message import EmailMessage
+from typing import Iterable, List, Optional
 
-SMTP_HOST = os.getenv('MAIL_SERVER', 'smtp.zoho.com')
-SMTP_PORT = int(os.getenv('MAIL_PORT', '465'))  # 465 SSL recommandé
-SMTP_USERNAME = os.getenv('MAIL_USERNAME')
-SMTP_PASSWORD = os.getenv('MAIL_PASSWORD')
-USE_SSL = os.getenv('MAIL_USE_SSL', 'True') == 'True'
-USE_TLS = os.getenv('MAIL_USE_TLS', 'False') == 'True'
-DEFAULT_SENDER = os.getenv('MAIL_DEFAULT_SENDER') or SMTP_USERNAME
+# -------- Helpers --------
+def _env_bool(name: str, default: bool = False) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    val = val.strip().lower()
+    return val in {"1", "true", "yes", "on", "y"}
 
-def _send_raw_email(to_address: str, subject: str, body: str) -> bool:
-    if not to_address or not SMTP_USERNAME or not SMTP_PASSWORD:
-        print(f"[NOTIF][EMAIL] Config incomplète ou destinataire manquant (to={to_address})")
-        return False
+def _split_recipients(value: str) -> List[str]:
+    # "a@x.com, b@y.com ; c@z.com" -> ["a@x.com","b@y.com","c@z.com"]
+    parts = []
+    for chunk in (value or "").replace(";", ",").split(","):
+        c = chunk.strip()
+        if c:
+            parts.append(c)
+    return parts
 
+def _choose_port(use_ssl: bool, use_tls: bool, env_port: Optional[str]) -> int:
+    # Si l’utilisateur a explicitement donné un port on le respecte, sinon on devine.
+    if env_port:
+        try:
+            return int(env_port)
+        except ValueError:
+            pass
+    if use_ssl:
+        return 465
+    if use_tls:
+        return 587
+    return 25
+
+# -------- Configuration --------
+SMTP_HOST = os.getenv("MAIL_SERVER", "smtp.zoho.com")
+USE_SSL   = _env_bool("MAIL_USE_SSL", True)     # SSL implicite recommandé avec Zoho
+USE_TLS   = _env_bool("MAIL_USE_TLS", False)    # STARTTLS si activé
+SMTP_PORT = _choose_port(USE_SSL, USE_TLS, os.getenv("MAIL_PORT"))
+
+SMTP_USERNAME = os.getenv("MAIL_USERNAME")
+SMTP_PASSWORD = os.getenv("MAIL_PASSWORD")
+
+FROM_NAME     = os.getenv("MAIL_FROM_NAME", "Tighri")
+DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER") or SMTP_USERNAME or "no-reply@tighri.com"
+REPLY_TO      = os.getenv("MAIL_REPLY_TO")  # optionnel
+
+BRAND = os.getenv("BRAND_NAME", "Tighri")
+
+# -------- Core email --------
+def _build_message(
+    to_addresses: Iterable[str],
+    subject: str,
+    body_text: str,
+    body_html: Optional[str] = None,
+) -> EmailMessage:
     msg = EmailMessage()
-    msg['From'] = DEFAULT_SENDER
-    msg['To'] = to_address
-    msg['Subject'] = subject
-    msg.set_content(body)
+    # From: "Nom <email>"
+    msg["From"] = f"{FROM_NAME} <{DEFAULT_SENDER}>" if FROM_NAME and DEFAULT_SENDER else (DEFAULT_SENDER or "")
+    msg["To"] = ", ".join(to_addresses)
+    msg["Subject"] = subject
+    if REPLY_TO:
+        msg["Reply-To"] = REPLY_TO
+
+    if body_html:
+        # Multipart alternatif (texte + HTML)
+        msg.set_content(body_text or "")
+        msg.add_alternative(body_html, subtype="html")
+    else:
+        # Texte simple
+        msg.set_content(body_text or "")
+
+    return msg
+
+def _send_via_smtp(msg: EmailMessage) -> bool:
+    if not SMTP_HOST:
+        print("[NOTIF][EMAIL] ERREUR: MAIL_SERVER non défini.")
+        return False
+    if not SMTP_USERNAME or not SMTP_PASSWORD:
+        print("[NOTIF][EMAIL] Config incomplète: MAIL_USERNAME/MAIL_PASSWORD manquants.")
+        return False
 
     try:
         if USE_SSL:
-            ctx = ssl.create_default_context()
-            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx, timeout=20) as s:
+            context = ssl.create_default_context()
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=context, timeout=20) as s:
                 s.login(SMTP_USERNAME, SMTP_PASSWORD)
                 s.send_message(msg)
         else:
@@ -34,23 +96,48 @@ def _send_raw_email(to_address: str, subject: str, body: str) -> bool:
                 s.ehlo()
                 if USE_TLS:
                     s.starttls(context=ssl.create_default_context())
+                    s.ehlo()
                 s.login(SMTP_USERNAME, SMTP_PASSWORD)
                 s.send_message(msg)
-        print(f"[NOTIF][EMAIL] OK -> {to_address} : {subject}")
+        print(f"[NOTIF][EMAIL] OK -> {msg.get('To')} : {msg.get('Subject')}")
         return True
     except Exception as e:
-        print(f"[NOTIF][EMAIL] ERREUR -> {to_address}: {e}")
+        print(f"[NOTIF][EMAIL] ERREUR -> {msg.get('To')}: {e}")
         return False
 
-def send_email(email: str, subject: str, body: str) -> bool:
-    return _send_raw_email(email, subject, body)
+# -------- API publique --------
+def _send_raw_email(to_address: str, subject: str, body: str) -> bool:
+    """
+    Compat rétro avec l’existant: envoi texte simple à un seul destinataire.
+    """
+    recipients = _split_recipients(to_address)
+    if not recipients:
+        print(f"[NOTIF][EMAIL] Destinataire manquant.")
+        return False
+    msg = _build_message(recipients, subject, body_text=body, body_html=None)
+    return _send_via_smtp(msg)
+
+def send_email(email: str, subject: str, body: str, html: Optional[str] = None) -> bool:
+    """
+    Envoi d’e-mail.
+    - email: destinataire(s) (séparés par virgule/point-virgule).
+    - subject: sujet.
+    - body: version texte.
+    - html: (optionnel) version HTML.
+    """
+    recipients = _split_recipients(email)
+    if not recipients:
+        print("[NOTIF][EMAIL] Destinataire manquant.")
+        return False
+    msg = _build_message(recipients, subject, body_text=body, body_html=html)
+    return _send_via_smtp(msg)
 
 def send_sms(phone: str, text: str) -> bool:
-    # Stub pour plus tard (Twilio, Vonage, etc.)
+    # Stub pour intégration future (Twilio/Vonage…)
     print(f"[NOTIF][SMS] (stub) -> {phone}: {text}")
     return False
 
 def send_whatsapp(phone: str, text: str) -> bool:
-    # Stub pour plus tard (WhatsApp Business API / Twilio)
+    # Stub pour intégration future (WhatsApp Business API / Twilio)
     print(f"[NOTIF][WA] (stub) -> {phone}: {text}")
     return False
