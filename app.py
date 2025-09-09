@@ -755,16 +755,15 @@ def professional_appointments():
 def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
     """
     Envoie les notifications e-mail :
-    - au patient (toujours, si e-mail dispo)
+    - au patient (si e-mail dispo)
     - au professionnel UNIQUEMENT quand kind == 'pending' (nouvelle demande)
-      (pour 'accepted'/'refused', c'est le pro qui agit, donc on notifie surtout le patient)
     """
+    # Patient
     try:
         user = User.query.get(user_id)  # patient
     except Exception:
         user = None
 
-    # Patient
     try:
         if user and getattr(user, 'email', None):
             subject, text = _build_notif(kind, ap, role='patient')
@@ -772,7 +771,7 @@ def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
     except Exception as e:
         app.logger.warning("Notify patient email failed: %s", e)
 
-    # Pro (uniquement à la création 'pending' pour l’avertir qu’une demande arrive)
+    # Pro (uniquement à la création 'pending')
     if kind == 'pending':
         try:
             pro = ap.professional or Professional.query.get(ap.professional_id)
@@ -781,12 +780,11 @@ def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
 
         pro_email = None
         if pro:
-            pro_user = None
             try:
                 pro_user = User.query.filter_by(username=pro.name).first()
             except Exception:
                 pro_user = None
-            pro_email = getattr(pro_user, 'email', None)
+            pro_email = getattr(pro_user, 'email', None) if pro_user else None
 
         if pro_email:
             try:
@@ -797,7 +795,7 @@ def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
 
     # SMS / WhatsApp restent des stubs pour l’instant (non activés)
     app.logger.info("[NOTIFY] kind=%s ap_id=%s done", kind, getattr(ap, 'id', None))
-)
+
 # ===========================================================================
 
 @app.route('/professional/appointment/<int:appointment_id>/<action>', methods=['POST'], endpoint='professional_appointment_action')
