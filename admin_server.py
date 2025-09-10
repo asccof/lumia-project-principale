@@ -4,25 +4,8 @@ from __future__ import annotations
 from datetime import datetime
 from functools import wraps
 
-from flask import (
-    Blueprint,
-    abort,
-    flash,
-    redirect,
-    render_template,
-    request,
-    url_for,
-)
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, logout_user
-
-# On importe la DB et les modèles depuis ton app principale
-# (ces noms existent déjà dans ton projet ; on évite toute modification)
-from app import db
-try:
-    from app import User, Professional, Appointment  # type: ignore
-except Exception:
-    # Certains projets rangent les modèles dans app.models
-    from app.models import User, Professional, Appointment  # type: ignore
 
 # -------------------------------------------------------------------
 # Blueprint
@@ -30,13 +13,28 @@ except Exception:
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 # -------------------------------------------------------------------
-# Garde-fou "admin_required" sans rien casser ailleurs
+# Util: résout l'import circulaire en important db & modèles à l'intérieur des vues
+# -------------------------------------------------------------------
+def _get_models():
+    """
+    Import paresseux pour éviter le circular import :
+    - app.py peut importer admin_server._build_notif sans que nous importions app ici.
+    - Lorsqu'une vue est appelée, app est déjà initialisé : on peut importer en toute sécurité.
+    """
+    from app import db  # type: ignore
+    try:
+        from app import User, Professional, Appointment  # type: ignore
+    except Exception:
+        from app.models import User, Professional, Appointment  # type: ignore
+    return db, User, Professional, Appointment
+
+# -------------------------------------------------------------------
+# Garde-fou admin
 # -------------------------------------------------------------------
 def admin_required(fn):
     @wraps(fn)
     @login_required
     def wrapper(*args, **kwargs):
-        # On tolère différents attributs possibles
         is_admin = bool(getattr(current_user, "is_admin", False))
         role = (getattr(current_user, "user_type", None) or "").lower()
         if not (is_admin or role == "admin"):
@@ -45,7 +43,7 @@ def admin_required(fn):
     return wrapper
 
 # -------------------------------------------------------------------
-# Helpers lecture "safe" (pas indispensables mais pratiques)
+# Helpers de requêtes (utilisent les modèles passés)
 # -------------------------------------------------------------------
 def _q_all(model, *criterion, order_by=None):
     q = model.query
@@ -62,12 +60,19 @@ def _q_count(model, *criterion):
     return q.count()
 
 # -------------------------------------------------------------------
+# (App attend) Constructeur de notifications – version neutre pour ne rien casser
+# -------------------------------------------------------------------
+def _build_notif(subject: str, body: str) -> dict:
+    return {"subject": subject, "body": body}
+
+# -------------------------------------------------------------------
 # Dashboard
 # -------------------------------------------------------------------
 @admin_bp.route("/")
 @admin_required
 def admin_dashboard():
-    # Pros en attente / valides (les champs existent déjà dans ton modèle)
+    db, User, Professional, Appointment = _get_models()
+
     status_col = getattr(Professional, "status", None)
     id_desc = getattr(Professional, "id").desc()
 
@@ -75,14 +80,11 @@ def admin_dashboard():
         pending_pros = _q_all(Professional, status_col == "en_attente", order_by=id_desc)
         valid_pros = _q_all(Professional, status_col == "valide", order_by=id_desc)
     else:
-        # Si pas de colonne "status", on ne casse rien : tout est "valide"
         pending_pros = []
         valid_pros = _q_all(Professional, order_by=id_desc)
 
-    # Utilisateurs (pour tes compteurs et cartes du dashboard)
     users = _q_all(User, order_by=getattr(User, "id").desc())
 
-    # Derniers rendez-vous (si le modèle existe)
     last_appts = []
     try:
         dt_col = getattr(Appointment, "start_time", None) or getattr(Appointment, "created_at", None)
@@ -99,17 +101,19 @@ def admin_dashboard():
     )
 
 # -------------------------------------------------------------------
-# Professionnels (la “liste” correspond à ton template admin_products.html)
+# Professionnels (liste = ton template admin_products.html)
 # -------------------------------------------------------------------
 @admin_bp.route("/professionals")
 @admin_required
 def admin_products():
+    db, User, Professional, Appointment = _get_models()
     professionals = _q_all(Professional, order_by=getattr(Professional, "id").desc())
     return render_template("admin_products.html", professionals=professionals)
 
 @admin_bp.route("/professionals/pending")
 @admin_required
 def pending_professionals():
+    db, User, Professional, Appointment = _get_models()
     status_col = getattr(Professional, "status", None)
     if status_col is None:
         pros = []
@@ -120,16 +124,15 @@ def pending_professionals():
 @admin_bp.route("/professionals/ranking")
 @admin_required
 def admin_professional_order():
-    order_col = getattr(Professional, "rating", None)
-    if order_col is None:
-        order_col = getattr(Professional, "id")
+    db, User, Professional, Appointment = _get_models()
+    order_col = getattr(Professional, "rating", None) or getattr(Professional, "id")
     pros = Professional.query.order_by(order_col.desc()).all()
     return render_template("admin_products.html", professionals=pros)
 
 @admin_bp.route("/professionals/add", methods=["GET", "POST"])
 @admin_required
 def admin_add_product():
-    # Tu as un template dédié ? Si non, on reste sur la liste.
+    db, User, Professional, Appointment = _get_models()
     if request.method == "POST":
         name = (request.form.get("name") or "").strip()
         if not name:
@@ -155,6 +158,7 @@ def admin_add_product():
 @admin_bp.route("/professionals/<int:professional_id>/edit", methods=["GET", "POST"])
 @admin_required
 def edit_professional(professional_id: int):
+    db, User, Professional, Appointment = _get_models()
     p = Professional.query.get_or_404(professional_id)
     if request.method == "POST":
         p.name = request.form.get("name", p.name)
@@ -166,19 +170,19 @@ def edit_professional(professional_id: int):
         db.session.commit()
         flash("Professionnel mis à jour.", "success")
         return redirect(url_for("admin.admin_products"))
-    # Si tu as un template d’édition dédié, change ici le nom du fichier
     return render_template("admin_products.html", professionals=[p])
 
 @admin_bp.route("/professionals/<int:professional_id>/view")
 @admin_required
 def view_professional(professional_id: int):
+    db, User, Professional, Appointment = _get_models()
     p = Professional.query.get_or_404(professional_id)
-    # Si tu as un template de détail, remplace par son nom
     return render_template("admin_products.html", professionals=[p])
 
 @admin_bp.route("/professionals/<int:professional_id>/delete")
 @admin_required
 def delete_professional(professional_id: int):
+    db, User, Professional, Appointment = _get_models()
     p = Professional.query.get_or_404(professional_id)
     db.session.delete(p)
     db.session.commit()
@@ -188,15 +192,15 @@ def delete_professional(professional_id: int):
 @admin_bp.route("/professionals/<int:professional_id>/availability")
 @admin_required
 def admin_professional_availability(professional_id: int):
+    db, User, Professional, Appointment = _get_models()
     p = Professional.query.get_or_404(professional_id)
-    # Rends un template si tu en as un (placeholder safe)
     return render_template("admin_products.html", professionals=[p])
 
 @admin_bp.route("/professionals/<int:professional_id>/unavailable")
 @admin_required
 def admin_professional_unavailable_slots(professional_id: int):
+    db, User, Professional, Appointment = _get_models()
     p = Professional.query.get_or_404(professional_id)
-    # Rends un template si tu en as un (placeholder safe)
     return render_template("admin_products.html", professionals=[p])
 
 # -------------------------------------------------------------------
@@ -205,15 +209,14 @@ def admin_professional_unavailable_slots(professional_id: int):
 @admin_bp.route("/orders")
 @admin_required
 def admin_orders():
-    # Si tu as un template dédié (ex: admin_orders.html), mets-le ici.
-    # On assemble une petite liste pour le dashboard si besoin.
+    db, User, Professional, Appointment = _get_models()
     orders = []
     try:
-        orders = Appointment.query.order_by(
-            (getattr(Appointment, "start_time", None) or getattr(Appointment, "created_at", Appointment.id)).desc()
-        ).limit(50).all()
+        dt = getattr(Appointment, "start_time", None) or getattr(Appointment, "created_at", None) or getattr(Appointment, "id")
+        orders = Appointment.query.order_by(dt.desc()).limit(50).all()
     except Exception:
         pass
+    # Si tu as un template admin_orders.html, remplace ici :
     return render_template("admin_dashboard.html", pending_pros=[], valid_pros=[], users=[], last_appts=orders)
 
 # alias attendu par admin_dashboard.html
@@ -223,17 +226,19 @@ def admin_appointments():
     return admin_orders()
 
 # -------------------------------------------------------------------
-# Utilisateurs (conforme à ton template admin_users.html)
+# Utilisateurs (conforme à admin_users.html)
 # -------------------------------------------------------------------
 @admin_bp.route("/users")
 @admin_required
 def admin_users():
+    db, User, Professional, Appointment = _get_models()
     users = _q_all(User, order_by=getattr(User, "id").desc())
     return render_template("admin_users.html", users=users)
 
 @admin_bp.route("/users/add", methods=["GET", "POST"])
 @admin_required
 def add_user():
+    db, User, Professional, Appointment = _get_models()
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         email = (request.form.get("email") or "").strip().lower()
@@ -247,7 +252,6 @@ def add_user():
             user_type=request.form.get("user_type") or "patient",
             is_admin=bool(request.form.get("is_admin")),
         )
-        # Mot de passe si tu prévois un champ
         if hasattr(u, "set_password"):
             pwd = request.form.get("password")
             if pwd:
@@ -257,13 +261,13 @@ def add_user():
         flash("Utilisateur créé.", "success")
         return redirect(url_for("admin.admin_users"))
 
-    # GET → réutilise la liste (pas de template dédié fourni)
     users = _q_all(User, order_by=getattr(User, "id").desc())
     return render_template("admin_users.html", users=users)
 
 @admin_bp.route("/users/<int:user_id>/edit", methods=["GET", "POST"])
 @admin_required
 def edit_user(user_id: int):
+    db, User, Professional, Appointment = _get_models()
     u = User.query.get_or_404(user_id)
     if request.method == "POST":
         u.username = request.form.get("username", u.username)
@@ -281,6 +285,7 @@ def edit_user(user_id: int):
 @admin_bp.route("/users/<int:user_id>/delete")
 @admin_required
 def delete_user(user_id: int):
+    db, User, Professional, Appointment = _get_models()
     u = User.query.get_or_404(user_id)
     db.session.delete(u)
     db.session.commit()
@@ -288,17 +293,17 @@ def delete_user(user_id: int):
     return redirect(url_for("admin.admin_users"))
 
 # -------------------------------------------------------------------
-# Déconnexion (appelé par tes templates)
+# Déconnexion
 # -------------------------------------------------------------------
 @admin_bp.route("/logout")
 @login_required
 def admin_logout():
     logout_user()
     flash("Déconnecté.", "success")
-    return redirect(url_for("login"))  # ton endpoint public existant
+    return redirect(url_for("login"))
 
 # -------------------------------------------------------------------
-# (Optionnel) healthcheck interne
+# Healthcheck
 # -------------------------------------------------------------------
 @admin_bp.route("/_health")
 def _health():
