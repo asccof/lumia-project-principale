@@ -4,7 +4,7 @@ from flask import (
 )
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-# noqa
+    # noqa
 from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime, date, timedelta, time as dtime
 from sqlalchemy import or_, text
@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import os, uuid, io, requests
 from notifications import send_email, send_sms, send_whatsapp
-from admin_server import admin_bp, _build_notif  # on réutilise les mêmes textes d’emails que l’admin
+from admin_server import _build_notif  # on réutilise les mêmes textes d’emails que l’admin
 
 # === [TIGHRI_R1:CONFIG_INLINE_SAFE] =========================================
 try:
@@ -103,45 +103,25 @@ def _normalize_pg_uri(uri: str) -> str:
     return uri
 
 # --- Config DB ---
-# 1) Availability: accepte l'ancien nom (ProfessionalAvailability) ou le nouveau (ProfessionalAvailabilityWindow)
-try:
-    from models import db, User, Professional, Appointment, ProfessionalAvailability as AvailabilityModel
-except ImportError:
-    from models import db, User, Professional, Appointment, ProfessionalAvailabilityWindow as AvailabilityModel
+from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
 
-# 2) UnavailableSlot: s'il n'existe pas dans models.py, on déclare une classe fallback compatible
-try:
-    from models import UnavailableSlot  # table 'unavailable_slots' si elle existe déjà chez toi
-except Exception:
-    class UnavailableSlot(db.Model):
-        __tablename__ = "unavailable_slots"
-        id = db.Column(db.Integer, primary_key=True)
-        professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False, index=True)
-        date = db.Column(db.Date, nullable=False, index=True)
-        # on stocke HH:MM comme dans ton code actuel
-        start_time = db.Column(db.String(5), nullable=False)
-        end_time   = db.Column(db.String(5), nullable=False)
-        reason     = db.Column(db.String(255))
-        professional = db.relationship('Professional', backref=db.backref('unavailable_slots', lazy=True))
+uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
+if not uri:
+    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
+uri = _normalize_pg_uri(uri)
 
-# 3) ProfessionalOrder: on l’importe s’il existe, sinon None (pas de redéfinition ici pour éviter le “table already defined”)
-ProfessionalOrder = None
-try:
-    from models import ProfessionalOrder as _PO_from_models
-    ProfessionalOrder = _PO_from_models
-except Exception:
-    try:
-        from professionalorder import ProfessionalOrder as _PO_from_file
-        ProfessionalOrder = _PO_from_file
-    except Exception:
-        ProfessionalOrder = None
+app.config["SQLALCHEMY_DATABASE_URI"] = uri
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
+db.init_app(app)
 
 # --- Login manager ---
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# --- Blueprint Admin ---
+# --- Admin en Blueprint ---
+from admin_server import admin_bp, ProfessionalOrder  # <— NOTE: on importe aussi la classe de classement
 app.register_blueprint(admin_bp, url_prefix='/admin')
 
 # --- User loader ---
@@ -151,6 +131,7 @@ def load_user(user_id):
 
 # ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
 with app.app_context():
+    # create_all va aussi créer la table 'professional_order' car ProfessionalOrder est importé ci-dessus
     db.create_all()
     try:
         # professionals: adresse + géoloc + téléphone + réseaux sociaux
@@ -266,30 +247,22 @@ def index():
     """
     try:
         # tri principal : ordre admin, puis featured, puis featured_rank, puis récents
-        q = db.session.query(Professional)
-        if ProfessionalOrder is not None:
-            q = q.outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
-            order_cols = [
+        featured_professionals = (
+            db.session.query(Professional)
+            .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
+            .filter(Professional.status == 'valide')
+            .order_by(
                 db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc(),
                 Professional.is_featured.desc(),
                 db.func.coalesce(Professional.featured_rank, 999999).asc(),
                 Professional.created_at.desc(),
                 Professional.id.desc()
-            ]
-        else:
-            order_cols = [
-                Professional.is_featured.desc(),
-                db.func.coalesce(Professional.featured_rank, 999999).asc(),
-                Professional.created_at.desc(),
-                Professional.id.desc()
-            ]
-        featured_professionals = (
-            q.filter(Professional.status == 'valide')
-             .order_by(*order_cols)
-             .limit(6)
-             .all()
+            )
+            .limit(6)
+            .all()
         )
     except Exception as e:
+        # En cas d'erreur (ex: table non présente), on ne casse pas l'accueil
         app.logger.warning("Classement admin indisponible (%s), fallback 'featured puis récents'.", e)
         featured_professionals = (
             Professional.query
@@ -677,13 +650,13 @@ def professional_availability():
         return redirect(url_for('index'))
 
     if request.method == 'POST':
-        AvailabilityModel.query.filter_by(professional_id=professional.id).delete()
+        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
 
         def add_window(day, s, e, avail_flag):
             s = (s or '').strip()
             e = (e or '').strip()
             if avail_flag and s and e:
-                av = AvailabilityModel(
+                av = ProfessionalAvailability(
                     professional_id=professional.id,
                     day_of_week=day,
                     start_time=s,
@@ -711,7 +684,7 @@ def professional_availability():
         flash('Disponibilités mises à jour avec succès!')
         return redirect(url_for('professional_availability'))
 
-    all_avs = AvailabilityModel.query.filter_by(professional_id=professional.id).all()
+    all_avs = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
     windows_by_day = {d: [] for d in range(7)}
     for av in all_avs:
         windows_by_day.get(av.day_of_week, []).append(av)
@@ -963,7 +936,7 @@ def api_available_slots(professional_id):
         return jsonify({'error': 'Format de date invalide'}), 400
 
     day_of_week = target_date.weekday()
-    availabilities = AvailabilityModel.query.filter_by(
+    availabilities = ProfessionalAvailability.query.filter_by(
         professional_id=professional_id,
         day_of_week=day_of_week,
         is_available=True
@@ -1065,7 +1038,7 @@ def book_appointment(professional_id):
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
         day_of_week = appointment_datetime.weekday()
-        availabilities = AvailabilityModel.query.filter_by(
+        availabilities = ProfessionalAvailability.query.filter_by(
             professional_id=professional_id,
             day_of_week=day_of_week,
             is_available=True
@@ -1124,7 +1097,7 @@ def book_appointment(professional_id):
         flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
         return redirect(url_for('my_appointments'))
 
-    availabilities = AvailabilityModel.query.filter_by(
+    availabilities = ProfessionalAvailability.query.filter_by(
         professional_id=professional_id, is_available=True
     ).all()
     today = date.today()
