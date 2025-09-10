@@ -1,109 +1,65 @@
 # admin_server.py
 from __future__ import annotations
-
 from datetime import datetime
 from functools import wraps
 
 from flask import (
-    Blueprint,
-    abort,
-    flash,
-    redirect,
-    render_template,
-    request,
-    url_for,
+    Blueprint, abort, flash, redirect, render_template, request, url_for
 )
-from flask_login import (
-    current_user,
-    login_user,
-    logout_user,
-)
-
-# IMPORTANT : on évite la boucle d’import ; on ne va toucher qu’à ce fichier.
-# On tolère deux organisations possibles : modèles au niveau app.py ou app.models
-try:
-    from app import db  # type: ignore
-    try:
-        from app import User, Professional, Appointment  # type: ignore
-    except Exception:
-        from app.models import User, Professional, Appointment  # type: ignore
-except Exception:
-    # Dernier recours si l’app range tout dans app.models
-    from app.models import db, User, Professional, Appointment  # type: ignore
+from flask_login import current_user, login_user, logout_user
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Décorateur admin : gère l’auth locale et la redirection vers /admin/login
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Utilitaires : imports tardifs pour éviter tout import circulaire
+# ─────────────────────────────────────────────────────────────
+def _models():
+    """
+    Importe tardivement db et les modèles depuis app.py
+    (app.py est alors entièrement chargé → pas de boucle).
+    """
+    from app import db, User, Professional, Appointment  # type: ignore
+    return db, User, Professional, Appointment
+
+
+# ─────────────────────────────────────────────────────────────
+# Accès admin
+# ─────────────────────────────────────────────────────────────
 def admin_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        # 1) Non authentifié → on force le login admin (PAS le login pro)
         if not getattr(current_user, "is_authenticated", False):
             return redirect(url_for("admin.admin_login", next=request.url))
-
-        # 2) Authentifié mais pas admin → 403
         is_admin = bool(getattr(current_user, "is_admin", False))
         role = (getattr(current_user, "user_type", "") or "").lower()
         if not (is_admin or role == "admin"):
             abort(403)
-
         return fn(*args, **kwargs)
     return wrapper
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Petits helpers ORM robustes
-# ──────────────────────────────────────────────────────────────────────────────
-def _q_all(model, *criterion, order_by=None, limit=None):
-    q = model.query
-    for c in criterion:
-        q = q.filter(c)
-    if order_by is not None:
-        q = q.order_by(order_by)
-    if limit:
-        q = q.limit(limit)
-    return q.all()
-
-def _q_count(model, *criterion):
-    q = model.query
-    for c in criterion:
-        q = q.filter(c)
-    return q.count()
-
-def _safe_sum(items, attr_name):
-    total = 0.0
-    for it in items:
-        val = getattr(it, attr_name, None)
-        try:
-            total += float(val or 0)
-        except Exception:
-            continue
-    return total
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Page de connexion ADMIN (utilise ton template admin_login.html)
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Login admin (utilise ton template admin_login.html)
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route("/login", methods=["GET", "POST"])
 def admin_login():
     if request.method == "POST":
+        db, User, _, _ = _models()
         username_or_email = (request.form.get("username") or "").strip().lower()
         password = request.form.get("password") or ""
         remember = bool(request.form.get("remember"))
         next_url = request.form.get("next") or request.args.get("next") or url_for("admin.admin_dashboard")
 
-        # On autorise login par username OU email
         user = None
         if username_or_email:
-            user = User.query.filter(
-                (getattr(User, "email").ilike(username_or_email)) |
-                (getattr(User, "username").ilike(username_or_email))
-            ).first()
+            try:
+                user = User.query.filter(
+                    (User.email.ilike(username_or_email)) | (User.username.ilike(username_or_email))
+                ).first()
+            except Exception:
+                user = None
 
-        # Vérif mot de passe : on supporte soit user.check_password, soit un champ hash non standard
         ok_pwd = False
         if user:
             if hasattr(user, "check_password"):
@@ -112,18 +68,16 @@ def admin_login():
                 except Exception:
                     ok_pwd = False
             elif hasattr(user, "password") and isinstance(user.password, str):
-                # Si tu utilises werkzeug.security.generate_password_hash
                 try:
                     from werkzeug.security import check_password_hash
                     ok_pwd = check_password_hash(user.password, password)
                 except Exception:
-                    ok_pwd = (user.password == password)  # dernier fallback (dev only)
+                    ok_pwd = (user.password == password)
 
         if not (user and ok_pwd):
             flash("Identifiants invalides.", "danger")
             return render_template("admin_login.html")
 
-        # Vérifier droit admin
         is_admin = bool(getattr(user, "is_admin", False))
         role = (getattr(user, "user_type", "") or "").lower()
         if not (is_admin or role == "admin"):
@@ -133,38 +87,50 @@ def admin_login():
         login_user(user, remember=remember)
         return redirect(next_url)
 
-    # GET
     return render_template("admin_login.html")
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # Tableau de bord
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route("/")
 @admin_required
 def admin_dashboard():
-    # Professionals
-    id_desc = getattr(Professional.id, "desc") if hasattr(Professional.id, "desc") else None
-    pros = _q_all(Professional, order_by=Professional.id.desc() if id_desc else None, limit=8)
+    db, User, Professional, Appointment = _models()
 
-    # Users
-    users = _q_all(User, order_by=User.id.desc(), limit=10)
+    def _q_all(model, order_col=None, limit=None):
+        q = model.query
+        if order_col is not None:
+            q = q.order_by(order_col)
+        if limit:
+            q = q.limit(limit)
+        return q.all()
 
-    # Appointments (on essaie plusieurs colonnes usuelles)
-    # tri par date si possible, sinon par id desc
+    def _q_count(model):
+        return model.query.count()
+
+    def _safe_sum(items, attr):
+        s = 0.0
+        for it in items:
+            try:
+                s += float(getattr(it, attr, 0) or 0)
+            except Exception:
+                pass
+        return s
+
+    pros = _q_all(Professional, order_col=getattr(Professional.id, "desc")() if hasattr(Professional.id, "desc") else None, limit=8)
+    users = _q_all(User, order_col=User.id.desc(), limit=10)
+
     appt_date_col = getattr(Appointment, "appointment_date", None) or getattr(Appointment, "start_time", None) or getattr(Appointment, "created_at", None)
-    appts = []
     try:
         appts = Appointment.query.order_by((appt_date_col or Appointment.id).desc()).limit(8).all()
     except Exception:
-        appts = _q_all(Appointment, order_by=Appointment.id.desc(), limit=8)
+        appts = _q_all(Appointment, order_col=Appointment.id.desc(), limit=8)
 
-    # Compteurs
     total_professionals = _q_count(Professional)
     total_users = _q_count(User)
     total_appointments = _q_count(Appointment)
 
-    # Somme de revenue si champ "price" (ou "amount", "total_price")
     total_revenue = 0.0
     if hasattr(Appointment, "price"):
         total_revenue = _safe_sum(Appointment.query.all(), "price")
@@ -185,74 +151,89 @@ def admin_dashboard():
     )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Professionnels (liste / pending / classement / CRUD minimum)
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Professionnels (liste / pending / classement / CRUD)
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route("/professionals")
 @admin_required
 def admin_products():
-    pros = _q_all(Professional, order_by=Professional.id.desc())
-    # Réutilisation template admin_products.html (identique au dashboard)
+    db, User, Professional, Appointment = _models()
+
+    pros = Professional.query.order_by(Professional.id.desc()).all()
+
+    appt_date_col = getattr(Appointment, "appointment_date", None) or getattr(Appointment, "start_time", None) or getattr(Appointment, "created_at", None)
+    try:
+        appts = Appointment.query.order_by((appt_date_col or Appointment.id).desc()).limit(8).all()
+    except Exception:
+        appts = Appointment.query.order_by(Appointment.id.desc()).limit(8).all()
+
     return render_template(
         "admin_products.html",
         professionals=pros,
-        users=_q_all(User, order_by=User.id.desc(), limit=10),
-        appointments=_q_all(Appointment, order_by=(getattr(Appointment, "appointment_date", None) or Appointment.id).desc(), limit=8),
-        total_professionals=_q_count(Professional),
-        total_users=_q_count(User),
-        total_appointments=_q_count(Appointment),
+        users=User.query.order_by(User.id.desc()).limit(10).all(),
+        appointments=appts,
+        total_professionals=Professional.query.count(),
+        total_users=User.query.count(),
+        total_appointments=Appointment.query.count(),
         total_revenue=0.0,
     )
+
 
 @admin_bp.route("/professionals/pending")
 @admin_required
 def pending_professionals():
-    status_col = getattr(Professional, "status", None)
-    if status_col is None:
-        pros = []
+    db, User, Professional, Appointment = _models()
+    if hasattr(Professional, "status"):
+        pros = Professional.query.filter(Professional.status == "en_attente").order_by(Professional.id.desc()).all()
     else:
-        pros = _q_all(Professional, status_col == "en_attente", order_by=Professional.id.desc())
+        pros = []
+
+    appt_date_col = getattr(Appointment, "appointment_date", None) or getattr(Appointment, "start_time", None) or getattr(Appointment, "created_at", None)
+    try:
+        appts = Appointment.query.order_by((appt_date_col or Appointment.id).desc()).limit(8).all()
+    except Exception:
+        appts = Appointment.query.order_by(Appointment.id.desc()).limit(8).all()
+
     return render_template(
         "admin_products.html",
         professionals=pros,
-        users=_q_all(User, order_by=User.id.desc(), limit=10),
-        appointments=_q_all(Appointment, order_by=(getattr(Appointment, "appointment_date", None) or Appointment.id).desc(), limit=8),
-        total_professionals=_q_count(Professional),
-        total_users=_q_count(User),
-        total_appointments=_q_count(Appointment),
+        users=User.query.order_by(User.id.desc()).limit(10).all(),
+        appointments=appts,
+        total_professionals=Professional.query.count(),
+        total_users=User.query.count(),
+        total_appointments=Appointment.query.count(),
         total_revenue=0.0,
     )
 
-# Classement : endpoint EXACT attendu par tes templates/menu
+
+# Endpoint EXACT utilisé par tes templates et la sidebar
 @admin_bp.route("/professionals/ranking", methods=["GET", "POST"])
 @admin_required
 def admin_professional_order():
-    # On charge les pros
-    pros = _q_all(Professional, order_by=Professional.id.desc())
+    db, _, Professional, _ = _models()
 
-    # On gère le POST pour enregistrer un ordre simple dans un champ 'order_priority' si présent.
+    pros = Professional.query.order_by(Professional.id.desc()).all()
+
     if request.method == "POST":
         updated = 0
-        has_order_field = hasattr(Professional, "order_priority")
-        for p in pros:
-            key = f"order_priority_{p.id}"
-            if key in request.form:
-                try:
-                    val = int(request.form.get(key) or 0)
-                    if has_order_field:
-                        setattr(p, "order_priority", val)
+        if hasattr(Professional, "order_priority"):
+            for p in pros:
+                key = f"order_priority_{p.id}"
+                if key in request.form:
+                    try:
+                        setattr(p, "order_priority", int(request.form.get(key) or 0))
                         updated += 1
-                except Exception:
-                    continue
-        if updated:
-            db.session.commit()
-            flash("Classement enregistré.", "success")
+                    except Exception:
+                        pass
+            if updated:
+                db.session.commit()
+                flash("Classement enregistré.", "success")
+            else:
+                flash("Aucune valeur de classement mise à jour.", "warning")
         else:
-            flash("Aucun champ de classement à mettre à jour dans le modèle Professional.", "warning")
-
+            flash("Le modèle Professional n’a pas de champ 'order_priority'.", "warning")
         return redirect(url_for("admin.admin_professional_order"))
 
-    # En GET, on passe un dict { pro.id: order_priority } attendu par ton template
     orders = {}
     if hasattr(Professional, "order_priority"):
         for p in pros:
@@ -260,57 +241,38 @@ def admin_professional_order():
 
     return render_template("admin_professional_order.html", professionals=pros, orders=orders)
 
-# (Alias si jamais un ancien template utilisait un autre endpoint)
-@admin_bp.route("/professionals/ranking/alias", methods=["GET", "POST"])
-@admin_required
-def admin_professional_order_alias():
-    return admin_professional_order()
-
-@admin_bp.route("/professionals/add", methods=["GET", "POST"])
-@admin_required
-def admin_add_product():
-    if request.method == "POST":
-        name = (request.form.get("name") or "").strip()
-        if not name:
-            flash("Le nom est obligatoire.", "warning")
-            return redirect(url_for("admin.admin_add_product"))
-
-        p = Professional(
-            name=name,
-            specialty=request.form.get("specialty"),
-            location=request.form.get("location"),
-            status=request.form.get("status") or "en_attente",
-            consultation_duration_minutes=int(request.form.get("consultation_duration_minutes") or 45),
-            buffer_between_appointments_minutes=int(request.form.get("buffer_between_appointments_minutes") or 15),
-        )
-        db.session.add(p)
-        db.session.commit()
-        flash("Professionnel créé.", "success")
-        return redirect(url_for("admin.admin_products"))
-
-    # GET → on renvoie la liste (template unique)
-    return admin_products()
 
 @admin_bp.route("/professionals/<int:professional_id>/view")
 @admin_required
 def view_professional(professional_id: int):
+    db, User, Professional, Appointment = _models()
     p = Professional.query.get_or_404(professional_id)
+
+    appt_date_col = getattr(Appointment, "appointment_date", None) or getattr(Appointment, "start_time", None) or getattr(Appointment, "created_at", None)
+    try:
+        appts = Appointment.query.order_by((appt_date_col or Appointment.id).desc()).limit(8).all()
+    except Exception:
+        appts = Appointment.query.order_by(Appointment.id.desc()).limit(8).all()
+
     return render_template(
         "admin_products.html",
         professionals=[p],
-        users=_q_all(User, order_by=User.id.desc(), limit=10),
-        appointments=_q_all(Appointment, order_by=(getattr(Appointment, "appointment_date", None) or Appointment.id).desc(), limit=8),
-        total_professionals=_q_count(Professional),
-        total_users=_q_count(User),
-        total_appointments=_q_count(Appointment),
+        users=User.query.order_by(User.id.desc()).limit(10).all(),
+        appointments=appts,
+        total_professionals=Professional.query.count(),
+        total_users=User.query.count(),
+        total_appointments=Appointment.query.count(),
         total_revenue=0.0,
     )
 
-# ⚠️ Endpoint explicitement attendu par tes templates : admin.admin_edit_product
+
+# Endpoint explicitement attendu dans tes templates (product_id)
 @admin_bp.route("/professionals/<int:product_id>/edit", methods=["GET", "POST"])
 @admin_required
 def admin_edit_product(product_id: int):
+    db, User, Professional, Appointment = _models()
     p = Professional.query.get_or_404(product_id)
+
     if request.method == "POST":
         p.name = request.form.get("name", p.name)
         p.specialty = request.form.get("specialty", p.specialty)
@@ -330,51 +292,74 @@ def admin_edit_product(product_id: int):
         flash("Professionnel mis à jour.", "success")
         return redirect(url_for("admin.admin_products"))
 
+    appt_date_col = getattr(Appointment, "appointment_date", None) or getattr(Appointment, "start_time", None) or getattr(Appointment, "created_at", None)
+    try:
+        appts = Appointment.query.order_by((appt_date_col or Appointment.id).desc()).limit(8).all()
+    except Exception:
+        appts = Appointment.query.order_by(Appointment.id.desc()).limit(8).all()
+
     return render_template(
         "admin_products.html",
         professionals=[p],
-        users=_q_all(User, order_by=User.id.desc(), limit=10),
-        appointments=_q_all(Appointment, order_by=(getattr(Appointment, "appointment_date", None) or Appointment.id).desc(), limit=8),
-        total_professionals=_q_count(Professional),
-        total_users=_q_count(User),
-        total_appointments=_q_count(Appointment),
+        users=User.query.order_by(User.id.desc()).limit(10).all(),
+        appointments=appts,
+        total_professionals=Professional.query.count(),
+        total_users=User.query.count(),
+        total_appointments=Appointment.query.count(),
         total_revenue=0.0,
     )
 
-@admin_bp.route("/professionals/<int:professional_id>/delete")
+
+@admin_bp.route("/professionals/add", methods=["GET", "POST"])
 @admin_required
-def delete_professional(professional_id: int):
-    p = Professional.query.get_or_404(professional_id)
-    db.session.delete(p)
-    db.session.commit()
-    flash("Professionnel supprimé.", "success")
-    return redirect(url_for("admin.admin_products"))
+def admin_add_product():
+    db, _, Professional, _ = _models()
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        if not name:
+            flash("Le nom est obligatoire.", "warning")
+            return redirect(url_for("admin.admin_add_product"))
+
+        p = Professional(
+            name=name,
+            specialty=request.form.get("specialty"),
+            location=request.form.get("location"),
+            status=request.form.get("status") or "en_attente",
+            consultation_duration_minutes=int(request.form.get("consultation_duration_minutes") or 45),
+            buffer_between_appointments_minutes=int(request.form.get("buffer_between_appointments_minutes") or 15),
+        )
+        db.session.add(p)
+        db.session.commit()
+        flash("Professionnel créé.", "success")
+        return redirect(url_for("admin.admin_products"))
+
+    return admin_products()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 # RDV / Commandes
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route("/orders")
 @admin_required
 def admin_orders():
-    # On réutilise le dashboard pour lister
+    db, User, Professional, Appointment = _models()
     appt_date_col = getattr(Appointment, "appointment_date", None) or getattr(Appointment, "start_time", None) or getattr(Appointment, "created_at", None)
-    orders = []
     try:
         orders = Appointment.query.order_by((appt_date_col or Appointment.id).desc()).limit(50).all()
     except Exception:
-        orders = _q_all(Appointment, order_by=Appointment.id.desc(), limit=50)
+        orders = Appointment.query.order_by(Appointment.id.desc()).limit(50).all()
 
     return render_template(
         "admin_dashboard.html",
-        professionals=_q_all(Professional, order_by=Professional.id.desc(), limit=8),
-        users=_q_all(User, order_by=User.id.desc(), limit=10),
+        professionals=Professional.query.order_by(Professional.id.desc()).limit(8).all(),
+        users=User.query.order_by(User.id.desc()).limit(10).all(),
         appointments=orders,
-        total_professionals=_q_count(Professional),
-        total_users=_q_count(User),
-        total_appointments=_q_count(Appointment),
+        total_professionals=Professional.query.count(),
+        total_users=User.query.count(),
+        total_appointments=Appointment.query.count(),
         total_revenue=0.0,
     )
+
 
 @admin_bp.route("/appointments")
 @admin_required
@@ -382,18 +367,21 @@ def admin_appointments():
     return admin_orders()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Utilisateurs (liste + add)
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Utilisateurs
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route("/users")
 @admin_required
 def admin_users():
-    users = _q_all(User, order_by=User.id.desc())
+    db, User, _, _ = _models()
+    users = User.query.order_by(User.id.desc()).all()
     return render_template("admin_users.html", users=users)
+
 
 @admin_bp.route("/users/add", methods=["GET", "POST"])
 @admin_required
 def add_user():
+    db, User, _, _ = _models()
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
         email = (request.form.get("email") or "").strip().lower()
@@ -416,24 +404,34 @@ def add_user():
         flash("Utilisateur créé.", "success")
         return redirect(url_for("admin.admin_users"))
 
-    # GET → affiche liste (pas de template d’édition fourni)
     return admin_users()
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Logout (appelé par ton menu)
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Logout
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route("/logout")
 def admin_logout():
     logout_user()
     flash("Déconnecté.", "success")
-    # Après logout, renvoi vers la page de login admin
     return redirect(url_for("admin.admin_login"))
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Healthcheck
-# ──────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+# Healthcheck + textes mails réutilisables par app.py
+# ─────────────────────────────────────────────────────────────
 @admin_bp.route("/_health")
 def _health():
     return {"ok": True, "ts": datetime.utcnow().isoformat() + "Z"}
+
+
+def _build_notif(kind: str, **kwargs) -> str:
+    """
+    Petit helper pour que app.py puisse réutiliser les mêmes textes.
+    Personnalise au besoin.
+    """
+    if kind == "welcome_admin":
+        return "Bienvenue dans l’administration Tighri."
+    if kind == "appointment_created":
+        return f"Un rendez-vous a été créé (id={kwargs.get('id','?')})."
+    return "Notification Tighri."
