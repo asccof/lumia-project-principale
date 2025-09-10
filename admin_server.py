@@ -2,26 +2,30 @@
 
 from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash, jsonify
 from flask_login import current_user, login_required
-from sqlalchemy import func, or_        # ✅ or_ vient de SQLAlchemy (fix)
-from jinja2 import TemplateNotFound     # ✅ pour fallback si template manquant
+from sqlalchemy import func, or_
+from jinja2 import TemplateNotFound
+from functools import wraps
 from datetime import datetime
+
 from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
 
+# -----------------------------------------------------------------------------
+# Blueprint Admin
+# -----------------------------------------------------------------------------
 admin_bp = Blueprint('admin', __name__, template_folder='templates')
 
-# =========================
-#  Classement des pros (utilisé par app.py)
-# =========================
+# -----------------------------------------------------------------------------
+# Modèle de classement des pros (utilisé aussi par app.py)
+# -----------------------------------------------------------------------------
 class ProfessionalOrder(db.Model):
     __tablename__ = 'professional_order'
     id = db.Column(db.Integer, primary_key=True)
     professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), unique=True, nullable=False)
     order_priority = db.Column(db.Integer, nullable=False, default=999999)
 
-# =========================
-#  Guard admin
-# =========================
-from functools import wraps
+# -----------------------------------------------------------------------------
+# Guard admin
+# -----------------------------------------------------------------------------
 def admin_required(fn):
     @wraps(fn)
     @login_required
@@ -32,12 +36,12 @@ def admin_required(fn):
         return fn(*args, **kwargs)
     return wrapper
 
-# =========================
-#  Notifications (réutilisées par app.py)
-# =========================
+# -----------------------------------------------------------------------------
+# Notifications (réutilisées par app.py)
+# -----------------------------------------------------------------------------
 def _build_notif(kind: str, ap: Appointment, role: str = 'patient'):
     """
-    Construit (subject, body) pour les emails.
+    Retourne (subject, body)
     kind: 'pending' | 'accepted' | 'refused' | 'reminder'
     role: 'patient' | 'pro'
     """
@@ -70,22 +74,22 @@ def _build_notif(kind: str, ap: Appointment, role: str = 'patient'):
 
     return (f"[{brand}] Notification", f"{brand}")
 
-# =========================
-#  Pages Admin
-# =========================
-@admin_bp.route('/', methods=['GET'])
+# -----------------------------------------------------------------------------
+# Pages Admin
+# -----------------------------------------------------------------------------
+@admin_bp.route('/', methods=['GET'], endpoint='admin_dashboard')  # <-- endpoint explicite attendu par les templates
 @admin_required
 def admin_home():
     pending_pros = (Professional.query
                     .filter(Professional.status == 'en_attente')
                     .order_by(Professional.created_at.desc())
-                    .limit(20).all())
+                    .limit(50).all())
     valid_pros = (Professional.query
                   .filter(Professional.status == 'valide')
                   .order_by(Professional.created_at.desc())
-                  .limit(20).all())
-    users = User.query.order_by(User.id.desc()).limit(20).all()
-    last_appts = Appointment.query.order_by(Appointment.id.desc()).limit(20).all()
+                  .limit(50).all())
+    users = User.query.order_by(User.id.desc()).limit(50).all()
+    last_appts = Appointment.query.order_by(Appointment.id.desc()).limit(50).all()
     try:
         return render_template('admin_dashboard.html',
                                pending_pros=pending_pros,
@@ -93,7 +97,7 @@ def admin_home():
                                users=users,
                                last_appts=last_appts)
     except TemplateNotFound:
-        # Fallback minimal si le template n’existe pas encore
+        # Fallback minimal si le template n’existe pas
         return render_template_string("""
         <div class="container p-4">
           <h3>Admin Dashboard (fallback)</h3>
@@ -110,7 +114,7 @@ def admin_users():
     query = User.query
     if q:
         like = f"%{q}%"
-        query = query.filter(or_(User.username.ilike(like), User.email.ilike(like)))   # ✅ fix
+        query = query.filter(or_(User.username.ilike(like), User.email.ilike(like)))
     users = query.order_by(User.id.desc()).all()
     try:
         return render_template('admin_users.html', users=users, q=q)
@@ -164,9 +168,9 @@ def admin_professionals():
         </div>
         """, professionals=pros, status=status)
 
-# =========================
-#  Actions Admin — Pros
-# =========================
+# -----------------------------------------------------------------------------
+# Actions Admin — Pros
+# -----------------------------------------------------------------------------
 @admin_bp.route('/professionals/<int:pro_id>/validate', methods=['POST'])
 @admin_required
 def admin_validate_professional(pro_id):
@@ -189,6 +193,7 @@ def admin_reject_professional(pro_id):
 @admin_required
 def admin_delete_professional(pro_id):
     pro = Professional.query.get_or_404(pro_id)
+    # Nettoyage des données liées
     Appointment.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
     ProfessionalAvailability.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
     UnavailableSlot.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
@@ -198,14 +203,15 @@ def admin_delete_professional(pro_id):
     flash("Profil professionnel supprimé.", "success")
     return redirect(request.referrer or url_for('admin.admin_professionals'))
 
-# =========================
-#  Action Admin — Suppression d'utilisateur
-# =========================
+# -----------------------------------------------------------------------------
+# Action Admin — Suppression d'utilisateur
+# -----------------------------------------------------------------------------
 @admin_bp.route('/users/<int:user_id>/delete', methods=['POST'])
 @admin_required
 def admin_delete_user(user_id):
     user = User.query.get_or_404(user_id)
 
+    # Si c'est un pro, supprimer aussi son profil et ses données liées
     if user.user_type == 'professional':
         pro = Professional.query.filter_by(name=user.username).first()
         if pro:
@@ -215,6 +221,7 @@ def admin_delete_user(user_id):
             ProfessionalOrder.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
             db.session.delete(pro)
 
+    # Si c'est un patient, supprimer ses RDV
     if user.user_type == 'patient':
         Appointment.query.filter_by(patient_id=user.id).delete(synchronize_session=False)
 
@@ -223,9 +230,9 @@ def admin_delete_user(user_id):
     flash("Utilisateur supprimé.", "success")
     return redirect(request.referrer or url_for('admin.admin_users'))
 
-# =========================
-#  RDV — Mise à jour statut (compat logs)
-# =========================
+# -----------------------------------------------------------------------------
+# RDV — Mise à jour du statut via AJAX (compatible logs)
+# -----------------------------------------------------------------------------
 @admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'])
 @admin_required
 def admin_update_order_status(appointment_id):
