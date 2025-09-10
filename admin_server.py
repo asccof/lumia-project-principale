@@ -13,9 +13,24 @@ import os
 
 # --- Modèles et DB ---
 from models import (
-    db, User, Professional, Appointment,
-    ProfessionalAvailability, UnavailableSlot
+    db, User, Professional, Appointment
 )
+
+# --- Compatibilité de noms de modèles entre anciennes/nouvelles versions -----
+# ProfessionalAvailability  ⇄  ProfessionalAvailabilityWindow
+try:
+    from models import ProfessionalAvailability  # nouveau/nom standard
+except Exception:
+    from models import ProfessionalAvailabilityWindow as ProfessionalAvailability  # alias vers l'ancien nom
+
+# UnavailableSlot (au cas où certains projets l’ont nommé "UnavailableTimeSlot")
+try:
+    from models import UnavailableSlot
+except Exception:
+    try:
+        from models import UnavailableTimeSlot as UnavailableSlot  # alias alternative
+    except Exception:
+        UnavailableSlot = None  # type: ignore
 
 # Modèles optionnels (si non présents, on garde l'admin fonctionnel)
 try:
@@ -116,7 +131,7 @@ def _admin_protect():
         if request.path.startswith("/admin/static"):
             return
         # Autoriser redirection quand pas connecté
-        if not current_user.is_authenticated:
+        if not hasattr(current_user, "is_authenticated") or not current_user.is_authenticated:
             return redirect(url_for("admin.admin_login"))
         if not getattr(current_user, "is_admin", False):
             flash("Accès administrateur requis.", "danger")
@@ -165,11 +180,10 @@ def admin_dashboard():
 
 # =============================================================================
 # 6) Professionnels (liste, vue, CRUD léger, statut, disponibilité)
-#    — routes et endpoints attendus par tes templates
 # =============================================================================
 @admin_bp.route("/products", endpoint="admin_products")
 def admin_products():
-    """ATTENTION : dans tes templates, 'products' = professionnels (héritage de nom)."""
+    """ATTENTION : dans certains templates, 'products' = professionnels (héritage de nom)."""
     professionals = Professional.query.order_by(Professional.id.desc()).all()
     return render_template("admin_products.html", professionals=professionals)
 
@@ -317,7 +331,7 @@ def view_professional(professional_id):
     appointments = Appointment.query.filter_by(professional_id=professional.id).order_by(Appointment.appointment_date.desc()).limit(25).all()
     return render_template("view_professional.html", professional=professional, appointments=appointments)
 
-# Validation / Rejet (utilisé par pending_professionals.html – AJAX POST)
+# Validation / Rejet (AJAX)
 @admin_bp.route("/professionals/<int:professional_id>/validate", methods=["POST"], endpoint="validate_professional")
 def validate_professional(professional_id):
     p = Professional.query.get_or_404(professional_id)
@@ -337,7 +351,6 @@ def reject_professional(professional_id):
 def admin_professional_availability(professional_id):
     professional = Professional.query.get_or_404(professional_id)
     if request.method == "POST":
-        # reset
         ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
 
         def add_window(day, s, e, flag):
@@ -390,6 +403,10 @@ def admin_professional_unavailable_slots(professional_id):
             flash("Impossible d’ajouter dans le passé.", "warning")
             return redirect(url_for("admin.admin_professional_unavailable_slots", professional_id=professional.id))
 
+        if UnavailableSlot is None:
+            flash("Le modèle UnavailableSlot est indisponible.", "danger")
+            return redirect(url_for("admin.admin_professional_unavailable_slots", professional_id=professional.id))
+
         slot = UnavailableSlot(
             professional_id=professional.id,
             date=d,
@@ -402,7 +419,10 @@ def admin_professional_unavailable_slots(professional_id):
         flash("Créneau ajouté.", "success")
         return redirect(url_for("admin.admin_professional_unavailable_slots", professional_id=professional.id))
 
-    slots = UnavailableSlot.query.filter_by(professional_id=professional.id).order_by(UnavailableSlot.date.desc()).all()
+    slots = []
+    if UnavailableSlot is not None:
+        slots = UnavailableSlot.query.filter_by(professional_id=professional.id).order_by(UnavailableSlot.date.desc()).all()
+
     return render_template("admin_professional_unavailable_slots.html",
                            professional=professional, unavailable_slots=slots)
 
@@ -410,6 +430,9 @@ def admin_professional_unavailable_slots(professional_id):
                 methods=["POST"], endpoint="admin_delete_unavailable_slot")
 def admin_delete_unavailable_slot(professional_id, slot_id):
     professional = Professional.query.get_or_404(professional_id)
+    if UnavailableSlot is None:
+        flash("Le modèle UnavailableSlot est indisponible.", "danger")
+        return redirect(url_for("admin.admin_professional_unavailable_slots", professional_id=professional.id))
     slot = UnavailableSlot.query.get_or_404(slot_id)
     if slot.professional_id != professional.id:
         flash("Accès non autorisé.", "danger")
@@ -552,7 +575,7 @@ def admin_reviews_pending():
     else:
         reviews = Review.query.filter_by(approved=False).order_by(Review.created_at.desc()).all()
         total_approved = Review.query.filter_by(approved=True).count()
-        total_rejected = 0  # si vous avez un champ/état pour rejet, adaptez
+        total_rejected = 0  # adaptez si vous avez un champ/état
     return render_template("admin_reviews_pending.html",
                            reviews=reviews,
                            total_approved=total_approved,
@@ -582,7 +605,6 @@ def admin_reviews_action(review_id, action):
         db.session.commit()
         flash("Avis approuvé.", "success")
     elif action == "reject":
-        # si vous avez un champ “rejected”, adaptez ; ici on supprime
         db.session.delete(r)
         db.session.commit()
         flash("Avis rejeté (supprimé).", "success")
@@ -592,7 +614,6 @@ def admin_reviews_action(review_id, action):
         flash("Avis supprimé.", "success")
     else:
         flash("Action inconnue.", "danger")
-    # rediriger vers la page pending (conforme à ton template)
     return redirect(url_for("admin.admin_reviews_pending"))
 
 
@@ -627,14 +648,13 @@ def admin_social_action(link_id, action):
 
 
 # =============================================================================
-# 11) Classement “ProfessionalOrder” – page et sauvegarde (admin_professional_order.html)
+# 11) Classement “ProfessionalOrder” – page et sauvegarde
 # =============================================================================
 @admin_bp.route("/professional-order", methods=["GET", "POST"], endpoint="admin_professional_order")
 def admin_professional_order():
     professionals = Professional.query.order_by(Professional.name.asc()).all()
 
     if request.method == "POST":
-        # Form inputs type: order_priority_<id>
         for p in professionals:
             key = f"order_priority_{p.id}"
             val_raw = request.form.get(key)
@@ -654,7 +674,6 @@ def admin_professional_order():
         flash("Classement enregistré.", "success")
         return redirect(url_for("admin.admin_professional_order"))
 
-    # mapping id -> ordre
     orders = {po.professional_id: po.order_priority for po in ProfessionalOrder.query.all()}
     return render_template("admin_professional_order.html",
                            professionals=professionals,
