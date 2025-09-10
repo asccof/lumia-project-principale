@@ -103,35 +103,38 @@ def _normalize_pg_uri(uri: str) -> str:
     return uri
 
 # --- Config DB ---
-# Import compatible pour Availability + import standard des autres modèles
+# 1) Availability: accepte l'ancien nom (ProfessionalAvailability) ou le nouveau (ProfessionalAvailabilityWindow)
 try:
-    from models import db, User, Professional, Appointment, ProfessionalAvailability as AvailabilityModel, UnavailableSlot
+    from models import db, User, Professional, Appointment, ProfessionalAvailability as AvailabilityModel
 except ImportError:
-    from models import db, User, Professional, Appointment, UnavailableSlot, ProfessionalAvailabilityWindow as AvailabilityModel
+    from models import db, User, Professional, Appointment, ProfessionalAvailabilityWindow as AvailabilityModel
 
-# Import robuste de ProfessionalOrder sans double-définition
+# 2) UnavailableSlot: s'il n'existe pas dans models.py, on déclare une classe fallback compatible
+try:
+    from models import UnavailableSlot  # table 'unavailable_slots' si elle existe déjà chez toi
+except Exception:
+    class UnavailableSlot(db.Model):
+        __tablename__ = "unavailable_slots"
+        id = db.Column(db.Integer, primary_key=True)
+        professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False, index=True)
+        date = db.Column(db.Date, nullable=False, index=True)
+        # on stocke HH:MM comme dans ton code actuel
+        start_time = db.Column(db.String(5), nullable=False)
+        end_time   = db.Column(db.String(5), nullable=False)
+        reason     = db.Column(db.String(255))
+        professional = db.relationship('Professional', backref=db.backref('unavailable_slots', lazy=True))
+
+# 3) ProfessionalOrder: on l’importe s’il existe, sinon None (pas de redéfinition ici pour éviter le “table already defined”)
 ProfessionalOrder = None
 try:
-    # priorité : models.py s’il la définit
     from models import ProfessionalOrder as _PO_from_models
     ProfessionalOrder = _PO_from_models
 except Exception:
     try:
-        # sinon un module séparé (tu avais dit avoir créé professionalorder.py)
         from professionalorder import ProfessionalOrder as _PO_from_file
         ProfessionalOrder = _PO_from_file
     except Exception:
-        ProfessionalOrder = None  # on gérera un fallback dans la requête d’index
-
-uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
-if not uri:
-    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
-uri = _normalize_pg_uri(uri)
-
-app.config["SQLALCHEMY_DATABASE_URI"] = uri
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
-db.init_app(app)
+        ProfessionalOrder = None
 
 # --- Login manager ---
 login_manager = LoginManager()
