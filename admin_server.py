@@ -1,8 +1,9 @@
 # admin_server.py
 
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask import Blueprint, render_template, render_template_string, request, redirect, url_for, flash, jsonify
 from flask_login import current_user, login_required
-from sqlalchemy import func
+from sqlalchemy import func, or_        # ✅ or_ vient de SQLAlchemy (fix)
+from jinja2 import TemplateNotFound     # ✅ pour fallback si template manquant
 from datetime import datetime
 from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
 
@@ -18,16 +19,17 @@ class ProfessionalOrder(db.Model):
     order_priority = db.Column(db.Integer, nullable=False, default=999999)
 
 # =========================
-#  Helpers / Guard
+#  Guard admin
 # =========================
+from functools import wraps
 def admin_required(fn):
+    @wraps(fn)
     @login_required
     def wrapper(*args, **kwargs):
         if not getattr(current_user, 'is_admin', False):
             flash("Accès admin requis", "danger")
             return redirect(url_for('index'))
         return fn(*args, **kwargs)
-    wrapper.__name__ = fn.__name__
     return wrapper
 
 # =========================
@@ -44,32 +46,26 @@ def _build_notif(kind: str, ap: Appointment, role: str = 'patient'):
     pro_name = p.name if p else "Professionnel"
     pat_name = u.username if u else "Patient"
     when = ap.appointment_date.strftime("%d/%m/%Y %H:%M") if ap.appointment_date else "—"
-
     brand = "Tighri"
 
     if role == 'patient':
         if kind == 'pending':
             return (f"[{brand}] Demande envoyée",
-                    f"Bonjour {pat_name},\n\n"
-                    f"Votre demande de rendez-vous du {when} avec {pro_name} a été envoyée.\n"
-                    f"Vous recevrez une confirmation dès que possible.\n\n{brand}")
+                    f"Bonjour {pat_name},\n\nVotre demande de rendez-vous du {when} "
+                    f"avec {pro_name} a été envoyée.\nVous recevrez une confirmation bientôt.\n\n{brand}")
         if kind == 'accepted':
             return (f"[{brand}] Rendez-vous confirmé",
-                    f"Bonjour {pat_name},\n\n"
-                    f"Votre rendez-vous du {when} avec {pro_name} est CONFIRMÉ.\n\n{brand}")
+                    f"Bonjour {pat_name},\n\nVotre rendez-vous du {when} avec {pro_name} est CONFIRMÉ.\n\n{brand}")
         if kind == 'refused':
             return (f"[{brand}] Rendez-vous refusé",
-                    f"Bonjour {pat_name},\n\n"
-                    f"Votre demande du {when} avec {pro_name} a été refusée.\n\n{brand}")
+                    f"Bonjour {pat_name},\n\nVotre demande du {when} avec {pro_name} a été refusée.\n\n{brand}")
         if kind == 'reminder':
             return (f"[{brand}] Rappel : rendez-vous demain",
-                    f"Bonjour {pat_name},\n\n"
-                    f"Rappel : vous avez un rendez-vous le {when} avec {pro_name}.\n\n{brand}")
+                    f"Bonjour {pat_name},\n\nRappel : rendez-vous le {when} avec {pro_name}.\n\n{brand}")
     else:  # role == 'pro'
         if kind == 'pending':
             return (f"[{brand}] Nouvelle demande de rendez-vous",
-                    f"Bonjour {pro_name},\n\n"
-                    f"Nouvelle demande pour le {when} de la part de {pat_name}.\n"
+                    f"Bonjour {pro_name},\n\nNouvelle demande pour le {when} de la part de {pat_name}.\n"
                     f"Merci de confirmer dans votre espace.\n\n{brand}")
 
     return (f"[{brand}] Notification", f"{brand}")
@@ -80,7 +76,6 @@ def _build_notif(kind: str, ap: Appointment, role: str = 'patient'):
 @admin_bp.route('/', methods=['GET'])
 @admin_required
 def admin_home():
-    # Pros : inclure en_attente et valide
     pending_pros = (Professional.query
                     .filter(Professional.status == 'en_attente')
                     .order_by(Professional.created_at.desc())
@@ -91,11 +86,22 @@ def admin_home():
                   .limit(20).all())
     users = User.query.order_by(User.id.desc()).limit(20).all()
     last_appts = Appointment.query.order_by(Appointment.id.desc()).limit(20).all()
-    return render_template('admin_dashboard.html',
-                           pending_pros=pending_pros,
-                           valid_pros=valid_pros,
-                           users=users,
-                           last_appts=last_appts)
+    try:
+        return render_template('admin_dashboard.html',
+                               pending_pros=pending_pros,
+                               valid_pros=valid_pros,
+                               users=users,
+                               last_appts=last_appts)
+    except TemplateNotFound:
+        # Fallback minimal si le template n’existe pas encore
+        return render_template_string("""
+        <div class="container p-4">
+          <h3>Admin Dashboard (fallback)</h3>
+          <p>Pending pros: {{ pending_pros|length }} — Valid pros: {{ valid_pros|length }}</p>
+          <p>Users: {{ users|length }} — Last appts: {{ last_appts|length }}</p>
+          <p>Crée le template <code>templates/admin_dashboard.html</code> pour une vue complète.</p>
+        </div>
+        """, pending_pros=pending_pros, valid_pros=valid_pros, users=users, last_appts=last_appts)
 
 @admin_bp.route('/users', methods=['GET'])
 @admin_required
@@ -104,9 +110,26 @@ def admin_users():
     query = User.query
     if q:
         like = f"%{q}%"
-        query = query.filter(db.or_(User.username.ilike(like), User.email.ilike(like)))
+        query = query.filter(or_(User.username.ilike(like), User.email.ilike(like)))   # ✅ fix
     users = query.order_by(User.id.desc()).all()
-    return render_template('admin_users.html', users=users, q=q)
+    try:
+        return render_template('admin_users.html', users=users, q=q)
+    except TemplateNotFound:
+        return render_template_string("""
+        <div class="container p-4">
+          <h3>Admin Users (fallback)</h3>
+          <form method="get"><input name="q" value="{{ q }}" placeholder="Rechercher"><button>OK</button></form>
+          <ul>
+          {% for u in users %}
+            <li>#{{u.id}} — {{u.username}} ({{u.email}}) — {{u.user_type}}
+              <form style="display:inline" method="post" action="{{ url_for('admin.admin_delete_user', user_id=u.id) }}">
+                <button onclick="return confirm('Supprimer utilisateur ?')">Supprimer</button>
+              </form>
+            </li>
+          {% endfor %}
+          </ul>
+        </div>
+        """, users=users, q=q)
 
 @admin_bp.route('/professionals', methods=['GET'])
 @admin_required
@@ -115,11 +138,31 @@ def admin_professionals():
     query = Professional.query
     if status in ('en_attente', 'valide', 'refuse'):
         query = query.filter(Professional.status == status)
-    else:
-        # Par défaut on montre tout (y compris en_attente) — corrige ton point n°2
-        pass
     pros = query.order_by(Professional.created_at.desc()).all()
-    return render_template('admin_professionals.html', professionals=pros, status=status)
+    try:
+        return render_template('admin_professionals.html', professionals=pros, status=status)
+    except TemplateNotFound:
+        return render_template_string("""
+        <div class="container p-4">
+          <h3>Admin Pros (fallback)</h3>
+          <p>Filtre: {{ status }}</p>
+          <ul>
+          {% for p in professionals %}
+            <li>#{{p.id}} — {{p.name}} — {{p.status}}
+              <form style="display:inline" method="post" action="{{ url_for('admin.admin_validate_professional', pro_id=p.id) }}">
+                <button>Valider</button>
+              </form>
+              <form style="display:inline" method="post" action="{{ url_for('admin.admin_reject_professional', pro_id=p.id) }}">
+                <button>Refuser</button>
+              </form>
+              <form style="display:inline" method="post" action="{{ url_for('admin.admin_delete_professional', pro_id=p.id) }}">
+                <button onclick="return confirm('Supprimer pro ?')">Supprimer</button>
+              </form>
+            </li>
+          {% endfor %}
+          </ul>
+        </div>
+        """, professionals=pros, status=status)
 
 # =========================
 #  Actions Admin — Pros
@@ -146,27 +189,23 @@ def admin_reject_professional(pro_id):
 @admin_required
 def admin_delete_professional(pro_id):
     pro = Professional.query.get_or_404(pro_id)
-
-    # Supprimer d'abord tout ce qui dépend du pro pour éviter les erreurs de contrainte
     Appointment.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
     ProfessionalAvailability.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
     UnavailableSlot.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
     ProfessionalOrder.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
-
     db.session.delete(pro)
     db.session.commit()
     flash("Profil professionnel supprimé.", "success")
     return redirect(request.referrer or url_for('admin.admin_professionals'))
 
 # =========================
-#  Action Admin — Suppression d'utilisateur (FIX)
+#  Action Admin — Suppression d'utilisateur
 # =========================
 @admin_bp.route('/users/<int:user_id>/delete', methods=['POST'])
 @admin_required
 def admin_delete_user(user_id):
     user = User.query.get_or_404(user_id)
 
-    # S'il s'agit d'un professionnel, supprimer son profil et ses données
     if user.user_type == 'professional':
         pro = Professional.query.filter_by(name=user.username).first()
         if pro:
@@ -176,7 +215,6 @@ def admin_delete_user(user_id):
             ProfessionalOrder.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
             db.session.delete(pro)
 
-    # S’il s’agit d’un patient, supprimer ses rendez-vous
     if user.user_type == 'patient':
         Appointment.query.filter_by(patient_id=user.id).delete(synchronize_session=False)
 
@@ -186,7 +224,7 @@ def admin_delete_user(user_id):
     return redirect(request.referrer or url_for('admin.admin_users'))
 
 # =========================
-#  RDV — Mise à jour statut (compat logs: /admin/orders/<id>/status)
+#  RDV — Mise à jour statut (compat logs)
 # =========================
 @admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'])
 @admin_required
@@ -201,16 +239,3 @@ def admin_update_order_status(appointment_id):
     db.session.commit()
     flash(f"Rendez-vous #{ap.id} → {new_status}", "success")
     return jsonify({'ok': True})
-
-# =========================
-#  Templates de base admin (fallback si tu n’as pas encore les fichiers)
-# =========================
-@admin_bp.route('/_fallback_templates')
-@admin_required
-def _fallback_templates():
-    return """
-    Prévois les templates:
-    - admin_dashboard.html (listes pending_pros, valid_pros, users, last_appts)
-    - admin_users.html (table avec bouton POST /admin/users/<id>/delete)
-    - admin_professionals.html (table, actions validate/reject/delete)
-    """, 200
