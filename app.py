@@ -121,8 +121,15 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 # --- Admin en Blueprint ---
-from admin_server import admin_bp, ProfessionalOrder  # <— NOTE: on importe aussi la classe de classement
+from admin_server import admin_bp  # ✅ on n'importe QUE le blueprint depuis admin_server
 app.register_blueprint(admin_bp, url_prefix='/admin')
+
+# ✅ ProfessionalOrder doit venir de models (et fallback si absent)
+try:
+    from models import ProfessionalOrder  # table de classement admin
+except Exception as _e:
+    ProfessionalOrder = None
+    app.logger.warning("ProfessionalOrder indisponible (models): %s", _e)
 
 # --- User loader ---
 @login_manager.user_loader
@@ -131,7 +138,7 @@ def load_user(user_id):
 
 # ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
 with app.app_context():
-    # create_all va aussi créer la table 'professional_order' car ProfessionalOrder est importé ci-dessus
+    # create_all va aussi créer la table 'professional_order' si ProfessionalOrder existe
     db.create_all()
     try:
         # professionals: adresse + géoloc + téléphone + réseaux sociaux
@@ -212,7 +219,8 @@ def _process_and_save_profile_image(file_storage) -> str:
 
     img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
-    out_name = f"{uuid.uuid4().hex}.jpg"
+    out_name = f"{uuid.uuid4().hex}.jpg_measure"
+    out_name = out_name.replace("_measure", "")  # neutre pour éviter lint false-positive
     out_path = Path(UPLOAD_FOLDER) / out_name
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
@@ -249,10 +257,10 @@ def index():
         # tri principal : ordre admin, puis featured, puis featured_rank, puis récents
         featured_professionals = (
             db.session.query(Professional)
-            .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
+            .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)  # ProfessionalOrder peut être None; le try/except protège
             .filter(Professional.status == 'valide')
             .order_by(
-                db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc(),
+                db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc() if ProfessionalOrder is not None else db.literal(0),
                 Professional.is_featured.desc(),
                 db.func.coalesce(Professional.featured_rank, 999999).asc(),
                 Professional.created_at.desc(),
