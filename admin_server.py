@@ -12,59 +12,57 @@ from sqlalchemy import or_
 import os
 
 # --- Modèles et DB ---
-from models import (
-    db, User, Professional, Appointment
-)
+from models import db, User, Professional, Appointment
 
-# --- Compatibilité de noms de modèles entre anciennes/nouvelles versions -----
-# ProfessionalAvailability  ⇄  ProfessionalAvailabilityWindow
+# === Compat noms modèles (anciennes/nouvelles bases) =========================
+# Availability: ProfessionalAvailability  ⇄  ProfessionalAvailabilityWindow
 try:
-    from models import ProfessionalAvailability  # nouveau/nom standard
+    from models import ProfessionalAvailability  # nom standard
 except Exception:
-    from models import ProfessionalAvailabilityWindow as ProfessionalAvailability  # alias vers l'ancien nom
+    from models import ProfessionalAvailabilityWindow as ProfessionalAvailability  # alias
 
-# UnavailableSlot (au cas où certains projets l’ont nommé "UnavailableTimeSlot")
+# UnavailableSlot (parfois nommé UnavailableTimeSlot)
 try:
     from models import UnavailableSlot
 except Exception:
     try:
-        from models import UnavailableTimeSlot as UnavailableSlot  # alias alternative
+        from models import UnavailableTimeSlot as UnavailableSlot
     except Exception:
         UnavailableSlot = None  # type: ignore
 
-# Modèles optionnels (si non présents, on garde l'admin fonctionnel)
+# Review (optionnel)
 try:
     from models import Review
 except Exception:
     Review = None  # type: ignore
 
+# SocialLink (optionnel)
 try:
     from models import SocialLink
 except Exception:
     SocialLink = None  # type: ignore
 
+# ProfessionalOrder (⚠️ c’est ici que ton erreur se produisait)
+# → on essaie d’abord d’importer depuis models.py ; si absent, on le déclare.
+try:
+    from models import ProfessionalOrder as _PO_from_models
+    ProfessionalOrder = _PO_from_models
+except Exception:
+    class ProfessionalOrder(db.Model):
+        __tablename__ = "professional_order"
+        professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id"), primary_key=True)
+        order_priority  = db.Column(db.Integer, nullable=False, default=9999)
+        professional = db.relationship("Professional", backref=db.backref("order_entry", uselist=False))
+        def __repr__(self) -> str:
+            return f"<ProfessionalOrder pro_id={self.professional_id} order={self.order_priority}>"
 
 # =============================================================================
-# 1) Modèle ProfessionalOrder (classement des pros pour la home)
-# =============================================================================
-class ProfessionalOrder(db.Model):
-    __tablename__ = "professional_order"
-    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id"), primary_key=True)
-    order_priority  = db.Column(db.Integer, nullable=False, default=9999)
-
-    professional = db.relationship("Professional", backref=db.backref("order_entry", uselist=False))
-
-    def __repr__(self) -> str:
-        return f"<ProfessionalOrder pro_id={self.professional_id} order={self.order_priority}>"
-
-# =============================================================================
-# 2) Notifications e-mail – utilisées par app.py (exportées ici)
+# Notifications e-mail – utilisées aussi par app.py
 # =============================================================================
 def _build_notif(kind, ap: Appointment, role: str = "patient"):
     """
     Retourne (subject, body) pour emails.
-    kind: 'pending'|'accepted'|'refused'|'reminder'
-    role: 'patient'|'pro'
+    kind: 'pending'|'accepted'|'refused'|'reminder' ; role: 'patient'|'pro'
     """
     pro = getattr(ap, "professional", None)
     patient_user = getattr(ap, "patient", None)
@@ -119,34 +117,29 @@ def _build_notif(kind, ap: Appointment, role: str = "patient"):
 
 
 # =============================================================================
-# 3) Blueprint Admin + garde de sécurité is_admin
+# Blueprint Admin + garde de sécurité is_admin
 # =============================================================================
 admin_bp = Blueprint("admin", __name__, template_folder="templates")
 
 @admin_bp.before_app_request
 def _admin_protect():
-    """Protéger les routes /admin/* : admin requis (sauf /admin/login)."""
     if request.path.startswith("/admin") and not request.path.startswith("/admin/login"):
-        # Autoriser assets statiques
         if request.path.startswith("/admin/static"):
             return
-        # Autoriser redirection quand pas connecté
-        if not hasattr(current_user, "is_authenticated") or not current_user.is_authenticated:
+        if not getattr(current_user, "is_authenticated", False):
             return redirect(url_for("admin.admin_login"))
         if not getattr(current_user, "is_admin", False):
             flash("Accès administrateur requis.", "danger")
             return redirect(url_for("index"))
 
-
 # =============================================================================
-# 4) Authentification Admin
+# Authentification Admin
 # =============================================================================
 @admin_bp.route("/login", methods=["GET", "POST"], endpoint="admin_login")
 def admin_login():
     if request.method == "POST":
         username_or_email = (request.form.get("username") or "").strip()
         password = request.form.get("password") or ""
-
         user = User.query.filter(
             or_(User.username == username_or_email, User.email == username_or_email.lower())
         ).first()
@@ -155,7 +148,6 @@ def admin_login():
             flash("Bienvenue dans l’administration.", "success")
             return redirect(url_for("admin.admin_dashboard"))
         flash("Identifiants invalides ou droits insuffisants.", "danger")
-
     return render_template("admin_login.html")
 
 @admin_bp.route("/logout", endpoint="admin_logout")
@@ -163,9 +155,8 @@ def admin_logout():
     logout_user()
     return redirect(url_for("admin.admin_login"))
 
-
 # =============================================================================
-# 5) Dashboard
+# Dashboard
 # =============================================================================
 @admin_bp.route("/", endpoint="admin_dashboard")
 def admin_dashboard():
@@ -177,13 +168,11 @@ def admin_dashboard():
     }
     return render_template("admin_dashboard.html", stats=stats)
 
-
 # =============================================================================
-# 6) Professionnels (liste, vue, CRUD léger, statut, disponibilité)
+# Professionnels
 # =============================================================================
 @admin_bp.route("/products", endpoint="admin_products")
 def admin_products():
-    """ATTENTION : dans certains templates, 'products' = professionnels (héritage de nom)."""
     professionals = Professional.query.order_by(Professional.id.desc()).all()
     return render_template("admin_products.html", professionals=professionals)
 
@@ -209,11 +198,9 @@ def admin_add_product():
         description = (request.form.get("description") or "").strip()
         image_url = (request.form.get("image_url") or "").strip()
 
-        # types de consultation (checkbox multiples "consultation_types")
         types = request.form.getlist("consultation_types")
         types_csv = ",".join(sorted(set([t.strip() for t in types if t.strip()])))
 
-        # réseaux sociaux
         facebook_url  = (request.form.get("facebook_url") or "").strip() or None
         instagram_url = (request.form.get("instagram_url") or "").strip() or None
         tiktok_url    = (request.form.get("tiktok_url") or "").strip() or None
@@ -280,21 +267,17 @@ def admin_edit_product(product_id):
         pro.experience_years = int(request.form.get("experience_years") or pro.experience_years or 0)
         pro.description = (request.form.get("description") or pro.description or "").strip() or None
 
-        # image
         image_url = (request.form.get("image_url") or "").strip()
         if image_url:
             pro.image_url = image_url
 
-        # types consultation
         types = request.form.getlist("consultation_types")
         types_csv = ",".join(sorted(set([t.strip() for t in types if t.strip()])))
         pro.consultation_types = types_csv or pro.consultation_types
 
-        # disponibilité & statut
         pro.availability = (request.form.get("availability") or pro.availability or "disponible").strip()
         pro.status = (request.form.get("status") or pro.status or "en_attente").strip()
 
-        # réseaux sociaux
         pro.facebook_url  = (request.form.get("facebook_url") or pro.facebook_url or "").strip() or None
         pro.instagram_url = (request.form.get("instagram_url") or pro.instagram_url or "").strip() or None
         pro.tiktok_url    = (request.form.get("tiktok_url") or pro.tiktok_url or "").strip() or None
@@ -319,7 +302,6 @@ def delete_professional(product_id):
     flash("Professionnel supprimé.", "success")
     return redirect(url_for("admin.admin_products"))
 
-# alias utilisés par certains templates
 @admin_bp.route("/professionals", endpoint="admin_professionals")
 def admin_professionals():
     professionals = Professional.query.order_by(Professional.id.desc()).all()
@@ -328,10 +310,10 @@ def admin_professionals():
 @admin_bp.route("/professionals/<int:professional_id>/view", endpoint="view_professional")
 def view_professional(professional_id):
     professional = Professional.query.get_or_404(professional_id)
-    appointments = Appointment.query.filter_by(professional_id=professional.id).order_by(Appointment.appointment_date.desc()).limit(25).all()
+    appointments = Appointment.query.filter_by(professional_id=professional.id)\
+        .order_by(Appointment.appointment_date.desc()).limit(25).all()
     return render_template("view_professional.html", professional=professional, appointments=appointments)
 
-# Validation / Rejet (AJAX)
 @admin_bp.route("/professionals/<int:professional_id>/validate", methods=["POST"], endpoint="validate_professional")
 def validate_professional(professional_id):
     p = Professional.query.get_or_404(professional_id)
@@ -421,7 +403,8 @@ def admin_professional_unavailable_slots(professional_id):
 
     slots = []
     if UnavailableSlot is not None:
-        slots = UnavailableSlot.query.filter_by(professional_id=professional.id).order_by(UnavailableSlot.date.desc()).all()
+        slots = UnavailableSlot.query.filter_by(professional_id=professional.id)\
+                                     .order_by(UnavailableSlot.date.desc()).all()
 
     return render_template("admin_professional_unavailable_slots.html",
                            professional=professional, unavailable_slots=slots)
@@ -442,10 +425,7 @@ def admin_delete_unavailable_slot(professional_id, slot_id):
     flash("Créneau supprimé.", "success")
     return redirect(url_for("admin.admin_professional_unavailable_slots", professional_id=professional.id))
 
-
-# =============================================================================
-# 7) Rendez-vous (liste + MAJ statut)
-# =============================================================================
+# Rendez-vous
 @admin_bp.route("/appointments", endpoint="admin_appointments")
 def admin_appointments():
     appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).limit(500).all()
@@ -462,10 +442,7 @@ def update_appointment_status(appointment_id):
     db.session.commit()
     return jsonify({"success": True})
 
-
-# =============================================================================
-# 8) Utilisateurs (liste / ajouter / éditer / supprimer)
-# =============================================================================
+# Utilisateurs
 @admin_bp.route("/users", endpoint="admin_users")
 def admin_users():
     users = User.query.order_by(User.id.desc()).limit(1000).all()
@@ -478,28 +455,23 @@ def add_user():
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
         is_admin = bool(request.form.get("is_admin"))
-
         if not username or not email or not password:
             flash("Champs requis manquants.", "danger")
             return redirect(url_for("admin.add_user"))
-
         if User.query.filter_by(username=username).first():
             flash("Nom d’utilisateur déjà pris.", "danger")
             return redirect(url_for("admin.add_user"))
         if User.query.filter_by(email=email).first():
             flash("Email déjà enregistré.", "danger")
             return redirect(url_for("admin.add_user"))
-
         from werkzeug.security import generate_password_hash
         u = User(username=username, email=email,
                  password_hash=generate_password_hash(password),
-                 is_admin=is_admin,
-                 user_type="patient")
+                 is_admin=is_admin, user_type="patient")
         db.session.add(u)
         db.session.commit()
         flash("Utilisateur ajouté.", "success")
         return redirect(url_for("admin.admin_users"))
-
     return render_template("add_user.html")
 
 @admin_bp.route("/users/<int:user_id>/edit", methods=["GET", "POST"], endpoint="edit_user")
@@ -513,7 +485,6 @@ def edit_user(user_id):
         phone = (request.form.get("phone") or user.phone or "").strip() or None
         is_admin = bool(request.form.get("is_admin"))
 
-        # unicité minimale
         collision = User.query.filter(User.id != user.id, User.username == username).first()
         if collision:
             flash("Nom d’utilisateur déjà pris.", "danger")
@@ -523,17 +494,15 @@ def edit_user(user_id):
             flash("Email déjà utilisé.", "danger")
             return redirect(url_for("admin.edit_user", user_id=user.id))
 
+        from werkzeug.security import generate_password_hash
         user.username = username
         user.email = email
         user.user_type = user_type
         user.is_admin = is_admin
         user.phone = phone
-
         if new_pass:
-            from werkzeug.security import generate_password_hash
             user.password_hash = generate_password_hash(new_pass)
 
-        # Conversion vers professionnel : créer/mettre à jour un profil si besoin
         if user_type == "professional":
             pro = Professional.query.filter_by(name=user.username).first()
             if not pro:
@@ -552,7 +521,6 @@ def edit_user(user_id):
         db.session.commit()
         flash("Utilisateur modifié.", "success")
         return redirect(url_for("admin.admin_users"))
-
     return render_template("edit_user.html", user=user)
 
 @admin_bp.route("/users/<int:user_id>/delete", endpoint="delete_user")
@@ -563,10 +531,7 @@ def delete_user(user_id):
     flash("Utilisateur supprimé.", "success")
     return redirect(url_for("admin.admin_users"))
 
-
-# =============================================================================
-# 9) Avis (pending/approve/reject/delete) — robustes si Review absent
-# =============================================================================
+# Avis (optionnels)
 @admin_bp.route("/reviews/pending", endpoint="admin_reviews_pending")
 def admin_reviews_pending():
     if Review is None:
@@ -575,7 +540,7 @@ def admin_reviews_pending():
     else:
         reviews = Review.query.filter_by(approved=False).order_by(Review.created_at.desc()).all()
         total_approved = Review.query.filter_by(approved=True).count()
-        total_rejected = 0  # adaptez si vous avez un champ/état
+        total_rejected = 0
     return render_template("admin_reviews_pending.html",
                            reviews=reviews,
                            total_approved=total_approved,
@@ -616,10 +581,7 @@ def admin_reviews_action(review_id, action):
         flash("Action inconnue.", "danger")
     return redirect(url_for("admin.admin_reviews_pending"))
 
-
-# =============================================================================
-# 10) Liens sociaux (pending/approve/reject) — robustes si SocialLink absent
-# =============================================================================
+# Liens sociaux (optionnels)
 @admin_bp.route("/social/pending", endpoint="admin_social_pending")
 def admin_social_pending():
     if SocialLink is None:
@@ -646,10 +608,7 @@ def admin_social_action(link_id, action):
         flash("Action inconnue.", "danger")
     return redirect(url_for("admin.admin_social_pending"))
 
-
-# =============================================================================
-# 11) Classement “ProfessionalOrder” – page et sauvegarde
-# =============================================================================
+# Classement “ProfessionalOrder”
 @admin_bp.route("/professional-order", methods=["GET", "POST"], endpoint="admin_professional_order")
 def admin_professional_order():
     professionals = Professional.query.order_by(Professional.name.asc()).all()
