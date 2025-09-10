@@ -1,948 +1,216 @@
-# admin_server.py — Blueprint d'administration Tighri (une seule instance Flask dans app.py)
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, current_app
-from flask_login import login_user, login_required, logout_user, current_user
-from werkzeug.security import check_password_hash, generate_password_hash
-from datetime import datetime, date
-from pathlib import Path
-import os, io, uuid
+# admin_server.py
 
-# PIL pour l'upload image (même logique que côté app.py)
-try:
-    from PIL import Image, ImageOps
-    _PIL_OK = True
-except Exception:
-    _PIL_OK = False
-
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
+from flask_login import current_user, login_required
+from sqlalchemy import func
+from datetime import datetime
 from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
 
-admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
+admin_bp = Blueprint('admin', __name__, template_folder='templates')
 
-# ===== Helpers image (admin) =================================================
-ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
-
-def _ext_ok(filename: str) -> bool:
-    if not filename:
-        return False
-    _, ext = os.path.splitext(filename.lower())
-    return ext in ALLOWED_IMAGE_EXT
-
-def _admin_upload_dir() -> Path:
-    """
-    Toujours le même dossier que celui servi par app.py :
-    - Si app.config['UPLOAD_FOLDER'] est défini, on l'utilise.
-    - Sinon, fallback sur <root_path>/uploads/profiles
-    """
-    cfg = current_app.config.get('UPLOAD_FOLDER')
-    if cfg:
-        up = Path(cfg)
-    else:
-        up = Path(current_app.root_path) / 'uploads' / 'profiles'
-    up.mkdir(parents=True, exist_ok=True)
-    return up
-
-def _admin_process_and_save_profile_image(file_storage) -> str:
-    filename = getattr(file_storage, "filename", None)
-    if not filename or not _ext_ok(filename):
-        raise ValueError("Extension non autorisée")
-
-    if not _PIL_OK:
-        raise RuntimeError("Pillow n'est pas installé sur le serveur.")
-
-    raw = file_storage.read()
-    try:
-        img = Image.open(io.BytesIO(raw))
-        img.verify()
-    except Exception:
-        raise ValueError("Fichier image invalide ou corrompu")
-
-    img = Image.open(io.BytesIO(raw))
-    if img.mode not in ("RGB", "RGBA"):
-        img = img.convert("RGB")
-
-    img_no_exif = Image.new(img.mode, img.size)
-    img_no_exif.putdata(list(img.getdata()))
-
-    TARGET_SIZE = (512, 512)
-    img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
-
-    out_name = f"{uuid.uuid4().hex}.jpg"
-    out_path = _admin_upload_dir() / out_name
-    img_square.save(out_path, format="JPEG", quality=88, optimize=True)
-    return out_name
-# ============================================================================
-
-# --------------------- AUTH ADMIN ---------------------
-@admin_bp.route('/login', methods=['GET', 'POST'], endpoint='admin_login')
-def admin_login():
-    if request.method == 'POST':
-        username_or_email = (request.form.get('username') or '').strip()
-        password = (request.form.get('password') or '')
-
-        user = User.query.filter(
-            (User.username == username_or_email) | (User.email == username_or_email.lower())
-        ).first()
-
-        if user and user.is_admin and check_password_hash(user.password_hash, password):
-            remember = bool(request.form.get('remember'))
-            login_user(user, remember=remember)
-            next_url = (request.form.get('next') or '').strip()
-            return redirect(next_url or url_for('admin.admin_dashboard'))
-        else:
-            flash('Identifiants incorrects ou accès non autorisé', 'error')
-
-    return render_template('admin_login.html')
-
-@admin_bp.route('/logout', endpoint='admin_logout')
-@login_required
-def admin_logout():
-    logout_user()
-    return redirect(url_for('admin.admin_login'))
-
-# --------------------- DASHBOARD ---------------------
-@admin_bp.route('/', endpoint='admin_dashboard')
-@login_required
-def admin_dashboard():
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-
-    professionals = Professional.query.order_by(Professional.id.desc()).all()
-    users = User.query.order_by(User.id.desc()).all()
-    appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
-
-    total_professionals = len(professionals)
-    total_users = len(users)
-    total_appointments = len(appointments)
-    total_revenue = sum(
-        (a.professional.consultation_fee or 0)
-        for a in appointments
-        if a.status == 'confirme' and a.professional
-    )
-
-    return render_template(
-        'admin_dashboard.html',
-        professionals=professionals,
-        users=users,
-        appointments=appointments,
-        total_professionals=total_professionals,
-        total_users=total_users,
-        total_appointments=total_appointments,
-        total_revenue=total_revenue
-    )
-
-# --------------------- Classement (table dédiée, pas de FK pour éviter l'erreur au boot) ---------------------
+# =========================
+#  Classement des pros (utilisé par app.py)
+# =========================
 class ProfessionalOrder(db.Model):
     __tablename__ = 'professional_order'
-    professional_id = db.Column(db.Integer, primary_key=True)  # <-- pas de ForeignKey ici
-    order_priority = db.Column(db.Integer, nullable=False, default=9999)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-def _ensure_order_table():
-    ProfessionalOrder.__table__.create(bind=db.engine, checkfirst=True)
-
-def _load_order_map() -> dict[int, int]:
-    """Retourne {professional_id: order_priority}"""
-    rows = ProfessionalOrder.query.all()
-    return {r.professional_id: (r.order_priority if r.order_priority is not None else 9999) for r in rows}
-
-@admin_bp.route('/professionals/order', methods=['GET', 'POST'], endpoint='admin_professional_order')
-@login_required
-def admin_professional_order():
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-
-    _ensure_order_table()
-
-    if request.method == 'POST':
-        updated = 0
-        for key, val in request.form.items():
-            if not key.startswith('order_priority_'):
-                continue
-            try:
-                pro_id = int(key.split('_')[-1])
-            except ValueError:
-                continue
-            try:
-                priority = int(val.strip()) if (val is not None and val.strip() != '') else 9999
-            except ValueError:
-                priority = 9999
-
-            row = ProfessionalOrder.query.get(pro_id)
-            if row is None:
-                row = ProfessionalOrder(professional_id=pro_id, order_priority=priority)
-                db.session.add(row)
-            else:
-                row.order_priority = priority
-            updated += 1
-
-        db.session.commit()
-        flash(f"Classement mis à jour pour {updated} professionnels.")
-        return redirect(url_for('admin.admin_professional_order'))
-
-    orders = _load_order_map()
-    professionals = Professional.query.all()
-
-    # Tri d'affichage : ordre admin d'abord, puis nom (stable)
-    professionals_sorted = sorted(
-        professionals,
-        key=lambda p: (orders.get(p.id, 9999), (p.name or '').lower())
-    )
-
-    # Injection d'un attribut temporaire pour simplifier le template si besoin
-    for p in professionals_sorted:
-        setattr(p, 'order_priority', orders.get(p.id, 9999))
-
-    return render_template(
-        'admin_professional_order.html',
-        professionals=professionals_sorted,
-        orders=orders
-    )
-
-# --------------------- PROFESSIONNELS (liste type "products") ---------------------
-@admin_bp.route('/products', endpoint='admin_products')
-@login_required
-def admin_products():
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-    professionals = Professional.query.order_by(Professional.id.desc()).all()
-    return render_template('admin_products.html', professionals=professionals)
-
-@admin_bp.route('/products/add', methods=['GET', 'POST'], endpoint='admin_add_product')
-@login_required
-def admin_add_product():
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-
-    if request.method == 'POST':
-        name = (request.form.get('name') or '').strip()
-        description = (request.form.get('description') or '').strip()
-        specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
-        city_or_location = (request.form.get('location') or '').strip()
-        image_url = (request.form.get('image_url') or '').strip()
-        phone = (request.form.get('phone') or '').strip()
-
-        # adresse / géoloc
-        address = (request.form.get('address') or '').strip()
-        lat_raw = (request.form.get('latitude') or '').strip()
-        lng_raw = (request.form.get('longitude') or '').strip()
-        try:
-            latitude = float(lat_raw) if lat_raw else None
-        except ValueError:
-            latitude = None
-            flash("Latitude invalide", "error")
-        try:
-            longitude = float(lng_raw) if lng_raw else None
-        except ValueError:
-            longitude = None
-            flash("Longitude invalide", "error")
-
-        # tarif / expérience
-        fee_raw = (request.form.get('price') or request.form.get('consultation_fee') or '0').replace(',', '.')
-        try:
-            consultation_fee = float(fee_raw)
-        except ValueError:
-            consultation_fee = 0.0
-
-        exp_raw = request.form.get('experience_years') or '0'
-        try:
-            experience_years = int(exp_raw)
-        except ValueError:
-            experience_years = 0
-
-        # dispo
-        availability = request.form.get('availability')
-        if availability is None:
-            stock = (request.form.get('stock') or '').strip().lower()
-            availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
-
-        # Types de consultation
-        types_list = request.form.getlist('consultation_types')
-        if not types_list:
-            types_list = []
-            if request.form.get('home_consultation'): types_list.append('domicile')
-            if request.form.get('office_consultation'): types_list.append('cabinet')
-            if request.form.get('online_consultation'): types_list.append('en_ligne')
-        consultation_types = ','.join(types_list) if types_list else 'cabinet'
-
-        # Réseaux sociaux (URLs + approbation)
-        facebook_url  = (request.form.get('facebook_url')  or '').strip()
-        instagram_url = (request.form.get('instagram_url') or '').strip()
-        tiktok_url    = (request.form.get('tiktok_url')    or '').strip()
-        youtube_url   = (request.form.get('youtube_url')   or '').strip()
-        social_links_approved = bool(request.form.get('social_links_approved'))
-
-        # ✅ durée/buffer (défauts 45 & 15 si vides)
-        dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
-        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
-        try:
-            consultation_duration_minutes = max(5, min(240, int(dur_raw))) if dur_raw else 45
-        except ValueError:
-            consultation_duration_minutes = 45
-        try:
-            buffer_between_appointments_minutes = max(0, min(120, int(buf_raw))) if buf_raw else 15
-        except ValueError:
-            buffer_between_appointments_minutes = 15
-
-        # ✅ upload fichier image (optionnel)
-        file = request.files.get('image_file')
-        if file and getattr(file, 'filename', ''):
-            try:
-                saved = _admin_process_and_save_profile_image(file)
-                image_url = f"/media/profiles/{saved}"
-            except Exception as e:
-                flash(f"Image non enregistrée ({e}).", "warning")
-
-        if not name or not specialty:
-            flash("Nom et spécialité sont obligatoires.", "error")
-            return redirect(url_for('admin.admin_add_product'))
-
-        professional = Professional(
-            name=name,
-            description=description,
-            consultation_fee=consultation_fee,
-            image_url=image_url,
-            specialty=specialty,
-            availability=availability,
-            consultation_types=consultation_types,
-            location=city_or_location or 'Casablanca',
-            phone=phone or None,
-            experience_years=experience_years,
-            address=address or None,
-            latitude=latitude,
-            longitude=longitude,
-            facebook_url=facebook_url or None,
-            instagram_url=instagram_url or None,
-            tiktok_url=tiktok_url or None,
-            youtube_url=youtube_url or None,
-            social_links_approved=social_links_approved,
-            status='en_attente',
-            consultation_duration_minutes=consultation_duration_minutes,
-            buffer_between_appointments_minutes=buffer_between_appointments_minutes,
-        )
-        db.session.add(professional)
-        db.session.commit()
-        flash('Professionnel ajouté avec succès!')
-        return redirect(url_for('admin.admin_products'))
-
-    return render_template('add_product.html')
-
-@admin_bp.route('/products/edit/<int:product_id>', methods=['GET', 'POST'], endpoint='admin_edit_product')
-@login_required
-def admin_edit_product(product_id):
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-
-    professional = Professional.query.get_or_404(product_id)
-
-    if request.method == 'POST':
-        professional.name = (request.form.get('name') or professional.name).strip()
-        professional.description = (request.form.get('description') or professional.description).strip()
-
-        fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.')
-        if fee_raw:
-            try:
-                professional.consultation_fee = float(fee_raw)
-            except ValueError:
-                flash("Tarif invalide.", "error")
-
-        professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
-        professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
-        professional.location = (request.form.get('location') or professional.location or '').strip()
-        professional.phone = (request.form.get('phone') or professional.phone or '').strip()
-
-        address = (request.form.get('address') or '').strip()
-        lat_raw = (request.form.get('latitude') or '').strip()
-        lng_raw = (request.form.get('longitude') or '').strip()
-        try:
-            latitude = float(lat_raw) if lat_raw else getattr(professional, 'latitude', None)
-        except ValueError:
-            latitude = getattr(professional, 'latitude', None)
-            flash("Latitude invalide", "error")
-        try:
-            longitude = float(lng_raw) if lng_raw else getattr(professional, 'longitude', None)
-        except ValueError:
-            longitude = getattr(professional, 'longitude', None)
-            flash("Longitude invalide", "error")
-
-        professional.address = address or None
-        professional.latitude = latitude
-        professional.longitude = longitude
-
-        status_val = (request.form.get('status') or '').strip()
-        if status_val:
-            professional.status = status_val
-
-        stock = request.form.get('stock')
-        if stock is not None:
-            professional.availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
-        else:
-            availability = request.form.get('availability')
-            if availability:
-                professional.availability = availability
-
-        types_list = request.form.getlist('consultation_types')
-        if types_list or any(request.form.get(k) for k in ['home_consultation', 'office_consultation', 'online_consultation']):
-            t = []
-            if request.form.get('home_consultation'): t.append('domicile')
-            if request.form.get('office_consultation'): t.append('cabinet')
-            if request.form.get('online_consultation'): t.append('en_ligne')
-            if not t and types_list:
-                t = types_list
-            if t:
-                professional.consultation_types = ','.join(t)
-
-        # Réseaux sociaux
-        professional.facebook_url  = (request.form.get('facebook_url')  or '').strip() or None
-        professional.instagram_url = (request.form.get('instagram_url') or '').strip() or None
-        professional.tiktok_url    = (request.form.get('tiktok_url')    or '').strip() or None
-        professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
-        professional.social_links_approved = bool(request.form.get('social_links_approved'))
-
-        # ✅ durée/buffer
-        dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
-        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
-        if dur_raw:
-            try:
-                professional.consultation_duration_minutes = max(5, min(240, int(dur_raw)))
-            except ValueError:
-                flash("Durée invalide (minutes).", "error")
-        if buf_raw:
-            try:
-                professional.buffer_between_appointments_minutes = max(0, min(120, int(buf_raw)))
-            except ValueError:
-                flash("Buffer invalide (minutes).", "error")
-
-        # ✅ upload fichier image (optionnel)
-        file = request.files.get('image_file')
-        if file and getattr(file, 'filename', ''):
-            try:
-                saved = _admin_process_and_save_profile_image(file)
-                professional.image_url = f"/media/profiles/{saved}"
-            except Exception as e:
-                flash(f"Image non enregistrée ({e}).", "warning")
-
-        db.session.commit()
-        flash('Professionnel modifié avec succès!')
-        return redirect(url_for('admin.admin_products'))
-
-    return render_template('edit_product.html', professional=professional)
-
-@admin_bp.route('/products/<int:product_id>/delete', methods=['POST'], endpoint='admin_delete_product')
-@login_required
-def admin_delete_product(product_id):
-    if not current_user.is_admin:
-        return jsonify({'success': False, 'message': 'Accès refusé'}), 403
-    professional = Professional.query.get_or_404(product_id)
-    db.session.delete(professional)
-    db.session.commit()
-    return jsonify({'success': True, 'message': 'Professionnel supprimé avec succès'})
-
-# Variante CRUD /professionals
-@admin_bp.route('/professionals', endpoint='admin_professionals')
-@login_required
-def admin_professionals():
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-    professionals = Professional.query.order_by(Professional.id.desc()).all()
-    return render_template('admin_professionals.html', professionals=professionals)
-
-@admin_bp.route('/professionals/edit/<int:professional_id>', methods=['GET', 'POST'], endpoint='edit_professional')
-@login_required
-def edit_professional(professional_id):
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-
-    professional = Professional.query.get_or_404(professional_id)
-
-    if request.method == 'POST':
-        professional.name = (request.form.get('name') or professional.name).strip()
-        professional.description = (request.form.get('description') or professional.description).strip()
-        professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
-        professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
-
-        fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.').strip()
-        if fee_raw != '':
-            try:
-                professional.consultation_fee = float(fee_raw)
-            except ValueError:
-                flash("Le tarif est invalide.", "error")
-                return redirect(url_for('admin.edit_professional', professional_id=professional_id))
-
-        status = (request.form.get('status') or '').strip()
-        if status in ('valide', 'en_attente', 'rejete'):
-            professional.status = status
-
-        # Téléphone / Adresse / Ville
-        professional.phone = (request.form.get('phone') or professional.phone or '').strip() or None
-        professional.location = (request.form.get('location') or professional.location or '').strip()
-        professional.address = (request.form.get('address') or professional.address or '').strip() or None
-
-        lat_raw = (request.form.get('latitude') or '').strip()
-        lng_raw = (request.form.get('longitude') or '').strip()
-        try:
-            professional.latitude = float(lat_raw) if lat_raw else professional.latitude
-        except ValueError:
-            flash("Latitude invalide", "error")
-        try:
-            professional.longitude = float(lng_raw) if lng_raw else professional.longitude
-        except ValueError:
-            flash("Longitude invalide", "error")
-
-        # Réseaux sociaux
-        professional.facebook_url  = (request.form.get('facebook_url')  or '').strip() or None
-        professional.instagram_url = (request.form.get('instagram_url') or '').strip() or None
-        professional.tiktok_url    = (request.form.get('tiktok_url')    or '').strip() or None
-        professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
-        professional.social_links_approved = bool(request.form.get('social_links_approved'))
-
-        # ✅ durée/buffer
-        dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
-        buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
-        if dur_raw:
-            try:
-                professional.consultation_duration_minutes = max(5, min(240, int(dur_raw)))
-            except ValueError:
-                flash("Durée invalide (minutes).", "error")
-        if buf_raw:
-            try:
-                professional.buffer_between_appointments_minutes = max(0, min(120, int(buf_raw)))
-            except ValueError:
-                flash("Buffer invalide (minutes).", "error")
-
-        # ✅ upload image (optionnel)
-        file = request.files.get('image_file')
-        if file and getattr(file, 'filename', ''):
-            try:
-                saved = _admin_process_and_save_profile_image(file)
-                professional.image_url = f"/media/profiles/{saved}"
-            except Exception as e:
-                flash(f"Image non enregistrée ({e}).", "warning")
-
-        db.session.commit()
-        flash('Professionnel modifié avec succès!')
-        return redirect(url_for('admin.admin_professionals'))
-
-    return render_template('edit_product.html', professional=professional)
-
-@admin_bp.route('/professionals/delete/<int:professional_id>', endpoint='delete_professional')
-@login_required
-def delete_professional(professional_id):
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-    professional = Professional.query.get_or_404(professional_id)
-    db.session.delete(professional)
-    db.session.commit()
-    flash('Professionnel supprimé avec succès!')
-    return redirect(url_for('admin.admin_professionals'))
-
-@admin_bp.route('/professionals/<int:professional_id>', endpoint='view_professional')
-@login_required
-def view_professional(professional_id):
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-    professional = Professional.query.get_or_404(professional_id)
-    appointments = Appointment.query.filter_by(professional_id=professional_id).order_by(Appointment.appointment_date.desc()).all()
-    return render_template('view_professional.html', professional=professional, appointments=appointments)
-
-# ---------- Gestion des disponibilités (ADMIN) ----------
-@admin_bp.route('/professionals/<int:professional_id>/availability', methods=['GET', 'POST'], endpoint='admin_professional_availability')
-@login_required
-def admin_professional_availability(professional_id):
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-
-    professional = Professional.query.get_or_404(professional_id)
-
-    if request.method == 'POST':
-        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
-
-        def add_window(day, s, e, avail_flag):
-            s = (s or '').strip()
-            e = (e or '').strip()
-            if avail_flag and s and e:
-                av = ProfessionalAvailability(
-                    professional_id=professional.id,
-                    day_of_week=day,
-                    start_time=s,
-                    end_time=e,
-                    is_available=True
-                )
-                db.session.add(av)
-
-        for day in range(7):
-            base_flag = request.form.get(f'available_{day}') == 'on'
-            add_window(day, request.form.get(f'start_time_{day}', ''), request.form.get(f'end_time_{day}', ''), base_flag)
-            add_window(day, request.form.get(f'start_time_{day}_2', ''), request.form.get(f'end_time_{day}_2', ''), request.form.get(f'available_{day}_2') == 'on' or base_flag)
-            add_window(day, request.form.get(f'start_time_{day}_3', ''), request.form.get(f'end_time_{day}_3', ''), request.form.get(f'available_{day}_3') == 'on' or base_flag)
-
-        db.session.commit()
-        flash('Disponibilités mises à jour !')
-        return redirect(url_for('admin.admin_professional_availability', professional_id=professional.id))
-
-    all_avs = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
-    windows_by_day = {d: [] for d in range(7)}
-    for av in all_avs:
-        windows_by_day.get(av.day_of_week, []).append(av)
-    availability_dict = {d: (windows_by_day[d][0] if windows_by_day[d] else None) for d in range(7)}
-
-    return render_template('admin_professional_availability.html',
-                           professional=professional,
-                           availabilities=availability_dict,
-                           windows_by_day=windows_by_day)
-
-# ---------- Gestion des indisponibilités (ADMIN) ----------
-@admin_bp.route('/professionals/<int:professional_id>/unavailable-slots', methods=['GET', 'POST'], endpoint='admin_professional_unavailable_slots')
-@login_required
-def admin_professional_unavailable_slots(professional_id):
-    if not current_user.is_admin:
-        flash('Accès refusé'); return redirect(url_for('admin.admin_login'))
-
-    professional = Professional.query.get_or_404(professional_id)
-
-    if request.method == 'POST':
-        date_str = request.form.get('date', '')
-        start_time = request.form.get('start_time', '')
-        end_time = request.form.get('end_time', '')
-        reason = request.form.get('reason', '').strip()
-
-        try:
-            slot_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        except ValueError:
-            flash('Format de date invalide'); return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional.id))
-
-        if slot_date < date.today():
-            flash('Impossible de bloquer une date passée'); return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional.id))
-
-        if not start_time or not end_time:
-            flash("Heure de début et de fin obligatoires."); return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional.id))
-
-        slot = UnavailableSlot(
-            professional_id=professional.id,
-            date=slot_date,
-            start_time=start_time,
-            end_time=end_time,
-            reason=reason
-        )
-        db.session.add(slot)
-        db.session.commit()
-        flash('Créneau indisponible ajouté.')
-        return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional.id))
-
-    unavailable_slots = UnavailableSlot.query.filter_by(professional_id=professional.id) \
-                                             .order_by(UnavailableSlot.date.desc()) \
-                                             .all()
-    return render_template('admin_professional_unavailable_slots.html',
-                           professional=professional,
-                           unavailable_slots=unavailable_slots)
-
-@admin_bp.route('/professionals/<int:professional_id>/unavailable-slots/<int:slot_id>/delete', methods=['POST'], endpoint='admin_delete_unavailable_slot')
-@login_required
-def admin_delete_unavailable_slot(professional_id, slot_id):
-    if not current_user.is_admin:
-        flash('Accès refusé'); return redirect(url_for('admin.admin_login'))
-    slot = UnavailableSlot.query.get_or_404(slot_id)
-    if slot.professional_id != professional_id:
-        flash('Accès refusé'); return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional_id))
-    db.session.delete(slot)
-    db.session.commit()
-    flash('Créneau supprimé.')
-    return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional_id))
-
-# --------------------- UTILISATEURS ---------------------
-@admin_bp.route('/users', endpoint='admin_users')
-@login_required
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), unique=True, nullable=False)
+    order_priority = db.Column(db.Integer, nullable=False, default=999999)
+
+# =========================
+#  Helpers / Guard
+# =========================
+def admin_required(fn):
+    @login_required
+    def wrapper(*args, **kwargs):
+        if not getattr(current_user, 'is_admin', False):
+            flash("Accès admin requis", "danger")
+            return redirect(url_for('index'))
+        return fn(*args, **kwargs)
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
+# =========================
+#  Notifications (réutilisées par app.py)
+# =========================
+def _build_notif(kind: str, ap: Appointment, role: str = 'patient'):
+    """
+    Construit (subject, body) pour les emails.
+    kind: 'pending' | 'accepted' | 'refused' | 'reminder'
+    role: 'patient' | 'pro'
+    """
+    p = ap.professional or Professional.query.get(ap.professional_id)
+    u = User.query.get(ap.patient_id) if ap.patient_id else None
+    pro_name = p.name if p else "Professionnel"
+    pat_name = u.username if u else "Patient"
+    when = ap.appointment_date.strftime("%d/%m/%Y %H:%M") if ap.appointment_date else "—"
+
+    brand = "Tighri"
+
+    if role == 'patient':
+        if kind == 'pending':
+            return (f"[{brand}] Demande envoyée",
+                    f"Bonjour {pat_name},\n\n"
+                    f"Votre demande de rendez-vous du {when} avec {pro_name} a été envoyée.\n"
+                    f"Vous recevrez une confirmation dès que possible.\n\n{brand}")
+        if kind == 'accepted':
+            return (f"[{brand}] Rendez-vous confirmé",
+                    f"Bonjour {pat_name},\n\n"
+                    f"Votre rendez-vous du {when} avec {pro_name} est CONFIRMÉ.\n\n{brand}")
+        if kind == 'refused':
+            return (f"[{brand}] Rendez-vous refusé",
+                    f"Bonjour {pat_name},\n\n"
+                    f"Votre demande du {when} avec {pro_name} a été refusée.\n\n{brand}")
+        if kind == 'reminder':
+            return (f"[{brand}] Rappel : rendez-vous demain",
+                    f"Bonjour {pat_name},\n\n"
+                    f"Rappel : vous avez un rendez-vous le {when} avec {pro_name}.\n\n{brand}")
+    else:  # role == 'pro'
+        if kind == 'pending':
+            return (f"[{brand}] Nouvelle demande de rendez-vous",
+                    f"Bonjour {pro_name},\n\n"
+                    f"Nouvelle demande pour le {when} de la part de {pat_name}.\n"
+                    f"Merci de confirmer dans votre espace.\n\n{brand}")
+
+    return (f"[{brand}] Notification", f"{brand}")
+
+# =========================
+#  Pages Admin
+# =========================
+@admin_bp.route('/', methods=['GET'])
+@admin_required
+def admin_home():
+    # Pros : inclure en_attente et valide
+    pending_pros = (Professional.query
+                    .filter(Professional.status == 'en_attente')
+                    .order_by(Professional.created_at.desc())
+                    .limit(20).all())
+    valid_pros = (Professional.query
+                  .filter(Professional.status == 'valide')
+                  .order_by(Professional.created_at.desc())
+                  .limit(20).all())
+    users = User.query.order_by(User.id.desc()).limit(20).all()
+    last_appts = Appointment.query.order_by(Appointment.id.desc()).limit(20).all()
+    return render_template('admin_dashboard.html',
+                           pending_pros=pending_pros,
+                           valid_pros=valid_pros,
+                           users=users,
+                           last_appts=last_appts)
+
+@admin_bp.route('/users', methods=['GET'])
+@admin_required
 def admin_users():
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-    users = User.query.order_by(User.id.desc()).all()
-    return render_template('admin_users.html', users=users)
+    q = request.args.get('q', '').strip()
+    query = User.query
+    if q:
+        like = f"%{q}%"
+        query = query.filter(db.or_(User.username.ilike(like), User.email.ilike(like)))
+    users = query.order_by(User.id.desc()).all()
+    return render_template('admin_users.html', users=users, q=q)
 
-@admin_bp.route('/users/add', methods=['GET', 'POST'], endpoint='add_user')
-@login_required
-def add_user():
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
+@admin_bp.route('/professionals', methods=['GET'])
+@admin_required
+def admin_professionals():
+    status = request.args.get('status', 'all')
+    query = Professional.query
+    if status in ('en_attente', 'valide', 'refuse'):
+        query = query.filter(Professional.status == status)
+    else:
+        # Par défaut on montre tout (y compris en_attente) — corrige ton point n°2
+        pass
+    pros = query.order_by(Professional.created_at.desc()).all()
+    return render_template('admin_professionals.html', professionals=pros, status=status)
 
-    if request.method == 'POST':
-        username = (request.form.get('username') or '').strip()
-        email = (request.form.get('email') or '').strip().lower()
-        password = (request.form.get('password') or '')
-        user_type = (request.form.get('user_type') or 'patient').strip()
-        is_admin = 'is_admin' in request.form
-        phone = (request.form.get('phone') or '').strip()
+# =========================
+#  Actions Admin — Pros
+# =========================
+@admin_bp.route('/professionals/<int:pro_id>/validate', methods=['POST'])
+@admin_required
+def admin_validate_professional(pro_id):
+    pro = Professional.query.get_or_404(pro_id)
+    pro.status = 'valide'
+    db.session.commit()
+    flash(f"Professionnel « {pro.name} » validé.", "success")
+    return redirect(request.referrer or url_for('admin.admin_professionals'))
 
-        if not username or not email or not password:
-            flash("Tous les champs sont obligatoires")
-            return redirect(url_for('admin.add_user'))
+@admin_bp.route('/professionals/<int:pro_id>/reject', methods=['POST'])
+@admin_required
+def admin_reject_professional(pro_id):
+    pro = Professional.query.get_or_404(pro_id)
+    pro.status = 'refuse'
+    db.session.commit()
+    flash(f"Professionnel « {pro.name} » refusé.", "warning")
+    return redirect(request.referrer or url_for('admin.admin_professionals'))
 
-        if User.query.filter_by(username=username).first():
-            flash("Nom d'utilisateur déjà utilisé")
-            return redirect(url_for('admin.add_user'))
-        if User.query.filter_by(email=email).first():
-            flash("Email déjà utilisé")
-            return redirect(url_for('admin.add_user'))
+@admin_bp.route('/professionals/<int:pro_id>/delete', methods=['POST'])
+@admin_required
+def admin_delete_professional(pro_id):
+    pro = Professional.query.get_or_404(pro_id)
 
-        user = User(
-            username=username,
-            email=email,
-            password_hash=generate_password_hash(password),
-            user_type=user_type,
-            is_admin=bool(is_admin),
-            phone=phone or None
-        )
-        db.session.add(user)
-        db.session.commit()
-        flash('Utilisateur ajouté avec succès!')
-        return redirect(url_for('admin.admin_users'))
+    # Supprimer d'abord tout ce qui dépend du pro pour éviter les erreurs de contrainte
+    Appointment.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
+    ProfessionalAvailability.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
+    UnavailableSlot.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
+    ProfessionalOrder.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
 
-    return render_template('add_user.html')
+    db.session.delete(pro)
+    db.session.commit()
+    flash("Profil professionnel supprimé.", "success")
+    return redirect(request.referrer or url_for('admin.admin_professionals'))
 
-@admin_bp.route('/users/edit/<int:user_id>', methods=['GET', 'POST'], endpoint='edit_user')
-@login_required
-def edit_user(user_id):
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
+# =========================
+#  Action Admin — Suppression d'utilisateur (FIX)
+# =========================
+@admin_bp.route('/users/<int:user_id>/delete', methods=['POST'])
+@admin_required
+def admin_delete_user(user_id):
     user = User.query.get_or_404(user_id)
 
-    if request.method == 'POST':
-        old_username = user.username
-        old_type = user.user_type
+    # S'il s'agit d'un professionnel, supprimer son profil et ses données
+    if user.user_type == 'professional':
+        pro = Professional.query.filter_by(name=user.username).first()
+        if pro:
+            Appointment.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
+            ProfessionalAvailability.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
+            UnavailableSlot.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
+            ProfessionalOrder.query.filter_by(professional_id=pro.id).delete(synchronize_session=False)
+            db.session.delete(pro)
 
-        username = (request.form.get('username') or user.username).strip()
-        email = (request.form.get('email') or user.email).strip().lower()
-        user_type = (request.form.get('user_type') or user.user_type).strip()
-        is_admin = 'is_admin' in request.form
-        new_pw = (request.form.get('new_password') or request.form.get('password') or '').strip()
-        phone = (request.form.get('phone') or user.phone or '').strip()
+    # S’il s’agit d’un patient, supprimer ses rendez-vous
+    if user.user_type == 'patient':
+        Appointment.query.filter_by(patient_id=user.id).delete(synchronize_session=False)
 
-        if User.query.filter(User.username == username, User.id != user.id).first():
-            flash("Nom d'utilisateur déjà pris")
-            return redirect(url_for('admin.edit_user', user_id=user.id))
-        if User.query.filter(User.email == email, User.id != user.id).first():
-            flash("Email déjà enregistré")
-            return redirect(url_for('admin.edit_user', user_id=user.id))
-
-        user.username = username
-        user.email = email
-        user.user_type = user_type
-        user.is_admin = bool(is_admin)
-        user.phone = phone or None
-        if new_pw:
-            user.password_hash = generate_password_hash(new_pw)
-
-        try:
-            if user_type == 'professional':
-                pro = Professional.query.filter_by(name=username).first()
-                if not pro:
-                    pro_old = Professional.query.filter_by(name=old_username).first()
-                    if pro_old and old_username != username:
-                        pro_old.name = username
-                        pro = pro_old
-                if not pro:
-                    pro = Professional(
-                        name=username,
-                        description="Profil en cours de complétion.",
-                        specialty="Psychologue",
-                        location="Casablanca",
-                        experience_years=0,
-                        consultation_fee=0.0,
-                        phone=user.phone or None,
-                        status="en_attente"
-                    )
-                    db.session.add(pro)
-        except Exception as e:
-            flash(f"Attention: la synchronisation du profil professionnel a rencontré un souci: {e}", "warning")
-
-        db.session.commit()
-        flash('Utilisateur modifié avec succès!')
-        return redirect(url_for('admin.admin_users'))
-
-    return render_template('edit_user.html', user=user)
-
-@admin_bp.route('/users/delete/<int:user_id>', endpoint='delete_user')
-@login_required
-def delete_user(user_id):
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-    user = User.query.get_or_404(user_id)
     db.session.delete(user)
     db.session.commit()
-    flash('Utilisateur supprimé avec succès!')
-    return redirect(url_for('admin.admin_users'))
+    flash("Utilisateur supprimé.", "success")
+    return redirect(request.referrer or url_for('admin.admin_users'))
 
-# --------------------- RDV / COMMANDES ---------------------
-@admin_bp.route('/appointments', endpoint='admin_appointments')
-@login_required
-def admin_appointments():
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-    appointments = Appointment.query.order_by(Appointment.appointment_date.desc()).all()
-    return render_template('admin_appointments.html', appointments=appointments)
+# =========================
+#  RDV — Mise à jour statut (compat logs: /admin/orders/<id>/status)
+# =========================
+@admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'])
+@admin_required
+def admin_update_order_status(appointment_id):
+    new_status = (request.form.get('status') or '').strip()  # 'confirme' | 'annule' | 'en_attente'
+    ap = Appointment.query.get_or_404(appointment_id)
 
-@admin_bp.route('/orders', endpoint='admin_orders')
-@login_required
-def admin_orders():
-    return redirect(url_for('admin.admin_appointments'))
+    if new_status not in ('confirme', 'annule', 'en_attente'):
+        return jsonify({'ok': False, 'error': 'status invalide'}), 400
 
-# ===== Notifications admin -> patient/pro =====
-def _build_notif(kind: str, ap: Appointment, role: str = 'patient') -> tuple[str, str]:
-    dt = ap.appointment_date.strftime('%d/%m/%Y %H:%M')
-    pro = ap.professional
-    who = f"{pro.name} — {pro.specialty or ''}".strip() if pro else "le professionnel"
-    if kind == 'pending':
-        if role == 'patient':
-            return ("Votre RDV est en attente de confirmation",
-                    f"Bonjour,\n\nVotre demande de RDV ({dt}) avec {who} est bien enregistrée et en attente de confirmation.\n\nTighri")
-        else:
-            return ("Nouveau RDV à confirmer",
-                    f"Bonjour,\n\nNouveau RDV à confirmer le {dt} avec le patient #{ap.patient_id}.\n\nTighri")
-    if kind == 'accepted':
-        return ("Votre RDV est confirmé",
-                f"Bonjour,\n\nVotre RDV le {dt} avec {who} est CONFIRMÉ.\n\nTighri")
-    if kind == 'refused':
-        return ("Votre RDV a été annulé",
-                f"Bonjour,\n\nVotre RDV le {dt} avec {who} a été annulé.\n\nTighri")
-    if kind == 'reminder':
-        if role == 'patient':
-            return ("Rappel : votre RDV est dans 24h",
-                    f"Bonjour,\n\nRappel : RDV le {dt} avec {who} dans ~24h.\n\nTighri")
-        else:
-            return ("Rappel : RDV (pro) dans 24h",
-                    f"Bonjour,\n\nRappel : vous avez un RDV le {dt} (patient #{ap.patient_id}).\n\nTighri")
-    return ("Notification", f"Bonjour,\n\nMise à jour RDV ({dt}).\n\nTighri")
+    ap.status = new_status
+    db.session.commit()
+    flash(f"Rendez-vous #{ap.id} → {new_status}", "success")
+    return jsonify({'ok': True})
 
-def _notify_patient(kind: str, ap: Appointment):
-    from notifications import send_email, send_sms, send_whatsapp
-    subject, text = _build_notif(kind, ap, role='patient')
-    user = User.query.get(ap.patient_id)
-    send_email(getattr(user, 'email', None), subject, text)
-    phone = getattr(user, 'phone', None)
-    send_sms(phone, text)
-    send_whatsapp(phone, text)
-
-def _notify_pro(kind: str, ap: Appointment):
-    from notifications import send_email, send_sms, send_whatsapp
-    pro = ap.professional or Professional.query.get(ap.professional_id)
-    if not pro:
-        return
-    subject, text = _build_notif(kind, ap, role='pro')
-    # email pro via user lié (username == pro.name)
-    pro_user = None
-    try:
-        pro_user = User.query.filter_by(username=pro.name).first()
-    except Exception:
-        pro_user = None
-    send_email(getattr(pro_user, 'email', None), subject, text)
-    send_sms(getattr(pro, 'phone', None), text)
-    send_whatsapp(getattr(pro, 'phone', None), text)
-
-@admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'], endpoint='update_appointment_status')
-@login_required
-def update_appointment_status(appointment_id):
-    if not current_user.is_admin:
-        return jsonify({'success': False, 'message': 'Accès refusé'}), 403
-    try:
-        data = request.get_json(silent=True) or {}
-        new_status = data.get('status')
-        if new_status not in ['confirme', 'en_attente', 'annule']:
-            return jsonify({'success': False, 'message': 'Statut invalide'}), 400
-        appointment = Appointment.query.get_or_404(appointment_id)
-        appointment.status = new_status
-        db.session.commit()
-
-        # Envoi notifications
-        if new_status == 'confirme':
-            _notify_patient('accepted', appointment)
-        elif new_status == 'annule':
-            _notify_patient('refused', appointment)
-        elif new_status == 'en_attente':
-            _notify_patient('pending', appointment)
-            _notify_pro('pending', appointment)
-
-        return jsonify({'success': True, 'message': f'Rendez-vous {new_status}'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-# --------------------- API STATS & VALIDATION PRO ---------------------
-@admin_bp.route('/api/stats', endpoint='api_stats')
-@login_required
-def api_stats():
-    if not current_user.is_admin:
-        return jsonify({'error': 'Accès refusé'}), 403
-    professionals = Professional.query.all()
-    users = User.query.all()
-    appointments = Appointment.query.all()
-    stats = {
-        'total_professionals': len(professionals),
-        'total_users': len(users),
-        'total_appointments': len(appointments),
-        'confirmed_appointments': len([a for a in appointments if a.status == 'confirme']),
-        'pending_appointments': len([a for a in appointments if a.status == 'en_attente'])
-    }
-    return jsonify(stats)
-
-@admin_bp.route('/professionals/<int:professional_id>/validate', methods=['POST'], endpoint='validate_professional')
-@login_required
-def validate_professional(professional_id):
-    if not current_user.is_admin:
-        return jsonify({'success': False, 'message': 'Accès refusé'}), 403
-    try:
-        professional = Professional.query.get_or_404(professional_id)
-        professional.status = 'valide'
-        db.session.commit()
-        return jsonify({'success': True, 'message': 'Professionnel validé avec succès'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@admin_bp.route('/professionals/<int:professional_id>/reject', methods=['POST'], endpoint='reject_professional')
-@login_required
-def reject_professional(professional_id):
-    if not current_user.is_admin:
-        return jsonify({'success': False, 'message': 'Accès refusé'}), 403
-    try:
-        professional = Professional.query.get_or_404(professional_id)
-        professional.status = 'rejete'
-        db.session.commit()
-        return jsonify({'success': True, 'message': 'Professionnel rejeté'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-@admin_bp.route('/pending-professionals', endpoint='pending_professionals')
-@login_required
-def pending_professionals():
-    if not current_user.is_admin:
-        flash('Accès refusé')
-        return redirect(url_for('admin.admin_login'))
-    pending_professionals = Professional.query.filter_by(status='en_attente').all()
-    return render_template('pending_professionals.html', professionals=pending_professionals)
-
-@admin_bp.route('/professionals/<int:professional_id>/social-approval', methods=['POST'], endpoint='social_approval')
-@login_required
-def social_approval(professional_id):
-    if not current_user.is_admin:
-        return jsonify({'success': False, 'message': 'Accès refusé'}), 403
-    professional = Professional.query.get_or_404(professional_id)
-    data = request.get_json(silent=True) or {}
-    approved = bool(data.get('approved', False))
-    if hasattr(professional, 'social_links_approved'):
-        professional.social_links_approved = approved
-        db.session.commit()
-        return jsonify({'success': True, 'approved': approved})
-    return jsonify({'success': False, 'message': 'Champ social_links_approved non disponible'}), 400
+# =========================
+#  Templates de base admin (fallback si tu n’as pas encore les fichiers)
+# =========================
+@admin_bp.route('/_fallback_templates')
+@admin_required
+def _fallback_templates():
+    return """
+    Prévois les templates:
+    - admin_dashboard.html (listes pending_pros, valid_pros, users, last_appts)
+    - admin_users.html (table avec bouton POST /admin/users/<id>/delete)
+    - admin_professionals.html (table, actions validate/reject/delete)
+    """, 200
