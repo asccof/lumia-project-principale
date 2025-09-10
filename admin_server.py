@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from functools import wraps
+from enum import Enum
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, logout_user
@@ -13,13 +14,32 @@ from flask_login import current_user, login_required, logout_user
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 # -------------------------------------------------------------------
-# Util: résout l'import circulaire en important db & modèles à l'intérieur des vues
+# (App attend) Classe ProfessionalOrder
+# - L'appli principale importe cette classe ; on la fournit ici.
+# - Elle expose des clés d'ordre et une méthode utilitaire pour
+#   récupérer la colonne correspondante sur le modèle Professional.
+# -------------------------------------------------------------------
+class ProfessionalOrder(str, Enum):
+    RATING_DESC = "rating_desc"
+    ID_DESC = "id_desc"
+
+    @staticmethod
+    def from_param(value: str | None) -> "ProfessionalOrder":
+        if (value or "").lower() in {"rating", "rating_desc"}:
+            return ProfessionalOrder.RATING_DESC
+        return ProfessionalOrder.ID_DESC
+
+    def order_clause(self, Professional):
+        if self is ProfessionalOrder.RATING_DESC and hasattr(Professional, "rating"):
+            return getattr(Professional, "rating").desc()
+        return getattr(Professional, "id").desc()
+
+# -------------------------------------------------------------------
+# Util: imports différés pour éviter les imports circulaires
 # -------------------------------------------------------------------
 def _get_models():
     """
-    Import paresseux pour éviter le circular import :
-    - app.py peut importer admin_server._build_notif sans que nous importions app ici.
-    - Lorsqu'une vue est appelée, app est déjà initialisé : on peut importer en toute sécurité.
+    Import paresseux une fois l'app chargée.
     """
     from app import db  # type: ignore
     try:
@@ -43,7 +63,7 @@ def admin_required(fn):
     return wrapper
 
 # -------------------------------------------------------------------
-# Helpers de requêtes (utilisent les modèles passés)
+# Helpers de requêtes
 # -------------------------------------------------------------------
 def _q_all(model, *criterion, order_by=None):
     q = model.query
@@ -60,7 +80,7 @@ def _q_count(model, *criterion):
     return q.count()
 
 # -------------------------------------------------------------------
-# (App attend) Constructeur de notifications – version neutre pour ne rien casser
+# (App attend) Constructeur de notifications – neutre pour compat
 # -------------------------------------------------------------------
 def _build_notif(subject: str, body: str) -> dict:
     return {"subject": subject, "body": body}
@@ -101,7 +121,7 @@ def admin_dashboard():
     )
 
 # -------------------------------------------------------------------
-# Professionnels (liste = ton template admin_products.html)
+# Professionnels (liste = template admin_products.html)
 # -------------------------------------------------------------------
 @admin_bp.route("/professionals")
 @admin_required
@@ -125,8 +145,9 @@ def pending_professionals():
 @admin_required
 def admin_professional_order():
     db, User, Professional, Appointment = _get_models()
-    order_col = getattr(Professional, "rating", None) or getattr(Professional, "id")
-    pros = Professional.query.order_by(order_col.desc()).all()
+    # Supporte un paramètre optionnel ?by=rating|id
+    order_key = ProfessionalOrder.from_param(request.args.get("by"))
+    pros = Professional.query.order_by(order_key.order_clause(Professional)).all()
     return render_template("admin_products.html", professionals=pros)
 
 @admin_bp.route("/professionals/add", methods=["GET", "POST"])
