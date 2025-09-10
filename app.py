@@ -4,7 +4,7 @@ from flask import (
 )
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-    # noqa
+# noqa
 from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime, date, timedelta, time as dtime
 from sqlalchemy import or_, text
@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import os, uuid, io, requests
 from notifications import send_email, send_sms, send_whatsapp
-from admin_server import _build_notif  # on réutilise les mêmes textes d’emails que l’admin
+from admin_server import admin_bp, _build_notif  # on réutilise les mêmes textes d’emails que l’admin
 
 # === [TIGHRI_R1:CONFIG_INLINE_SAFE] =========================================
 try:
@@ -103,7 +103,25 @@ def _normalize_pg_uri(uri: str) -> str:
     return uri
 
 # --- Config DB ---
-from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
+# Import compatible pour Availability + import standard des autres modèles
+try:
+    from models import db, User, Professional, Appointment, ProfessionalAvailability as AvailabilityModel, UnavailableSlot
+except ImportError:
+    from models import db, User, Professional, Appointment, UnavailableSlot, ProfessionalAvailabilityWindow as AvailabilityModel
+
+# Import robuste de ProfessionalOrder sans double-définition
+ProfessionalOrder = None
+try:
+    # priorité : models.py s’il la définit
+    from models import ProfessionalOrder as _PO_from_models
+    ProfessionalOrder = _PO_from_models
+except Exception:
+    try:
+        # sinon un module séparé (tu avais dit avoir créé professionalorder.py)
+        from professionalorder import ProfessionalOrder as _PO_from_file
+        ProfessionalOrder = _PO_from_file
+    except Exception:
+        ProfessionalOrder = None  # on gérera un fallback dans la requête d’index
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
 if not uri:
@@ -120,16 +138,8 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-# --- Admin en Blueprint ---
-from admin_server import admin_bp  # ✅ on n'importe QUE le blueprint depuis admin_server
+# --- Blueprint Admin ---
 app.register_blueprint(admin_bp, url_prefix='/admin')
-
-# ✅ ProfessionalOrder doit venir de models (et fallback si absent)
-try:
-    from models import ProfessionalOrder  # table de classement admin
-except Exception as _e:
-    ProfessionalOrder = None
-    app.logger.warning("ProfessionalOrder indisponible (models): %s", _e)
 
 # --- User loader ---
 @login_manager.user_loader
@@ -138,7 +148,6 @@ def load_user(user_id):
 
 # ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
 with app.app_context():
-    # create_all va aussi créer la table 'professional_order' si ProfessionalOrder existe
     db.create_all()
     try:
         # professionals: adresse + géoloc + téléphone + réseaux sociaux
@@ -219,8 +228,7 @@ def _process_and_save_profile_image(file_storage) -> str:
 
     img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
-    out_name = f"{uuid.uuid4().hex}.jpg_measure"
-    out_name = out_name.replace("_measure", "")  # neutre pour éviter lint false-positive
+    out_name = f"{uuid.uuid4().hex}.jpg"
     out_path = Path(UPLOAD_FOLDER) / out_name
     out_path.parent.mkdir(parents=True, exist_ok=True)
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
@@ -255,22 +263,30 @@ def index():
     """
     try:
         # tri principal : ordre admin, puis featured, puis featured_rank, puis récents
-        featured_professionals = (
-            db.session.query(Professional)
-            .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)  # ProfessionalOrder peut être None; le try/except protège
-            .filter(Professional.status == 'valide')
-            .order_by(
-                db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc() if ProfessionalOrder is not None else db.literal(0),
+        q = db.session.query(Professional)
+        if ProfessionalOrder is not None:
+            q = q.outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
+            order_cols = [
+                db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc(),
                 Professional.is_featured.desc(),
                 db.func.coalesce(Professional.featured_rank, 999999).asc(),
                 Professional.created_at.desc(),
                 Professional.id.desc()
-            )
-            .limit(6)
-            .all()
+            ]
+        else:
+            order_cols = [
+                Professional.is_featured.desc(),
+                db.func.coalesce(Professional.featured_rank, 999999).asc(),
+                Professional.created_at.desc(),
+                Professional.id.desc()
+            ]
+        featured_professionals = (
+            q.filter(Professional.status == 'valide')
+             .order_by(*order_cols)
+             .limit(6)
+             .all()
         )
     except Exception as e:
-        # En cas d'erreur (ex: table non présente), on ne casse pas l'accueil
         app.logger.warning("Classement admin indisponible (%s), fallback 'featured puis récents'.", e)
         featured_professionals = (
             Professional.query
@@ -658,13 +674,13 @@ def professional_availability():
         return redirect(url_for('index'))
 
     if request.method == 'POST':
-        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
+        AvailabilityModel.query.filter_by(professional_id=professional.id).delete()
 
         def add_window(day, s, e, avail_flag):
             s = (s or '').strip()
             e = (e or '').strip()
             if avail_flag and s and e:
-                av = ProfessionalAvailability(
+                av = AvailabilityModel(
                     professional_id=professional.id,
                     day_of_week=day,
                     start_time=s,
@@ -692,7 +708,7 @@ def professional_availability():
         flash('Disponibilités mises à jour avec succès!')
         return redirect(url_for('professional_availability'))
 
-    all_avs = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
+    all_avs = AvailabilityModel.query.filter_by(professional_id=professional.id).all()
     windows_by_day = {d: [] for d in range(7)}
     for av in all_avs:
         windows_by_day.get(av.day_of_week, []).append(av)
@@ -944,7 +960,7 @@ def api_available_slots(professional_id):
         return jsonify({'error': 'Format de date invalide'}), 400
 
     day_of_week = target_date.weekday()
-    availabilities = ProfessionalAvailability.query.filter_by(
+    availabilities = AvailabilityModel.query.filter_by(
         professional_id=professional_id,
         day_of_week=day_of_week,
         is_available=True
@@ -1046,7 +1062,7 @@ def book_appointment(professional_id):
             return redirect(url_for('book_appointment', professional_id=professional_id))
 
         day_of_week = appointment_datetime.weekday()
-        availabilities = ProfessionalAvailability.query.filter_by(
+        availabilities = AvailabilityModel.query.filter_by(
             professional_id=professional_id,
             day_of_week=day_of_week,
             is_available=True
@@ -1105,7 +1121,7 @@ def book_appointment(professional_id):
         flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
         return redirect(url_for('my_appointments'))
 
-    availabilities = ProfessionalAvailability.query.filter_by(
+    availabilities = AvailabilityModel.query.filter_by(
         professional_id=professional_id, is_available=True
     ).all()
     today = date.today()
