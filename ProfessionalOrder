@@ -1,0 +1,62 @@
+# models.py
+from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
+
+db = SQLAlchemy()
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(120), unique=True, nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    is_admin = db.Column(db.Boolean, default=False)
+    user_type = db.Column(db.String(32), default='patient')
+    phone = db.Column(db.String(64))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Flask-Login
+    def get_id(self): return str(self.id)
+
+class Professional(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    specialty = db.Column(db.String(255))
+    status = db.Column(db.String(32), default='en_attente')  # en_attente | valide | rejete
+    location = db.Column(db.String(255))
+    address = db.Column(db.String(255))
+    phone = db.Column(db.String(64))
+    image_url = db.Column(db.String(1024))
+    consultation_fee = db.Column(db.Float)
+    consultation_duration_minutes = db.Column(db.Integer, default=45)
+    buffer_between_appointments_minutes = db.Column(db.Integer, default=15)
+    experience_years = db.Column(db.Integer)
+    description = db.Column(db.Text)
+    consultation_types = db.Column(db.String(255))
+    availability = db.Column(db.String(32), default='disponible')
+    latitude = db.Column(db.String(64))
+    longitude = db.Column(db.String(64))
+    facebook_url = db.Column(db.String(512))
+    instagram_url = db.Column(db.String(512))
+    tiktok_url = db.Column(db.String(512))
+    youtube_url = db.Column(db.String(512))
+    social_links_approved = db.Column(db.Boolean, default=False)
+
+class Appointment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    professional_id = db.Column(db.Integer, db.ForeignKey('professional.id'))
+    appointment_date = db.Column(db.DateTime)
+    consultation_type = db.Column(db.String(32)) # cabinet | domicile | en_ligne
+    status = db.Column(db.String(32), default='en_attente') # en_attente | confirme | annule
+
+    patient = db.relationship('User', backref='appointments', lazy='joined')
+    professional = db.relationship('Professional', backref='appointments', lazy='joined')
+
+# ✅ Nouveau : classement manuel des pros
+class ProfessionalOrder(db.Model):
+    __tablename__ = 'professional_order'
+    professional_id = db.Column(db.Integer, db.ForeignKey('professional.id'), primary_key=True)
+    order_priority = db.Column(db.Integer, nullable=False, default=9999)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    professional = db.relationship('Professional', backref='order_entry')
