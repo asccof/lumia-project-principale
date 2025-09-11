@@ -770,6 +770,33 @@ def edit_user(user_id):
         return redirect(url_for('admin.admin_users'))
 
     return render_template('edit_user.html', user=user)
+def _get_or_create_archived_user():
+    """
+    Retourne un utilisateur 'archivé' unique vers lequel on rattache
+    les RDV des patients supprimés pour conserver l'historique.
+    """
+    placeholder_username = "[deleted]"
+    placeholder_email = "deleted@tighri.local"
+
+    u = User.query.filter_by(username=placeholder_username).first()
+    if not u:
+        # éviter conflit email unique
+        u = User.query.filter_by(email=placeholder_email).first()
+
+    if not u:
+        # créer le compte placeholder
+        pw = generate_password_hash(uuid.uuid4().hex)
+        u = User(
+            username=placeholder_username,
+            email=placeholder_email,
+            password_hash=pw,
+            user_type="patient",
+            is_admin=False,
+            phone=None,
+        )
+        db.session.add(u)
+        db.session.flush()  # pour obtenir u.id sans commit
+    return u
 
 # ✅ Route POST + détache les RDV avant suppression
 @admin_bp.route('/users/delete/<int:user_id>', methods=['POST'], endpoint='delete_user')
