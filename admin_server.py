@@ -65,7 +65,7 @@ def _admin_process_and_save_profile_image(file_storage) -> str:
     TARGET_SIZE = (512, 512)
     img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
-    out_name = f"{uuid.uuid4().hex}.jpg}"
+    out_name = f"{uuid.uuid4().hex}.jpg"
     out_path = _admin_upload_dir() / out_name
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
     return out_name
