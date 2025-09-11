@@ -65,7 +65,7 @@ def _admin_process_and_save_profile_image(file_storage) -> str:
     TARGET_SIZE = (512, 512)
     img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
-    out_name = f"{uuid.uuid4().hex}.jpg"
+    out_name = f"{uuid.uuid4().hex}.jpg}"
     out_path = _admin_upload_dir() / out_name
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
     return out_name
@@ -234,7 +234,7 @@ def admin_add_product():
             latitude = None
             flash("Latitude invalide", "error")
         try:
-            longitude = float(lng_raw) if lng_raw else None
+            longitude = float(lng_raw) if lat_raw else None
         except ValueError:
             longitude = None
             flash("Longitude invalide", "error")
@@ -771,16 +771,28 @@ def edit_user(user_id):
 
     return render_template('edit_user.html', user=user)
 
-@admin_bp.route('/users/delete/<int:user_id>', endpoint='delete_user')
+# ✅ Route POST + détache les RDV avant suppression
+@admin_bp.route('/users/delete/<int:user_id>', methods=['POST'], endpoint='delete_user')
 @login_required
 def delete_user(user_id):
     if not current_user.is_admin:
         flash('Accès refusé')
         return redirect(url_for('admin.admin_login'))
     user = User.query.get_or_404(user_id)
-    db.session.delete(user)
-    db.session.commit()
-    flash('Utilisateur supprimé avec succès!')
+
+    try:
+        # Détacher les RDV du patient (possible car patient_id est maintenant nullable)
+        db.session.query(Appointment).filter_by(patient_id=user.id).update(
+            {"patient_id": None},
+            synchronize_session=False
+        )
+        db.session.delete(user)
+        db.session.commit()
+        flash('Utilisateur supprimé avec succès!')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erreur lors de la suppression: {e}', 'error')
+
     return redirect(url_for('admin.admin_users'))
 
 # --------------------- RDV / COMMANDES ---------------------
