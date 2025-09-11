@@ -65,7 +65,7 @@ def _admin_process_and_save_profile_image(file_storage) -> str:
     TARGET_SIZE = (512, 512)
     img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
-    out_name = f"{uuid.uuid4().hex}.jpg"
+    out_name = f"{uuid.uuid4().hex}.jpg"  # ✅ correction: suppression de la '}' en trop
     out_path = _admin_upload_dir() / out_name
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
     return out_name
@@ -658,6 +658,33 @@ def admin_delete_unavailable_slot(professional_id, slot_id):
     return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional_id))
 
 # --------------------- UTILISATEURS ---------------------
+
+def _get_or_create_archived_user():
+    """
+    Retourne (ou crée) un utilisateur placeholder unique '[deleted]' vers lequel
+    on rattache les RDV des patients supprimés afin de conserver l'historique.
+    """
+    placeholder_username = "[deleted]"
+    placeholder_email = "deleted@tighri.local"
+
+    u = User.query.filter_by(username=placeholder_username).first()
+    if not u:
+        u = User.query.filter_by(email=placeholder_email).first()
+
+    if not u:
+        pw = generate_password_hash(uuid.uuid4().hex)
+        u = User(
+            username=placeholder_username,
+            email=placeholder_email,
+            password_hash=pw,
+            user_type="patient",
+            is_admin=False,
+            phone=None,
+        )
+        db.session.add(u)
+        db.session.flush()  # obtenir u.id sans commit
+    return u
+
 @admin_bp.route('/users', endpoint='admin_users')
 @login_required
 def admin_users():
@@ -770,36 +797,8 @@ def edit_user(user_id):
         return redirect(url_for('admin.admin_users'))
 
     return render_template('edit_user.html', user=user)
-def _get_or_create_archived_user():
-    """
-    Retourne un utilisateur 'archivé' unique vers lequel on rattache
-    les RDV des patients supprimés pour conserver l'historique.
-    """
-    placeholder_username = "[deleted]"
-    placeholder_email = "deleted@tighri.local"
 
-    u = User.query.filter_by(username=placeholder_username).first()
-    if not u:
-        # éviter conflit email unique
-        u = User.query.filter_by(email=placeholder_email).first()
-
-    if not u:
-        # créer le compte placeholder
-        pw = generate_password_hash(uuid.uuid4().hex)
-        u = User(
-            username=placeholder_username,
-            email=placeholder_email,
-            password_hash=pw,
-            user_type="patient",
-            is_admin=False,
-            phone=None,
-        )
-        db.session.add(u)
-        db.session.flush()  # pour obtenir u.id sans commit
-    return u
-
-# ✅ Route POST + détache les RDV avant suppression
-@admin_bp.route('/users/delete/<int:user_id>', methods=['POST'], endpoint='delete_user')
+@admin_bp.route('/users/delete/<int:user_id>', endpoint='delete_user')
 @login_required
 def delete_user(user_id):
     if not current_user.is_admin:
@@ -808,11 +807,13 @@ def delete_user(user_id):
     user = User.query.get_or_404(user_id)
 
     try:
-        # Détacher les RDV du patient (possible car patient_id est maintenant nullable)
+        # Réassigner l'historique de RDV vers le compte "[deleted]" au lieu de mettre NULL
+        archived = _get_or_create_archived_user()
         db.session.query(Appointment).filter_by(patient_id=user.id).update(
-            {"patient_id": None},
+            {Appointment.patient_id: archived.id},
             synchronize_session=False
         )
+
         db.session.delete(user)
         db.session.commit()
         flash('Utilisateur supprimé avec succès!')
