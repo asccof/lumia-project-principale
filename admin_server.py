@@ -798,7 +798,7 @@ def edit_user(user_id):
 
     return render_template('edit_user.html', user=user)
 
-@admin_bp.route('/users/delete/<int:user_id>', endpoint='delete_user')
+@admin_bp.route('/users/delete/<int:user_id>', methods=['GET', 'POST'], endpoint='delete_user')
 @login_required
 def delete_user(user_id):
     if not current_user.is_admin:
