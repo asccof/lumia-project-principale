@@ -108,7 +108,12 @@ class Appointment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    patient_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    # ✅ Historique conservé : nullable + SET NULL côté DB
+    patient_id = db.Column(
+        db.Integer,
+        db.ForeignKey('users.id', ondelete='SET NULL'),
+        nullable=True
+    )
     professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
 
     appointment_date = db.Column(db.DateTime, nullable=False)
@@ -123,7 +128,13 @@ class Appointment(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    patient = db.relationship('User', backref='appointments', lazy='joined')
+    # ✅ passive_deletes sur le backref pour laisser la DB gérer le SET NULL
+    patient = db.relationship(
+        'User',
+        backref=db.backref('appointments', passive_deletes=True),
+        lazy='joined',
+        passive_deletes=True,
+    )
     professional = db.relationship('Professional', backref='appointments', lazy='joined')
 
     __table_args__ = (
