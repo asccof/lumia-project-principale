@@ -146,10 +146,17 @@
                          href="{{ url_for('admin.edit_user', user_id=u.id) }}">
                         <i class="fa-solid fa-pen-to-square"></i> Éditer
                       </a>
-                      <a class="btn btn-sm btn-outline-danger btn-icon js-del"
-                         href="{{ url_for('admin.delete_user', user_id=u.id) }}">
-                        <i class="fa-solid fa-trash"></i> Supprimer
-                      </a>
+
+                      <!-- ✅ Formulaire POST pour supprimer (plus de GET) -->
+                      <form method="POST"
+                            action="{{ url_for('admin.delete_user', user_id=u.id) }}"
+                            class="d-inline-block"
+                            onsubmit="return confirm('Supprimer définitivement cet utilisateur ?');">
+                        {% if csrf_token is defined %}{{ csrf_token() }}{% endif %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger btn-icon">
+                          <i class="fa-solid fa-trash"></i> Supprimer
+                        </button>
+                      </form>
                     </div>
                   </td>
                 </tr>
@@ -210,13 +217,6 @@
     [searchInput, roleFilter, adminFilter].forEach(el=>{
       if(el) el.addEventListener(evt, applyFilters);
     });
-  });
-
-  // Confirm suppression (route GET selon admin_server.py)
-  document.addEventListener('click', (e)=>{
-    const a = e.target.closest('.js-del');
-    if(!a) return;
-    if(!confirm('Supprimer définitivement cet utilisateur ?')) e.preventDefault();
   });
 
   // Export CSV (après filtres)
