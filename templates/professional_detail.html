@@ -78,10 +78,10 @@
     </ul>
   </div>
 
-  {# ✅ Bloc "Voir sur Maps + réseaux sociaux" (partiel réutilisable) #}
-  {% include "pro_social_links.html" %}
+  {# ✅ Bloc Maps + Réseaux sociaux (public : n’affiche que si approved) #}
+  {% include "_pro_social_block.html" %}
 
-  <!-- Bloc Avis : affichage uniquement, pas de POST vers un endpoint inexistant -->
+  <!-- Bloc Avis : affichage uniquement -->
   <div id="reviews" class="section">
     <h2>Avis</h2>
     {% if reviews %}
@@ -97,12 +97,6 @@
     {% else %}
       <p style="margin:.5rem 0 0;opacity:.8">Pas encore d’avis.</p>
     {% endif %}
-
-    {#
-      NOTE: l’ancien template postait vers `url_for('add_review')` qui n’existe pas côté serveur,
-      ce qui provoquait un 500 dès l’affichage. Ici, on NE poste plus (affichage seul).
-      Quand tu auras un endpoint pour créer des avis, on branchera un <form> dessus.
-    #}
   </div>
 </div>
 {% endblock %}
