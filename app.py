@@ -519,10 +519,12 @@ def professional_edit_profile():
         return redirect(url_for('professional_dashboard'))
 
     if request.method == 'POST':
+        # --- Identité / contenu de base (inchangé) ---
         pro.name = (request.form.get('name') or pro.name).strip()
         pro.specialty = (request.form.get('specialty') or pro.specialty or '').strip()
         pro.description = (request.form.get('description') or pro.description or '').strip()
 
+        # --- Adresse / ville / géoloc (inchangé) ---
         addr = (request.form.get('address') or '').strip()
         if hasattr(pro, "address"):
             pro.address = addr
@@ -549,6 +551,29 @@ def professional_edit_profile():
         if hasattr(pro, "longitude"):
             pro.longitude = val_lng
 
+        # --- ✅ AJOUTS : téléphone, prix, types de consultation ---
+        # Téléphone
+        pro.phone = ((request.form.get('phone') or '').strip() or None)
+
+        # Prix de consultation (MAD)
+        fee_raw = (request.form.get('consultation_fee') or '').replace(',', '.').strip()
+        if fee_raw != '':
+            try:
+                pro.consultation_fee = float(fee_raw)
+            except ValueError:
+                flash("Tarif invalide (MAD).", "error")
+
+        # Types de consultation (checkboxes)
+        types_list = request.form.getlist('consultation_types')  # ex: ['cabinet','en_ligne']
+        if types_list:
+            allowed = ['cabinet', 'domicile', 'en_ligne']
+            # garde uniquement les valeurs autorisées et assure un ordre stable
+            cleaned = [t for t in allowed if t in set(types_list)]
+            if cleaned:
+                pro.consultation_types = ','.join(cleaned)
+        # (si l’utilisateur décoche tout, on ne force pas la valeur ici pour éviter un effacement accidentel)
+
+        # --- Paramètres de planification (inchangé) ---
         dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
         buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
         if dur_raw:
@@ -569,6 +594,7 @@ def professional_edit_profile():
         return redirect(url_for('professional_dashboard'))
 
     return render_template('professional_edit_profile.html', professional=pro)
+
 
 # ===== Helpers d'avatar / fallback sûrs =====
 PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
