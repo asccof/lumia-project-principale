@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Modifier mon profil professionnel{% endblock %}
+
 {% block content %}
 <div class="container py-4">
   <h1 class="h4 mb-3">Mon profil professionnel</h1>
@@ -8,11 +9,11 @@
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
 
     <div class="row g-3">
+      <!-- Identité -->
       <div class="col-md-6">
         <label class="form-label">Nom / Affichage public</label>
         <input name="name" class="form-control" value="{{ professional.name or '' }}" required>
       </div>
-
       <div class="col-md-6">
         <label class="form-label">Spécialité</label>
         <input name="specialty" class="form-control" value="{{ professional.specialty or '' }}" placeholder="Psychologue, Thérapeute, Coach…">
@@ -23,11 +24,11 @@
         <textarea name="description" rows="3" class="form-control" placeholder="Présentation…">{{ professional.description or '' }}</textarea>
       </div>
 
+      <!-- Localisation -->
       <div class="col-md-6">
         <label class="form-label">Ville</label>
         <input name="location" class="form-control" value="{{ professional.location or '' }}" placeholder="Casablanca">
       </div>
-
       <div class="col-md-6">
         <label class="form-label">Adresse précise</label>
         <input name="address" class="form-control" value="{{ professional.address or '' }}" placeholder="N°, rue, quartier…">
@@ -37,96 +38,103 @@
         <label class="form-label">Latitude</label>
         <input name="latitude" class="form-control" value="{{ professional.latitude if professional.latitude is not none else '' }}" placeholder="33.5">
       </div>
-
       <div class="col-md-6">
         <label class="form-label">Longitude</label>
         <input name="longitude" class="form-control" value="{{ professional.longitude if professional.longitude is not none else '' }}" placeholder="-7.6">
       </div>
 
-      {# ====== AJOUTS DEMANDÉS ====== #}
-
-      <!-- Téléphone -->
+      <!-- ✅ Téléphone -->
       <div class="col-md-6">
         <label class="form-label">Téléphone</label>
-        <input type="tel" name="phone" class="form-control" value="{{ professional.phone or '' }}" placeholder="+2126...">
+        <input name="phone" class="form-control" value="{{ professional.phone or '' }}" placeholder="06...">
       </div>
 
-      <!-- Prix de consultation -->
+      <!-- ✅ Prix -->
       <div class="col-md-6">
-        <label class="form-label">Prix de consultation (MAD)</label>
-        <input type="number" name="consultation_fee" step="0.01" class="form-control"
-               value="{{ professional.consultation_fee if professional.consultation_fee is not none else '' }}" placeholder="ex. 250">
+        <label class="form-label">Prix consultation (MAD)</label>
+        <input name="consultation_fee" class="form-control" value="{{ professional.consultation_fee if professional.consultation_fee is not none else '' }}" placeholder="Ex: 300">
       </div>
 
-      <!-- Types de consultation -->
+      <!-- ✅ Types de consultation -->
+      {% set types = (professional.consultation_types or 'cabinet').split(',') %}
       <div class="col-12">
         <label class="form-label d-block">Types de consultation</label>
-        {% set _types = (professional.consultation_types or '').split(',') %}
         <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" name="consultation_types" id="ct_cabinet" value="cabinet"
-                 {% if 'cabinet' in _types %}checked{% endif %}>
-          <label class="form-check-label" for="ct_cabinet">Cabinet</label>
+          <input class="form-check-input" type="checkbox" name="consultation_types" value="cabinet" id="t_cab"
+                 {% if 'cabinet' in types %}checked{% endif %}>
+          <label class="form-check-label" for="t_cab">Cabinet</label>
         </div>
         <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" name="consultation_types" id="ct_domicile" value="domicile"
-                 {% if 'domicile' in _types %}checked{% endif %}>
-          <label class="form-check-label" for="ct_domicile">À domicile</label>
+          <input class="form-check-input" type="checkbox" name="consultation_types" value="en_ligne" id="t_online"
+                 {% if 'en_ligne' in types %}checked{% endif %}>
+          <label class="form-check-label" for="t_online">En ligne</label>
         </div>
         <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" name="consultation_types" id="ct_enligne" value="en_ligne"
-                 {% if 'en_ligne' in _types %}checked{% endif %}>
-          <label class="form-check-label" for="ct_enligne">En ligne</label>
+          <input class="form-check-input" type="checkbox" name="consultation_types" value="domicile" id="t_home"
+                 {% if 'domicile' in types %}checked{% endif %}>
+          <label class="form-check-label" for="t_home">À domicile</label>
         </div>
-        <div class="form-text">Tu peux cocher plusieurs options.</div>
+        <div class="form-text">Cochez un ou plusieurs types.</div>
       </div>
 
-      {# ====== /AJOUTS ====== #}
+      <!-- ✅ Liens sociaux (avec validation admin) -->
+      <div class="col-12">
+        <label class="form-label">Liens sociaux</label>
+        <div class="row g-2">
+          <div class="col-md-6">
+            <input name="facebook_url" class="form-control" placeholder="Facebook (URL complète)"
+                   value="{{ professional.facebook_url or '' }}">
+          </div>
+          <div class="col-md-6">
+            <input name="instagram_url" class="form-control" placeholder="Instagram (URL complète)"
+                   value="{{ professional.instagram_url or '' }}">
+          </div>
+          <div class="col-md-6">
+            <input name="tiktok_url" class="form-control" placeholder="TikTok (URL complète)"
+                   value="{{ professional.tiktok_url or '' }}">
+          </div>
+          <div class="col-md-6">
+            <input name="youtube_url" class="form-control" placeholder="YouTube (URL complète)"
+                   value="{{ professional.youtube_url or '' }}">
+          </div>
+        </div>
+        <div class="form-text">
+          Toute modification des liens sociaux nécessite une <strong>ré-approbation</strong> par l’administrateur.
+          Statut actuel : <span class="badge bg-{{ 'success' if professional.social_links_approved else 'secondary' }}">
+            {{ 'approuvé' if professional.social_links_approved else 'en attente / non approuvé' }}
+          </span>
+        </div>
+      </div>
 
-      <!-- Durée séance -->
+      <!-- Durée / buffer -->
       <div class="col-md-6">
         <label class="form-label">Durée d’une séance (minutes)</label>
         <input name="consultation_duration_minutes" type="number" min="5" max="240" step="5" class="form-control"
                value="{{ professional.consultation_duration_minutes if professional.consultation_duration_minutes is not none else 45 }}">
-        <div class="form-text">Par défaut 45 min. Utilisé pour le calcul des créneaux et des conflits.</div>
+        <div class="form-text">Par défaut 45 min. Sert au calcul des créneaux.</div>
       </div>
-
-      <!-- Délai entre séances -->
       <div class="col-md-6">
         <label class="form-label">Délai entre deux séances (minutes)</label>
         <input name="buffer_between_appointments_minutes" type="number" min="0" max="120" step="5" class="form-control"
                value="{{ professional.buffer_between_appointments_minutes if professional.buffer_between_appointments_minutes is not none else 15 }}">
-        <div class="form-text">Par défaut 15 min. Ajouté après chaque séance.</div>
+        <div class="form-text">Par défaut 15 min.</div>
       </div>
 
-      <!-- Lien Google Maps (affichage seulement, rien n’est modifié côté serveur) -->
+      <!-- ✅ Voir sur Maps (raccourci) -->
       <div class="col-12">
-        {% if professional.address or (professional.latitude and professional.longitude) %}
-          {% if professional.latitude and professional.longitude %}
-            <a class="btn btn-outline-dark btn-sm"
-               target="_blank" rel="noopener"
-               href="https://www.google.com/maps/search/?api=1&query={{ professional.latitude }},{{ professional.longitude }}">
-              <i class="fa-solid fa-location-arrow me-2"></i>Voir sur Google Maps
-            </a>
-          {% else %}
-            {% set q = ((professional.address or '') ~ ' ' ~ (professional.location or ''))|trim %}
-            <a class="btn btn-outline-dark btn-sm"
-               target="_blank" rel="noopener"
-               href="https://www.google.com/maps/search/?api=1&query={{ q|replace(' ', '+') }}">
-              <i class="fa-solid fa-location-arrow me-2"></i>Voir sur Google Maps
-            </a>
-          {% endif %}
-        {% else %}
-          <div class="text-muted small">Ajoute une adresse (ou des coordonnées) pour activer le lien Google Maps.</div>
+        {% set maps_q = None %}
+        {% if professional.latitude and professional.longitude %}
+          {% set maps_q = (professional.latitude|string) ~ ',' ~ (professional.longitude|string) %}
+        {% elif professional.address %}
+          {% set maps_q = professional.address %}
+        {% endif %}
+        {% if maps_q %}
+          <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener"
+             href="https://www.google.com/maps?q={{ maps_q|replace(' ','+') }}">
+            Voir sur Google Maps
+          </a>
         {% endif %}
       </div>
-
-      <!-- Raccourci vers “Mes liens sociaux” (validation admin conservée) -->
-      <div class="col-12">
-        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('pro_social') }}">
-          <i class="fa-solid fa-link me-2"></i>Gérer mes liens sociaux
-        </a>
-      </div>
-
     </div>
 
     <button class="btn btn-primary mt-3">Enregistrer</button>
