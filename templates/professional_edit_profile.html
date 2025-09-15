@@ -43,7 +43,46 @@
         <input name="longitude" class="form-control" value="{{ professional.longitude if professional.longitude is not none else '' }}" placeholder="-7.6">
       </div>
 
-      <!-- ✅ NOUVEAU : durée + délai (buffer), avec valeurs par défaut 45 / 15 -->
+      {# ====== AJOUTS DEMANDÉS ====== #}
+
+      <!-- Téléphone -->
+      <div class="col-md-6">
+        <label class="form-label">Téléphone</label>
+        <input type="tel" name="phone" class="form-control" value="{{ professional.phone or '' }}" placeholder="+2126...">
+      </div>
+
+      <!-- Prix de consultation -->
+      <div class="col-md-6">
+        <label class="form-label">Prix de consultation (MAD)</label>
+        <input type="number" name="consultation_fee" step="0.01" class="form-control"
+               value="{{ professional.consultation_fee if professional.consultation_fee is not none else '' }}" placeholder="ex. 250">
+      </div>
+
+      <!-- Types de consultation -->
+      <div class="col-12">
+        <label class="form-label d-block">Types de consultation</label>
+        {% set _types = (professional.consultation_types or '').split(',') %}
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="consultation_types" id="ct_cabinet" value="cabinet"
+                 {% if 'cabinet' in _types %}checked{% endif %}>
+          <label class="form-check-label" for="ct_cabinet">Cabinet</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="consultation_types" id="ct_domicile" value="domicile"
+                 {% if 'domicile' in _types %}checked{% endif %}>
+          <label class="form-check-label" for="ct_domicile">À domicile</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" name="consultation_types" id="ct_enligne" value="en_ligne"
+                 {% if 'en_ligne' in _types %}checked{% endif %}>
+          <label class="form-check-label" for="ct_enligne">En ligne</label>
+        </div>
+        <div class="form-text">Tu peux cocher plusieurs options.</div>
+      </div>
+
+      {# ====== /AJOUTS ====== #}
+
+      <!-- Durée séance -->
       <div class="col-md-6">
         <label class="form-label">Durée d’une séance (minutes)</label>
         <input name="consultation_duration_minutes" type="number" min="5" max="240" step="5" class="form-control"
@@ -51,13 +90,42 @@
         <div class="form-text">Par défaut 45 min. Utilisé pour le calcul des créneaux et des conflits.</div>
       </div>
 
+      <!-- Délai entre séances -->
       <div class="col-md-6">
         <label class="form-label">Délai entre deux séances (minutes)</label>
         <input name="buffer_between_appointments_minutes" type="number" min="0" max="120" step="5" class="form-control"
                value="{{ professional.buffer_between_appointments_minutes if professional.buffer_between_appointments_minutes is not none else 15 }}">
         <div class="form-text">Par défaut 15 min. Ajouté après chaque séance.</div>
       </div>
-      <!-- /NOUVEAU -->
+
+      <!-- Lien Google Maps (affichage seulement, rien n’est modifié côté serveur) -->
+      <div class="col-12">
+        {% if professional.address or (professional.latitude and professional.longitude) %}
+          {% if professional.latitude and professional.longitude %}
+            <a class="btn btn-outline-dark btn-sm"
+               target="_blank" rel="noopener"
+               href="https://www.google.com/maps/search/?api=1&query={{ professional.latitude }},{{ professional.longitude }}">
+              <i class="fa-solid fa-location-arrow me-2"></i>Voir sur Google Maps
+            </a>
+          {% else %}
+            {% set q = ((professional.address or '') ~ ' ' ~ (professional.location or ''))|trim %}
+            <a class="btn btn-outline-dark btn-sm"
+               target="_blank" rel="noopener"
+               href="https://www.google.com/maps/search/?api=1&query={{ q|replace(' ', '+') }}">
+              <i class="fa-solid fa-location-arrow me-2"></i>Voir sur Google Maps
+            </a>
+          {% endif %}
+        {% else %}
+          <div class="text-muted small">Ajoute une adresse (ou des coordonnées) pour activer le lien Google Maps.</div>
+        {% endif %}
+      </div>
+
+      <!-- Raccourci vers “Mes liens sociaux” (validation admin conservée) -->
+      <div class="col-12">
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('pro_social') }}">
+          <i class="fa-solid fa-link me-2"></i>Gérer mes liens sociaux
+        </a>
+      </div>
 
     </div>
 
