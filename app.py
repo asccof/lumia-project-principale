@@ -519,12 +519,12 @@ def professional_edit_profile():
         return redirect(url_for('professional_dashboard'))
 
     if request.method == 'POST':
-        # --- Identité / contenu de base (inchangé) ---
+        # Identité / contenu
         pro.name = (request.form.get('name') or pro.name).strip()
         pro.specialty = (request.form.get('specialty') or pro.specialty or '').strip()
         pro.description = (request.form.get('description') or pro.description or '').strip()
 
-        # --- Adresse / ville / géoloc (inchangé) ---
+        # Localisation
         addr = (request.form.get('address') or '').strip()
         if hasattr(pro, "address"):
             pro.address = addr
@@ -551,11 +551,10 @@ def professional_edit_profile():
         if hasattr(pro, "longitude"):
             pro.longitude = val_lng
 
-        # --- ✅ AJOUTS : téléphone, prix, types de consultation ---
-        # Téléphone
+        # ✅ Téléphone
         pro.phone = ((request.form.get('phone') or '').strip() or None)
 
-        # Prix de consultation (MAD)
+        # ✅ Prix (MAD)
         fee_raw = (request.form.get('consultation_fee') or '').replace(',', '.').strip()
         if fee_raw != '':
             try:
@@ -563,17 +562,36 @@ def professional_edit_profile():
             except ValueError:
                 flash("Tarif invalide (MAD).", "error")
 
-        # Types de consultation (checkboxes)
+        # ✅ Types de consultation
         types_list = request.form.getlist('consultation_types')  # ex: ['cabinet','en_ligne']
         if types_list:
             allowed = ['cabinet', 'domicile', 'en_ligne']
-            # garde uniquement les valeurs autorisées et assure un ordre stable
             cleaned = [t for t in allowed if t in set(types_list)]
             if cleaned:
                 pro.consultation_types = ','.join(cleaned)
-        # (si l’utilisateur décoche tout, on ne force pas la valeur ici pour éviter un effacement accidentel)
 
-        # --- Paramètres de planification (inchangé) ---
+        # ✅ Liens sociaux (dés-approbation auto si modifiés)
+        old_fb = getattr(pro, 'facebook_url', None)
+        old_ig = getattr(pro, 'instagram_url', None)
+        old_tt = getattr(pro, 'tiktok_url', None)
+        old_yt = getattr(pro, 'youtube_url', None)
+
+        new_fb = (request.form.get('facebook_url') or '').strip() or None
+        new_ig = (request.form.get('instagram_url') or '').strip() or None
+        new_tt = (request.form.get('tiktok_url') or '').strip() or None
+        new_yt = (request.form.get('youtube_url') or '').strip() or None
+
+        pro.facebook_url  = new_fb
+        pro.instagram_url = new_ig
+        pro.tiktok_url    = new_tt
+        pro.youtube_url   = new_yt
+
+        if (new_fb != old_fb) or (new_ig != old_ig) or (new_tt != old_tt) or (new_yt != old_yt):
+            # Toute modif repasse en attente d’approbation admin
+            if hasattr(pro, 'social_links_approved'):
+                pro.social_links_approved = False
+
+        # Durée / buffer
         dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
         buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
         if dur_raw:
