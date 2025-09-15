@@ -1,0 +1,59 @@
+{# templates/_pro_social_block.html — Bloc réutilisable: Maps + réseaux sociaux #}
+{# Affiche toujours le bouton Google Maps si adresse ou lat/lng.
+   Les liens sociaux ne s'affichent publiquement que si social_links_approved=True,
+   mais ils s'affichent dans l’admin même s’ils ne sont pas approuvés. #}
+
+{% set maps_url = None %}
+{% if professional.latitude and professional.longitude %}
+  {% set maps_url = 'https://www.google.com/maps?q=' ~ professional.latitude ~ ',' ~ professional.longitude %}
+{% elif professional.address %}
+  {% set maps_url = 'https://www.google.com/maps/search/?api=1&query=' ~ professional.address %}
+{% endif %}
+
+{% set can_show_social = professional.social_links_approved or (request and request.blueprint == 'admin') %}
+
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="mb-2">Localisation & Réseaux</h6>
+
+    <div class="d-flex flex-wrap gap-2">
+      {% if maps_url %}
+        <a class="btn btn-outline-primary btn-sm"
+           href="{{ maps_url }}" target="_blank" rel="noopener">
+          <i class="fa-solid fa-map-location-dot me-1"></i> Voir sur Google Maps
+        </a>
+      {% endif %}
+
+      {% if can_show_social %}
+        {% if professional.facebook_url %}
+          <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener"
+             href="{{ professional.facebook_url }}"><i class="fab fa-facebook me-1"></i>Facebook</a>
+        {% endif %}
+        {% if professional.instagram_url %}
+          <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener"
+             href="{{ professional.instagram_url }}"><i class="fab fa-instagram me-1"></i>Instagram</a>
+        {% endif %}
+        {% if professional.tiktok_url %}
+          <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener"
+             href="{{ professional.tiktok_url }}"><i class="fab fa-tiktok me-1"></i>TikTok</a>
+        {% endif %}
+        {% if professional.youtube_url %}
+          <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener"
+             href="{{ professional.youtube_url }}"><i class="fab fa-youtube me-1"></i>YouTube</a>
+        {% endif %}
+        {% if (not professional.facebook_url) and (not professional.instagram_url) and
+              (not professional.tiktok_url) and (not professional.youtube_url) %}
+          <span class="text-muted small">Aucun lien social renseigné.</span>
+        {% endif %}
+      {% else %}
+        {% if professional.facebook_url or professional.instagram_url or professional.tiktok_url or professional.youtube_url %}
+          <span class="text-muted small">
+            Liens saisis mais en attente d’approbation admin.
+          </span>
+        {% else %}
+          <span class="text-muted small">Aucun lien social renseigné.</span>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+</div>
