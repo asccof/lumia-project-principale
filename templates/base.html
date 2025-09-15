@@ -114,7 +114,16 @@
           <li class="nav-item"><a class="nav-link" href="{{ url_for('professionals') }}">Professionnels</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}#about">À propos</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('contact') }}">Contact</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('site_status') }}"><i class="fas fa-server me-1"></i>Statut</a></li>
+
+          {# ✅ CHANGEMENT UNIQUE : n'afficher "Statut" que sur /admin ... #}
+          {% if request.blueprint == 'admin' or request.path.startswith('/admin') %}
+            <li class="nav-item">
+              <a class="nav-link" href="{{ url_for('site_status') }}">
+                <i class="fas fa-server me-1"></i>Statut
+              </a>
+            </li>
+          {% endif %}
+          {# /CHANGEMENT #}
         </ul>
         <ul class="navbar-nav">
           {% if current_user.is_authenticated %}
