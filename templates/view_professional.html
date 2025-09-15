@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin · Profil — {{ professional.name }}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Ajout FA pour les icônes du bloc social/maps -->
+  <!-- Font Awesome pour les icônes du bloc social/maps -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
@@ -65,24 +65,10 @@
         </div>
       </div>
 
-      {# ✅ Bloc "Voir sur Maps + réseaux sociaux" (partiel réutilisable) #}
-      {% include "pro_social_links.html" %}
-
-      <div class="card shadow-sm">
-        <div class="card-body">
-          <h6 class="mb-2">Réseaux sociaux</h6>
-          <ul class="list-unstyled mb-0 small">
-            <li><strong>Facebook:</strong> {{ professional.facebook_url or '—' }}</li>
-            <li><strong>Instagram:</strong> {{ professional.instagram_url or '—' }}</li>
-            <li><strong>TikTok:</strong> {{ professional.tiktok_url or '—' }}</li>
-            <li><strong>YouTube:</strong> {{ professional.youtube_url or '—' }}</li>
-            <li><strong>Liens approuvés:</strong> {{ 'Oui' if professional.social_links_approved else 'Non' }}</li>
-          </ul>
-        </div>
-      </div>
+      {# ✅ Bloc Maps + Réseaux sociaux (affiche les liens même non approuvés en admin) #}
+      {% include "_pro_social_block.html" %}
 
       <div class="mt-3 d-flex gap-2">
-        <!-- Idem : liens sûrs en attendant les routes admin -->
         <a class="btn btn-primary" href="/admin/professionals/{{ professional.id }}/availability">Gérer les disponibilités</a>
         <a class="btn btn-outline-primary" href="/admin/professionals/{{ professional.id }}/unavailable-slots">Gérer les indisponibilités</a>
         <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_edit_product', product_id=professional.id) }}">Modifier le profil</a>
