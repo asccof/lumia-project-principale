@@ -65,11 +65,149 @@ def _admin_process_and_save_profile_image(file_storage) -> str:
     TARGET_SIZE = (512, 512)
     img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
-    out_name = f"{uuid.uuid4().hex}.jpg"  # ✅ correction: suppression de la '}' en trop
+    out_name = f"{uuid.uuid4().hex}.jpg"  # ✅ correction f-string
     out_path = _admin_upload_dir() / out_name
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
     return out_name
 # ============================================================================
+
+# ===== Helpers NOTIF (admin) ================================================
+def _split_emails(raw: str) -> list[str]:
+    vals = []
+    for chunk in (raw or "").replace(";", ",").split(","):
+        x = chunk.strip()
+        if x:
+            vals.append(x)
+    # unique + ordre
+    return list(dict.fromkeys(vals))
+
+def _admin_recipients() -> list[str]:
+    # ADMIN_EMAIL (déjà utilisé dans app.py pour seed), et option multi: ADMIN_NOTIF_EMAILS
+    return _split_emails(os.getenv("ADMIN_NOTIF_EMAILS") or os.getenv("ADMIN_EMAIL") or "")
+
+def _smtp_env_ok() -> bool:
+    """
+    Loggue si la config SMTP semble manquante. On supporte EMAIL_* et MAIL_*.
+    On ne bloque pas l'envoi ici (c'est notifications.py qui fera foi), mais on journalise.
+    """
+    # Priorité EMAIL_*
+    host = os.getenv("EMAIL_HOST") or os.getenv("MAIL_SERVER")
+    user = os.getenv("EMAIL_USER") or os.getenv("MAIL_USERNAME")
+    pw   = os.getenv("EMAIL_PASS") or os.getenv("MAIL_PASSWORD")
+    sender = os.getenv("EMAIL_FROM") or os.getenv("MAIL_DEFAULT_SENDER") or user
+    ok = bool(host and user and pw and sender)
+    if not ok:
+        current_app.logger.warning(
+            "[ADMIN][NOTIF][EMAIL] Configuration SMTP incomplète (EMAIL_* / MAIL_*). "
+            "EMAIL_HOST/USER/PASS/FROM ou MAIL_SERVER/MAIL_USERNAME/MAIL_PASSWORD/MAIL_DEFAULT_SENDER requis."
+        )
+    return ok
+
+def _safe_send_email_admin(to_addr: str | None, subject: str, body: str):
+    """
+    Envoi protégé pour éviter les exceptions 500 et produire des logs utiles.
+    """
+    if not to_addr:
+        current_app.logger.info("[ADMIN][NOTIF][EMAIL] destinataire manquant (skip) — %s", subject)
+        return
+    try:
+        from notifications import send_email
+        if not _smtp_env_ok():
+            # On tente quand même — notifications.py redonnera une erreur lisible
+            pass
+        ok = send_email(to_addr, subject, body)
+        if ok:
+            current_app.logger.info("[ADMIN][NOTIF][EMAIL] envoyé → %s : %s", to_addr, subject)
+        else:
+            current_app.logger.warning("[ADMIN][NOTIF][EMAIL] échec (send_email=False) → %s : %s", to_addr, subject)
+    except Exception as e:
+        current_app.logger.warning("[ADMIN][NOTIF][EMAIL] exception: %s", e)
+
+def _notify_admin_event(subject: str, body: str):
+    for admin_mail in _admin_recipients():
+        _safe_send_email_admin(admin_mail, subject, body)
+
+# Messages RDV (utilisés aussi côté app.py via import)
+def _build_notif(kind: str, ap: Appointment, role: str = 'patient') -> tuple[str, str]:
+    dt = ap.appointment_date.strftime('%d/%m/%Y %H:%M')
+    pro = ap.professional
+    who = f"{pro.name} — {pro.specialty or ''}".strip() if pro else "le professionnel"
+    if kind == 'pending':
+        if role == 'patient':
+            return ("Votre RDV est en attente de confirmation",
+                    f"Bonjour,\n\nVotre demande de RDV ({dt}) avec {who} est bien enregistrée et en attente de confirmation.\n\nTighri")
+        else:
+            return ("Nouveau RDV à confirmer",
+                    f"Bonjour,\n\nNouveau RDV à confirmer le {dt} avec le patient #{ap.patient_id}.\n\nTighri")
+    if kind == 'accepted':
+        return ("Votre RDV est confirmé",
+                f"Bonjour,\n\nVotre RDV le {dt} avec {who} est CONFIRMÉ.\n\nTighri")
+    if kind == 'refused':
+        return ("Votre RDV a été annulé",
+                f"Bonjour,\n\nVotre RDV le {dt} avec {who} a été annulé.\n\nTighri")
+    if kind == 'reminder':
+        if role == 'patient':
+            return ("Rappel : votre RDV est dans 24h",
+                    f"Bonjour,\n\nRappel : RDV le {dt} avec {who} dans ~24h.\n\nTighri")
+        else:
+            return ("Rappel : RDV (pro) dans 24h",
+                    f"Bonjour,\n\nRappel : vous avez un RDV le {dt} (patient #{ap.patient_id}).\n\nTighri")
+    return ("Notification", f"Bonjour,\n\nMise à jour RDV ({dt}).\n\nTighri")
+
+# API internes de notif RDV (admin)
+def _notify_patient(kind: str, ap: Appointment):
+    subject, text = _build_notif(kind, ap, role='patient')
+    user = User.query.get(ap.patient_id)
+    _safe_send_email_admin(getattr(user, 'email', None), subject, text)
+
+def _notify_pro(kind: str, ap: Appointment):
+    pro = ap.professional or Professional.query.get(ap.professional_id)
+    if not pro:
+        return
+    subject, text = _build_notif(kind, ap, role='pro')
+    # email pro via User lié (username == pro.name)
+    pro_user = None
+    try:
+        pro_user = User.query.filter_by(username=pro.name).first()
+    except Exception:
+        pro_user = None
+    _safe_send_email_admin(getattr(pro_user, 'email', None), subject, text)
+
+def _notify_admin_for_appointment(kind: str, ap: Appointment):
+    dt = ap.appointment_date.strftime('%d/%m/%Y %H:%M')
+    pro = ap.professional or Professional.query.get(ap.professional_id)
+    who = f"{pro.name} — {pro.specialty or ''}".strip() if pro else f"pro #{ap.professional_id}"
+    subject = f"[ADMIN] RDV {kind} · {dt} · {who}"
+    body = f"RDV {kind} pour le {dt}\nPro: {who}\nPatient id: {ap.patient_id}\nID RDV: {ap.id}"
+    _notify_admin_event(subject, body)
+
+# ===== Helpers NOTIF comptes (admin) ========================================
+def _build_account_notif(kind: str, user: User | None = None, pro: Professional | None = None) -> tuple[str, str]:
+    if kind == "account_created":
+        return ("Bienvenue sur Tighri",
+                "Bonjour,\n\nVotre compte a été créé sur Tighri. Vous pouvez vous connecter et compléter votre profil.\n\nTighri")
+    if kind == "account_updated":
+        return ("Votre compte a été mis à jour",
+                "Bonjour,\n\nVotre compte vient d'être modifié par l'administration. Si vous n'êtes pas à l'origine de cette action, contactez-nous.\n\nTighri")
+    if kind == "pro_validated":
+        name = (pro.name if pro else "Votre profil")
+        return ("Profil professionnel validé",
+                f"Bonjour,\n\n{name} a été validé. Votre profil est désormais visible et réservable.\n\nTighri")
+    if kind == "pro_rejected":
+        return ("Profil professionnel rejeté",
+                "Bonjour,\n\nVotre profil professionnel a été rejeté. Vous pouvez corriger vos informations et demander une nouvelle validation.\n\nTighri")
+    if kind == "social_links_approved":
+        return ("Liens sociaux approuvés",
+                "Bonjour,\n\nVos liens sociaux ont été approuvés par l’administration.\n\nTighri")
+    if kind == "social_links_unapproved":
+        return ("Liens sociaux mis en attente",
+                "Bonjour,\n\nVos liens sociaux ne sont pas/plus approuvés. Merci d’ajuster vos liens si nécessaire.\n\nTighri")
+    # fallback
+    return ("Notification compte", "Bonjour,\n\nMise à jour de votre compte.\n\nTighri")
+
+def _notify_user_account(email: str | None, kind: str, pro: Professional | None = None):
+    subject, text = _build_account_notif(kind, pro=pro)
+    _safe_send_email_admin(email, subject, text)
 
 # --------------------- AUTH ADMIN ---------------------
 @admin_bp.route('/login', methods=['GET', 'POST'], endpoint='admin_login')
@@ -325,6 +463,8 @@ def admin_add_product():
         db.session.add(professional)
         db.session.commit()
         flash('Professionnel ajouté avec succès!')
+        # Info admin de la création d’un pro (pas d’email pro si pas d’utilisateur lié)
+        _notify_admin_event("[ADMIN] Nouveau professionnel ajouté", f"Pro: {professional.name} (id {professional.id}) — statut en_attente")
         return redirect(url_for('admin.admin_products'))
 
     return render_template('add_product.html')
@@ -427,6 +567,7 @@ def admin_edit_product(product_id):
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
+        _notify_admin_event("[ADMIN] Profil pro mis à jour", f"Pro: {professional.name} (id {professional.id})")
         return redirect(url_for('admin.admin_products'))
 
     return render_template('edit_product.html', professional=professional)
@@ -526,6 +667,7 @@ def edit_professional(professional_id):
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
+        _notify_admin_event("[ADMIN] Profil pro modifié (route edit_professional)", f"Pro: {professional.name} (id {professional.id})")
         return redirect(url_for('admin.admin_professionals'))
 
     return render_template('edit_product.html', professional=professional)
@@ -731,6 +873,11 @@ def add_user():
         db.session.add(user)
         db.session.commit()
         flash('Utilisateur ajouté avec succès!')
+
+        # Notifs
+        _notify_user_account(user.email, "account_created")
+        _notify_admin_event("[ADMIN] Compte créé", f"User: {user.username} ({user.email}) — type={user.user_type}, admin={user.is_admin}")
+
         return redirect(url_for('admin.admin_users'))
 
     return render_template('add_user.html')
@@ -745,7 +892,6 @@ def edit_user(user_id):
 
     if request.method == 'POST':
         old_username = user.username
-        old_type = user.user_type
 
         username = (request.form.get('username') or user.username).strip()
         email = (request.form.get('email') or user.email).strip().lower()
@@ -794,6 +940,11 @@ def edit_user(user_id):
 
         db.session.commit()
         flash('Utilisateur modifié avec succès!')
+
+        # Notifs compte modifié
+        _notify_user_account(user.email, "account_updated")
+        _notify_admin_event("[ADMIN] Compte modifié", f"User: {user.username} ({user.email}) — type={user.user_type}, admin={user.is_admin}")
+
         return redirect(url_for('admin.admin_users'))
 
     return render_template('edit_user.html', user=user)
@@ -817,6 +968,7 @@ def delete_user(user_id):
         db.session.delete(user)
         db.session.commit()
         flash('Utilisateur supprimé avec succès!')
+        _notify_admin_event("[ADMIN] Compte supprimé", f"User id {user_id} supprimé. RDV réassignés à [deleted].")
     except Exception as e:
         db.session.rollback()
         flash(f'Erreur lors de la suppression: {e}', 'error')
@@ -838,58 +990,7 @@ def admin_appointments():
 def admin_orders():
     return redirect(url_for('admin.admin_appointments'))
 
-# ===== Notifications admin -> patient/pro =====
-def _build_notif(kind: str, ap: Appointment, role: str = 'patient') -> tuple[str, str]:
-    dt = ap.appointment_date.strftime('%d/%m/%Y %H:%M')
-    pro = ap.professional
-    who = f"{pro.name} — {pro.specialty or ''}".strip() if pro else "le professionnel"
-    if kind == 'pending':
-        if role == 'patient':
-            return ("Votre RDV est en attente de confirmation",
-                    f"Bonjour,\n\nVotre demande de RDV ({dt}) avec {who} est bien enregistrée et en attente de confirmation.\n\nTighri")
-        else:
-            return ("Nouveau RDV à confirmer",
-                    f"Bonjour,\n\nNouveau RDV à confirmer le {dt} avec le patient #{ap.patient_id}.\n\nTighri")
-    if kind == 'accepted':
-        return ("Votre RDV est confirmé",
-                f"Bonjour,\n\nVotre RDV le {dt} avec {who} est CONFIRMÉ.\n\nTighri")
-    if kind == 'refused':
-        return ("Votre RDV a été annulé",
-                f"Bonjour,\n\nVotre RDV le {dt} avec {who} a été annulé.\n\nTighri")
-    if kind == 'reminder':
-        if role == 'patient':
-            return ("Rappel : votre RDV est dans 24h",
-                    f"Bonjour,\n\nRappel : RDV le {dt} avec {who} dans ~24h.\n\nTighri")
-        else:
-            return ("Rappel : RDV (pro) dans 24h",
-                    f"Bonjour,\n\nRappel : vous avez un RDV le {dt} (patient #{ap.patient_id}).\n\nTighri")
-    return ("Notification", f"Bonjour,\n\nMise à jour RDV ({dt}).\n\nTighri")
-
-def _notify_patient(kind: str, ap: Appointment):
-    from notifications import send_email, send_sms, send_whatsapp
-    subject, text = _build_notif(kind, ap, role='patient')
-    user = User.query.get(ap.patient_id)
-    send_email(getattr(user, 'email', None), subject, text)
-    phone = getattr(user, 'phone', None)
-    send_sms(phone, text)
-    send_whatsapp(phone, text)
-
-def _notify_pro(kind: str, ap: Appointment):
-    from notifications import send_email, send_sms, send_whatsapp
-    pro = ap.professional or Professional.query.get(ap.professional_id)
-    if not pro:
-        return
-    subject, text = _build_notif(kind, ap, role='pro')
-    # email pro via user lié (username == pro.name)
-    pro_user = None
-    try:
-        pro_user = User.query.filter_by(username=pro.name).first()
-    except Exception:
-        pro_user = None
-    send_email(getattr(pro_user, 'email', None), subject, text)
-    send_sms(getattr(pro, 'phone', None), text)
-    send_whatsapp(getattr(pro, 'phone', None), text)
-
+# ===== Changement de statut RDV =====
 @admin_bp.route('/orders/<int:appointment_id>/status', methods=['POST'], endpoint='update_appointment_status')
 @login_required
 def update_appointment_status(appointment_id):
@@ -904,14 +1005,19 @@ def update_appointment_status(appointment_id):
         appointment.status = new_status
         db.session.commit()
 
-        # Envoi notifications
+        # Notifications (patient + pro + admin)
         if new_status == 'confirme':
             _notify_patient('accepted', appointment)
+            _notify_pro('accepted', appointment)
+            _notify_admin_for_appointment('accepted', appointment)
         elif new_status == 'annule':
             _notify_patient('refused', appointment)
+            _notify_pro('refused', appointment)
+            _notify_admin_for_appointment('refused', appointment)
         elif new_status == 'en_attente':
             _notify_patient('pending', appointment)
             _notify_pro('pending', appointment)
+            _notify_admin_for_appointment('pending', appointment)
 
         return jsonify({'success': True, 'message': f'Rendez-vous {new_status}'})
     except Exception as e:
@@ -945,6 +1051,12 @@ def validate_professional(professional_id):
         professional = Professional.query.get_or_404(professional_id)
         professional.status = 'valide'
         db.session.commit()
+
+        # Notifs pro + admin
+        pro_user = User.query.filter_by(username=professional.name).first()
+        _notify_user_account(getattr(pro_user, 'email', None), "pro_validated", pro=professional)
+        _notify_admin_event("[ADMIN] Pro validé", f"Pro: {professional.name} (id {professional.id})")
+
         return jsonify({'success': True, 'message': 'Professionnel validé avec succès'})
     except Exception as e:
         db.session.rollback()
@@ -959,6 +1071,12 @@ def reject_professional(professional_id):
         professional = Professional.query.get_or_404(professional_id)
         professional.status = 'rejete'
         db.session.commit()
+
+        # Notifs pro + admin
+        pro_user = User.query.filter_by(username=professional.name).first()
+        _notify_user_account(getattr(pro_user, 'email', None), "pro_rejected", pro=professional)
+        _notify_admin_event("[ADMIN] Pro rejeté", f"Pro: {professional.name} (id {professional.id})")
+
         return jsonify({'success': True, 'message': 'Professionnel rejeté'})
     except Exception as e:
         db.session.rollback()
@@ -984,5 +1102,14 @@ def social_approval(professional_id):
     if hasattr(professional, 'social_links_approved'):
         professional.social_links_approved = approved
         db.session.commit()
+
+        # Notifs pro + admin
+        pro_user = User.query.filter_by(username=professional.name).first()
+        _notify_user_account(getattr(pro_user, 'email', None),
+                             "social_links_approved" if approved else "social_links_unapproved",
+                             pro=professional)
+        _notify_admin_event("[ADMIN] Social links " + ("approuvés" if approved else "désapprouvés"),
+                            f"Pro: {professional.name} (id {professional.id}) — approved={approved}")
+
         return jsonify({'success': True, 'approved': approved})
     return jsonify({'success': False, 'message': 'Champ social_links_approved non disponible'}), 400
