@@ -16,7 +16,6 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return val in {"1", "true", "yes", "on", "y"}
 
 def _split_recipients(value: str) -> List[str]:
-    # "a@x.com, b@y.com ; c@z.com" -> ["a@x.com","b@y.com","c@z.com"]
     parts = []
     for chunk in (value or "").replace(";", ",").split(","):
         c = chunk.strip()
@@ -25,7 +24,6 @@ def _split_recipients(value: str) -> List[str]:
     return parts
 
 def _choose_port(use_ssl: bool, use_tls: bool, env_port: Optional[str]) -> int:
-    # Si l’utilisateur a explicitement donné un port on le respecte, sinon on devine.
     if env_port:
         try:
             return int(env_port)
@@ -37,20 +35,30 @@ def _choose_port(use_ssl: bool, use_tls: bool, env_port: Optional[str]) -> int:
         return 587
     return 25
 
-# -------- Configuration --------
-SMTP_HOST = os.getenv("MAIL_SERVER", "smtp.zoho.com")
-USE_SSL   = _env_bool("MAIL_USE_SSL", True)     # SSL implicite recommandé avec Zoho
-USE_TLS   = _env_bool("MAIL_USE_TLS", False)    # STARTTLS si activé
-SMTP_PORT = _choose_port(USE_SSL, USE_TLS, os.getenv("MAIL_PORT"))
+# -------- Configuration (supporte EMAIL_* et MAIL_*) --------
+# Priorité aux variables EMAIL_* ; fallback sur MAIL_* pour compat.
+SMTP_HOST = os.getenv("EMAIL_HOST") or os.getenv("MAIL_SERVER") or "smtp.zoho.com"
 
-SMTP_USERNAME = os.getenv("MAIL_USERNAME")
-SMTP_PASSWORD = os.getenv("MAIL_PASSWORD")
+# Modes SSL/TLS : on prend les flags explicites si fournis, sinon heuristique par port.
+USE_SSL = _env_bool("EMAIL_USE_SSL", _env_bool("MAIL_USE_SSL", False))
+USE_TLS = _env_bool("EMAIL_USE_TLS", _env_bool("MAIL_USE_TLS", True))  # défaut True (Zoho 587)
 
-FROM_NAME     = os.getenv("MAIL_FROM_NAME", "Tighri")
-DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER") or SMTP_USERNAME or "no-reply@tighri.com"
-REPLY_TO      = os.getenv("MAIL_REPLY_TO")  # optionnel
+# Si un port explicite est fourni, on le respecte, sinon on devine selon SSL/TLS.
+SMTP_PORT = _choose_port(
+    USE_SSL, USE_TLS,
+    os.getenv("EMAIL_PORT") or os.getenv("MAIL_PORT")
+)
+
+SMTP_USERNAME = os.getenv("EMAIL_USER") or os.getenv("MAIL_USERNAME")
+SMTP_PASSWORD = os.getenv("EMAIL_PASS") or os.getenv("MAIL_PASSWORD")
+
+FROM_NAME      = os.getenv("EMAIL_FROM_NAME") or os.getenv("MAIL_FROM_NAME") or os.getenv("MAIL_DEFAULT_SENDER_NAME") or "Tighri"
+DEFAULT_SENDER = os.getenv("EMAIL_FROM") or os.getenv("MAIL_DEFAULT_SENDER") or SMTP_USERNAME or "no-reply@tighri.com"
+REPLY_TO       = os.getenv("EMAIL_REPLY_TO") or os.getenv("MAIL_REPLY_TO")  # optionnel
 
 BRAND = os.getenv("BRAND_NAME", "Tighri")
+
+EMAIL_ENABLED = _env_bool("EMAIL_ENABLED", True)  # si tu veux pouvoir couper l’envoi rapidement
 
 # -------- Core email --------
 def _build_message(
@@ -60,7 +68,6 @@ def _build_message(
     body_html: Optional[str] = None,
 ) -> EmailMessage:
     msg = EmailMessage()
-    # From: "Nom <email>"
     msg["From"] = f"{FROM_NAME} <{DEFAULT_SENDER}>" if FROM_NAME and DEFAULT_SENDER else (DEFAULT_SENDER or "")
     msg["To"] = ", ".join(to_addresses)
     msg["Subject"] = subject
@@ -68,21 +75,26 @@ def _build_message(
         msg["Reply-To"] = REPLY_TO
 
     if body_html:
-        # Multipart alternatif (texte + HTML)
         msg.set_content(body_text or "")
         msg.add_alternative(body_html, subtype="html")
     else:
-        # Texte simple
         msg.set_content(body_text or "")
 
     return msg
 
 def _send_via_smtp(msg: EmailMessage) -> bool:
+    if not EMAIL_ENABLED:
+        print(f"[NOTIF][EMAIL] Désactivé (EMAIL_ENABLED=false) — skip → {msg.get('To')} : {msg.get('Subject')}")
+        return False
+
     if not SMTP_HOST:
-        print("[NOTIF][EMAIL] ERREUR: MAIL_SERVER non défini.")
+        print("[NOTIF][EMAIL] ERREUR: SMTP_HOST non défini (EMAIL_HOST/MAIL_SERVER).")
         return False
     if not SMTP_USERNAME or not SMTP_PASSWORD:
-        print("[NOTIF][EMAIL] Config incomplète: MAIL_USERNAME/MAIL_PASSWORD manquants.")
+        print("[NOTIF][EMAIL] ERREUR: identifiants manquants (EMAIL_USER/PASS ou MAIL_USERNAME/PASSWORD).")
+        return False
+    if not DEFAULT_SENDER:
+        print("[NOTIF][EMAIL] ERREUR: expéditeur manquant (EMAIL_FROM ou MAIL_DEFAULT_SENDER).")
         return False
 
     try:
@@ -99,17 +111,14 @@ def _send_via_smtp(msg: EmailMessage) -> bool:
                     s.ehlo()
                 s.login(SMTP_USERNAME, SMTP_PASSWORD)
                 s.send_message(msg)
-        print(f"[NOTIF][EMAIL] OK -> {msg.get('To')} : {msg.get('Subject')}")
+        print(f"[NOTIF][EMAIL] OK → {msg.get('To')} : {msg.get('Subject')}")
         return True
     except Exception as e:
-        print(f"[NOTIF][EMAIL] ERREUR -> {msg.get('To')}: {e}")
+        print(f"[NOTIF][EMAIL] ERREUR → {msg.get('To')} : {e}")
         return False
 
 # -------- API publique --------
 def _send_raw_email(to_address: str, subject: str, body: str) -> bool:
-    """
-    Compat rétro avec l’existant: envoi texte simple à un seul destinataire.
-    """
     recipients = _split_recipients(to_address)
     if not recipients:
         print(f"[NOTIF][EMAIL] Destinataire manquant.")
@@ -118,13 +127,6 @@ def _send_raw_email(to_address: str, subject: str, body: str) -> bool:
     return _send_via_smtp(msg)
 
 def send_email(email: str, subject: str, body: str, html: Optional[str] = None) -> bool:
-    """
-    Envoi d’e-mail.
-    - email: destinataire(s) (séparés par virgule/point-virgule).
-    - subject: sujet.
-    - body: version texte.
-    - html: (optionnel) version HTML.
-    """
     recipients = _split_recipients(email)
     if not recipients:
         print("[NOTIF][EMAIL] Destinataire manquant.")
@@ -134,10 +136,10 @@ def send_email(email: str, subject: str, body: str, html: Optional[str] = None) 
 
 def send_sms(phone: str, text: str) -> bool:
     # Stub pour intégration future (Twilio/Vonage…)
-    print(f"[NOTIF][SMS] (stub) -> {phone}: {text}")
+    print(f"[NOTIF][SMS] (stub) → {phone}: {text}")
     return False
 
 def send_whatsapp(phone: str, text: str) -> bool:
     # Stub pour intégration future (WhatsApp Business API / Twilio)
-    print(f"[NOTIF][WA] (stub) -> {phone}: {text}")
+    print(f"[NOTIF][WA] (stub) → {phone}: {text}")
     return False
