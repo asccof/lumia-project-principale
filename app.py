@@ -13,6 +13,30 @@ from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import os, uuid, io, requests
 from notifications import send_email, send_sms, send_whatsapp
 from admin_server import _build_notif  # on réutilise les mêmes textes d’emails que l’admin
+# --- Email wrapper (app.py) -----------------------------------------------
+from flask import current_app
+from notifications import send_email as _notif_send_email  # lit vos MAIL_* sur Render
+
+def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None = None) -> bool:
+    """
+    Wrapper unique appelé par les routes.
+    - Ne casse jamais la requête (try/except).
+    - Délègue l'envoi réel à notifications.py qui utilise MAIL_* (Zoho).
+    """
+    try:
+        if not to_addr:
+            current_app.logger.warning("[EMAIL] destinataire manquant")
+            return False
+        ok = _notif_send_email(to_addr, subject, body_text, html)
+        if ok:
+            current_app.logger.info("[EMAIL] envoyé -> %s : %s", to_addr, subject)
+        else:
+            current_app.logger.error("[EMAIL] échec -> %s : %s", to_addr, subject)
+        return ok
+    except Exception as e:
+        current_app.logger.exception("safe_send_email exception: %s", e)
+        return False
+# --------------------------------------------------------------------------
 
 # === [TIGHRI_R1:CONFIG_INLINE_SAFE] =========================================
 try:
