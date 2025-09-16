@@ -834,22 +834,24 @@ def professional_appointments():
 
 # ===== [EMAIL GUARD] ========================================================
 def email_config_ok() -> bool:
-    """Vérifie la présence de la config SMTP avant d'envoyer quoi que ce soit."""
-    required = ["EMAIL_ENABLED", "EMAIL_HOST", "EMAIL_PORT", "EMAIL_USER", "EMAIL_PASS", "EMAIL_FROM"]
-    missing = [k for k in required if not os.getenv(k)]
-    enabled = os.getenv("EMAIL_ENABLED", "").lower() == "true"
+    """
+    Accepte EMAIL_* (prioritaire) ou MAIL_* (fallback).
+    """
+    enabled = (os.getenv("EMAIL_ENABLED") or os.getenv("MAIL_ENABLED") or "true").strip().lower() == "true"
+
+    host   = os.getenv("EMAIL_HOST") or os.getenv("MAIL_SERVER")
+    port   = os.getenv("EMAIL_PORT") or os.getenv("MAIL_PORT")
+    user   = os.getenv("EMAIL_USER") or os.getenv("MAIL_USERNAME")
+    pw     = os.getenv("EMAIL_PASS") or os.getenv("MAIL_PASSWORD")
+    sender = os.getenv("EMAIL_FROM") or os.getenv("MAIL_DEFAULT_SENDER") or user
+
+    missing = [k for k, v in [("host", host), ("user", user), ("password", pw), ("from", sender)] if not v]
     if missing or not enabled:
         app.logger.warning("[NOTIF][EMAIL] Config incomplète (enabled=%s) ; manquants=%s", enabled, missing)
         return False
     return True
+# ===========================================================================
 
-def safe_send_email(to_addr: str, subject: str, body: str):
-    """Wrap d'envoi d'e-mail: ne tente pas si config incomplète ou destinataire vide."""
-    if not to_addr:
-        app.logger.warning("[NOTIF][EMAIL] destinataire manquant")
-        return
-    if not email_config_ok():
-        return
     try:
         send_email(to_addr, subject, body)
     except Exception as e:
