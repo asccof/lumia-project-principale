@@ -13,7 +13,8 @@ class User(UserMixin, db.Model):
     # Identité
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(255), nullable=False)
+    # nullable=True pour autoriser les comptes créés via Google (sans mot de passe local)
+    password_hash = db.Column(db.String(255), nullable=True)
 
     # Téléphone utilisateur (utilisé dans les formulaires / contact)
     phone = db.Column(db.String(30))
@@ -23,6 +24,12 @@ class User(UserMixin, db.Model):
 
     # Admin global
     is_admin = db.Column(db.Boolean, default=False)
+
+    # --- LIAISON OAUTH (Google, etc.) ---
+    oauth_provider = db.Column(db.String(30))                 # ex: 'google'
+    oauth_sub = db.Column(db.String(255), unique=True, index=True)  # identifiant 'sub' Google
+    picture_url = db.Column(db.Text)                          # photo de profil Google
+    full_name = db.Column(db.String(120))                     # nom affiché Google
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
