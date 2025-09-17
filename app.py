@@ -11,6 +11,10 @@ from sqlalchemy import or_, text
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import os, uuid, io, requests
+
+# --- OAuth (Google) ---
+from authlib.integrations.flask_client import OAuth
+
 from notifications import send_email, send_sms, send_whatsapp
 from admin_server import _build_notif  # on réutilise les mêmes textes d’emails que l’admin
 # --- Email wrapper (app.py) -----------------------------------------------
@@ -94,6 +98,14 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = True  # Render est en HTTPS
 app.config['PREFERRED_URL_SCHEME'] = 'https'
+
+# --- Cookies "remember me" (Flask-Login) ---
+app.config["REMEMBER_COOKIE_NAME"] = "tighri_remember"
+app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=60)
+app.config["REMEMBER_COOKIE_SECURE"] = True
+app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # Dossier d’upload des images de profils
@@ -106,6 +118,21 @@ try:
     Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
 except Exception as e:
     app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
+
+# --- OAuth (Google) configuration ---
+oauth = OAuth(app)
+google = oauth.register(
+    name="google",
+    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+    access_token_url="https://oauth2.googleapis.com/token",
+    authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
+    api_base_url="https://www.googleapis.com/oauth2/v3/",
+    client_kwargs={
+        "scope": "openid email profile",
+        "prompt": "select_account",
+    },
+)
 
 # --- Normalisation de l'URI Postgres -> psycopg3 ---
 def _normalize_pg_uri(uri: str) -> str:
@@ -174,6 +201,14 @@ with app.app_context():
 
         # users: téléphone
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"))
+        # users: oauth (si tu n'as pas fait la migration, on les ajoute à chaud)
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR(30);"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_sub VARCHAR(255);"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS picture_url TEXT;"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(120);"))
+        # index utile sur oauth_sub
+        db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);"))
+
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
@@ -463,8 +498,9 @@ def login():
             or_(User.username == username_or_email, User.email == username_or_email.lower())
         ).first()
 
-        if user and check_password_hash(user.password_hash, password):
-            login_user(user, remember=remember)
+        if user and user.password_hash and check_password_hash(user.password_hash, password):
+            # IMPORTANT: cookie persistant 60 jours si remember coché
+            login_user(user, remember=remember, duration=timedelta(days=60))
             if user.user_type == 'professional':
                 flash('Bienvenue dans votre espace professionnel!')
                 return redirect(url_for('professional_dashboard'))
@@ -475,6 +511,80 @@ def login():
         flash("Nom d'utilisateur / email ou mot de passe incorrect")
 
     return render_template('login.html')
+
+# ---- Google OAuth: routes ----
+@app.route("/auth/google")
+def auth_google():
+    redirect_uri = os.environ.get(
+        "OAUTH_REDIRECT_URI",
+        url_for("auth_google_callback", _external=True, _scheme="https")
+    )
+    return google.authorize_redirect(redirect_uri)
+
+@app.route("/auth/google/callback")
+def auth_google_callback():
+    from models import User  # sécurité d'import circulaire
+
+    try:
+        token = google.authorize_access_token()
+        userinfo = google.get("userinfo").json()
+
+        sub = userinfo.get("sub")
+        email = (userinfo.get("email") or "").lower().strip()
+        name = userinfo.get("name")
+        picture = userinfo.get("picture")
+
+        if not email:
+            flash("Impossible de récupérer votre email Google.", "danger")
+            return redirect(url_for("login"))
+
+        # Lier par oauth_sub OU par email existant
+        user = User.query.filter(
+            or_(User.oauth_sub == sub, User.email == email)
+        ).first()
+
+        if user:
+            changed = False
+            if not user.oauth_sub and sub:
+                user.oauth_provider = "google"; user.oauth_sub = sub; changed = True
+            if picture and not user.picture_url:
+                user.picture_url = picture; changed = True
+            if name and not user.full_name:
+                user.full_name = name; changed = True
+            if changed:
+                db.session.commit()
+        else:
+            # Création d'un nouveau compte (mot de passe local non requis)
+            username_base = email.split("@")[0]
+            username = username_base
+            # garantie unicité username
+            i = 1
+            while User.query.filter_by(username=username).first():
+                username = f"{username_base}{i}"
+                i += 1
+
+            user = User(
+                username=username,
+                email=email,
+                oauth_provider="google",
+                oauth_sub=sub,
+                full_name=name,
+                picture_url=picture,
+                user_type="professional"  # adapte si tu veux une autre valeur par défaut
+            )
+            db.session.add(user)
+            db.session.commit()
+
+        login_user(user, remember=True, duration=timedelta(days=60))
+        flash("Connexion via Google réussie ✅", "success")
+        # redirection selon le type d'utilisateur
+        if user.user_type == 'professional':
+            return redirect(url_for("professional_dashboard"))
+        return redirect(url_for("index"))
+
+    except Exception:
+        flash("Connexion Google impossible. Réessayez.", "danger")
+        return redirect(url_for("login"))
 
 @app.route('/logout', endpoint='logout')
 @login_required
@@ -489,7 +599,7 @@ def change_password():
     if request.method == 'POST':
         old = request.form.get('old', '')
         new = request.form.get('new', '')
-        if not check_password_hash(current_user.password_hash, old):
+        if not current_user.password_hash or not check_password_hash(current_user.password_hash, old):
             flash('Ancien mot de passe incorrect.', 'danger')
         else:
             current_user.password_hash = generate_password_hash(new)
