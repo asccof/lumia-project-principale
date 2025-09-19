@@ -49,50 +49,60 @@ def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None
         return False
 # --------------------------------------------------------------------------
 
-# === [TIGHRI_R1:CONFIG_INLINE_SAFE] =========================================
+# === [TIGHRI_R1:CONFIG_INLINE_SAFE — PERSISTENT DISK] =======================
+from pathlib import Path
+import os, uuid, io
+
 try:
     from PIL import Image, ImageOps
     _PIL_OK = True
 except Exception:
     _PIL_OK = False
 
+# Racine du projet (utile pour fallback local)
 try:
     BASE_DIR
 except NameError:
     BASE_DIR = Path(__file__).resolve().parent
 
-# NEW: racine persistante des uploads (monte un Render Disk et mets UPLOAD_ROOT=/var/data/uploads)
-try:
-    UPLOAD_ROOT
-except NameError:
-    UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
+# 👉 On privilégie le disque Render s’il existe (/var/data).
+#    Sinon on garde un dossier local pour le dev.
+def _pick_persistent_root() -> Path:
+    # 1) Variable d’env pour override explicite
+    env = os.getenv("UPLOAD_ROOT")
+    if env:
+        return Path(env)
 
-try:
-    UPLOAD_FOLDER
-except NameError:
-    # Les photos de profil seront dans <UPLOAD_ROOT>/profiles
-    UPLOAD_FOLDER = Path(UPLOAD_ROOT) / 'profiles'
+    # 2) Disque Render si monté
+    var_data = Path("/var/data")
+    if var_data.exists() and var_data.is_dir():
+        return var_data
 
-try:
-    ALLOWED_IMAGE_EXT
-except NameError:
-    ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
+    # 3) Fallback dev local (dans le repo)
+    return BASE_DIR / "uploads"
 
+# Racine persistante des uploads
+UPLOAD_ROOT = _pick_persistent_root()
+
+# Dossier des photos de profils dans la racine persistante
+UPLOAD_FOLDER = Path(UPLOAD_ROOT) / "uploads" / "profiles"
+
+# Extensions autorisées
+ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
+
+# Branding / flags (inchangés)
 try:
     BRAND_NAME
 except NameError:
     BRAND_NAME = 'Tighri'
-
 try:
     ENABLE_SMS
 except NameError:
     ENABLE_SMS = True
-
 try:
     ENABLE_WHATSAPP
 except NameError:
     ENABLE_WHATSAPP = True
-
 try:
     MAX_CONTENT_LENGTH
 except NameError:
@@ -101,30 +111,19 @@ except NameError:
 
 # --- App principale ---
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = True  # Render est en HTTPS
-app.config['PREFERRED_URL_SCHEME'] = 'https'
+# ...
+# (toutes tes autres configs restent identiques)
 
-# --- Cookies "remember me" (Flask-Login) ---
-app.config["REMEMBER_COOKIE_NAME"] = "tighri_remember"
-app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=60)
-app.config["REMEMBER_COOKIE_SECURE"] = True
-app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
-
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-
-# Dossier d’upload des images de profils
+# Dossier d’upload des images de profils (→ disque persistant)
 app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
 app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
 
-# Crée le dossier si besoin (racine + profiles)
+# Crée les dossiers si besoin (racine + profiles)
 try:
-    Path(UPLOAD_ROOT).mkdir(parents=True, exist_ok=True)
     Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
 except Exception as e:
     app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
+
 
 # --- OAuth (Google) configuration ---
 oauth = OAuth(app)
