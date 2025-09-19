@@ -18,6 +18,7 @@ from models import db, User, Professional, Appointment, ProfessionalAvailability
 admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
 
 # ===== Helpers image (admin) =================================================
+# ===== Helpers image (admin) ===============================================
 ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
 
 def _ext_ok(filename: str) -> bool:
@@ -28,17 +29,24 @@ def _ext_ok(filename: str) -> bool:
 
 def _admin_upload_dir() -> Path:
     """
-    Toujours le même dossier que celui servi par app.py :
-    - Si app.config['UPLOAD_FOLDER'] est défini, on l'utilise.
-    - Sinon, fallback sur <root_path>/uploads/profiles
+    Utilise le même dossier que l'app :
+    1) Si app.config['UPLOAD_FOLDER'] est défini : on l'utilise (→ /var/data/... en prod)
+    2) Sinon, si /var/data existe : on s'en sert (prod Render)
+    3) Sinon, fallback local <root>/uploads/profiles
     """
     cfg = current_app.config.get('UPLOAD_FOLDER')
     if cfg:
         up = Path(cfg)
     else:
-        up = Path(current_app.root_path) / 'uploads' / 'profiles'
+        var_data = Path("/var/data")
+        if var_data.exists():
+            up = var_data / "uploads" / "profiles"
+        else:
+            up = Path(current_app.root_path).parent / "uploads" / "profiles"
     up.mkdir(parents=True, exist_ok=True)
     return up
+# ============================================================================
+
 
 def _admin_process_and_save_profile_image(file_storage) -> str:
     filename = getattr(file_storage, "filename", None)
