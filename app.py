@@ -15,6 +15,10 @@ import os, uuid, io, requests
 # --- OAuth (Google) ---
 from authlib.integrations.flask_client import OAuth
 
+# --- Reset password: tokens & crypto ---
+import secrets, hashlib
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+
 from notifications import send_email, send_sms, send_whatsapp
 from admin_server import _build_notif  # on réutilise les mêmes textes d’emails que l’admin
 # --- Email wrapper (app.py) -----------------------------------------------
@@ -209,6 +213,10 @@ with app.app_context():
         # index utile sur oauth_sub
         db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);"))
 
+        # --- Jetons de reset de mot de passe (usage unique + expiration 24h)
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;"))
+
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
@@ -232,6 +240,35 @@ with app.app_context():
         db.session.commit()
         app.logger.info(f"Admin '{admin_username}' créé.")
 # ===========================================================================
+
+# ===== Helpers reset mot de passe (token signé + hash DB) ====================
+def _password_reset_ts():
+    # Jeton signé (défense en profondeur en plus du jeton DB)
+    return URLSafeTimedSerializer(app.config["SECRET_KEY"], salt="tighri-password-reset")
+
+def _hash_token(tok: str) -> str:
+    return hashlib.sha256(tok.encode("utf-8")).hexdigest()
+
+def issue_reset_token(user, hours=24) -> str:
+    """Crée un jeton de reset à usage unique, valable X heures, et le stocke en DB (hash)."""
+    tok = secrets.token_urlsafe(32)
+    user.reset_token_hash = _hash_token(tok)
+    user.reset_token_expires_at = datetime.utcnow() + timedelta(hours=hours)
+    db.session.commit()
+    return tok
+
+def consume_token_to_user(token: str):
+    """Vérifie le jeton (hash + expiration). Ne l’invalide pas encore (fait après succès)."""
+    if not token:
+        return None
+    h = _hash_token(token)
+    u = User.query.filter_by(reset_token_hash=h).first()
+    if not u:
+        return None
+    if not u.reset_token_expires_at or u.reset_token_expires_at < datetime.utcnow():
+        return None
+    return u
+# ============================================================================
 
 # ===== [TIGHRI_R1:IMAGES_INLINE_FALLBACK] ===================================
 TARGET_SIZE = (512, 512)
@@ -477,9 +514,22 @@ def professional_register():
             db.session.add(professional)
 
             db.session.commit()
-        except Exception:
+        except Exception as e:
+            from sqlalchemy.exc import IntegrityError, DataError
             db.session.rollback()
-            flash("Erreur lors de la création du compte professionnel. Réessayez.", "danger")
+            app.logger.exception("PRO_REGISTER_FAIL for username=%s email=%s: %s", username, email, e)
+            if isinstance(e, IntegrityError):
+                msg = str(getattr(e, "orig", e)).lower()
+                if "username" in msg:
+                    flash("Nom d’utilisateur déjà pris. Merci d’en choisir un autre.", "danger")
+                elif "email" in msg:
+                    flash("Email déjà enregistré. Utilisez une autre adresse ou connectez-vous.", "danger")
+                else:
+                    flash("Contrainte de base de données. Vérifiez que l’email/nom ne sont pas déjà utilisés.", "danger")
+            elif isinstance(e, DataError):
+                flash("Données trop longues ou caractères non pris en charge (évitez les emojis).", "danger")
+            else:
+                flash("Erreur lors de la création du compte professionnel. Vérifiez vos champs et réessayez.", "danger")
             return redirect(url_for('professional_register'))
 
         flash('Compte professionnel créé avec succès! Un administrateur validera votre profil.')
@@ -597,24 +647,118 @@ def logout():
 @login_required
 def change_password():
     if request.method == 'POST':
-        old = request.form.get('old', '')
-        new = request.form.get('new', '')
-        if not current_user.password_hash or not check_password_hash(current_user.password_hash, old):
-            flash('Ancien mot de passe incorrect.', 'danger')
+        old = (request.form.get('old') or '').strip()
+        new = (request.form.get('new') or '').strip()
+        confirm = (request.form.get('confirm') or '').strip()
+
+        has_local_pw = bool(current_user.password_hash)
+
+        if has_local_pw:
+            if not check_password_hash(current_user.password_hash, old):
+                flash('Ancien mot de passe incorrect.', 'danger')
+                return redirect(url_for('change_password'))
+            if old and new and old == new:
+                flash("Le nouveau mot de passe doit être différent de l'ancien.", "danger")
+                return redirect(url_for('change_password'))
         else:
-            current_user.password_hash = generate_password_hash(new)
-            db.session.commit()
-            flash('Mot de passe modifié.', 'success')
-            return redirect(url_for('index'))
+            # Compte social: on autorise de définir un mot de passe local (old doit rester vide)
+            if old:
+                flash("Ce compte n'a pas de mot de passe local. Laissez le champ 'ancien' vide.", "warning")
+                return redirect(url_for('change_password'))
+
+        if len(new) < 8:
+            flash("Le nouveau mot de passe doit contenir au moins 8 caractères.", "danger")
+            return redirect(url_for('change_password'))
+        if new != confirm:
+            flash("La confirmation ne correspond pas.", "danger")
+            return redirect(url_for('change_password'))
+
+        current_user.password_hash = generate_password_hash(new)
+        db.session.commit()
+        flash('Mot de passe modifié.', 'success')
+        return redirect(url_for('index'))
     return render_template('change_password.html')
 
 @app.route('/forgot_password', methods=['GET', 'POST'], endpoint='forgot_password')
 def forgot_password():
     if request.method == 'POST':
-        email = request.form.get('email','').strip().lower()
+        email = (request.form.get('email','') or '').strip().lower()
+
+        # Réponse neutre (ne pas divulguer l’existence d’un compte)
         flash('Si le compte existe, un email de réinitialisation a été envoyé.', 'info')
+
+        if not email:
+            return redirect(url_for('login'))
+
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            return redirect(url_for('login'))
+
+        try:
+            # 1) Jeton DB à usage unique + 2) jeton signé (défense en profondeur)
+            tok = issue_reset_token(user, hours=24)
+            ts = _password_reset_ts()
+            signed = ts.dumps({"uid": user.id, "t": tok})
+
+            reset_url = url_for('reset_password', token=signed, _external=True, _scheme='https')
+            subject = "Réinitialisation de votre mot de passe Tighri"
+            body = (
+                "Bonjour,\n\n"
+                "Pour réinitialiser votre mot de passe Tighri, cliquez sur le lien ci-dessous :\n"
+                f"{reset_url}\n\n"
+                "Ce lien expire dans 24 heures. Si vous n’êtes pas à l’origine de cette demande, ignorez cet email.\n\n"
+                "— L’équipe Tighri"
+            )
+            safe_send_email(user.email, subject, body)
+        except Exception as e:
+            app.logger.warning("Forgot password: send failed for %s: %s", email, e)
+
         return redirect(url_for('login'))
     return render_template('forgot_password.html')
+
+@app.route('/reset_password/<token>', methods=['GET', 'POST'], endpoint='reset_password')
+def reset_password(token):
+    ts = _password_reset_ts()
+    try:
+        data = ts.loads(token, max_age=60*60*24)  # 24h
+        uid = int(data.get("uid"))
+        raw_tok = data.get("t") or ""
+    except (BadSignature, SignatureExpired, ValueError):
+        flash("Lien de réinitialisation invalide ou expiré. Refaites une demande.", "danger")
+        return redirect(url_for('forgot_password'))
+
+    # Vérifie le token DB (usage unique + expiration)
+    user = consume_token_to_user(raw_tok)
+    if not user or user.id != uid:
+        flash("Lien de réinitialisation invalide ou expiré. Refaites une demande.", "danger")
+        return redirect(url_for('forgot_password'))
+
+    if request.method == 'POST':
+        new = (request.form.get('new') or '').strip()
+        confirm = (request.form.get('confirm') or '').strip()
+
+        if len(new) < 8:
+            flash("Le nouveau mot de passe doit contenir au moins 8 caractères.", "danger")
+            return redirect(url_for('reset_password', token=token))
+        if new != confirm:
+            flash("La confirmation ne correspond pas.", "danger")
+            return redirect(url_for('reset_password', token=token))
+
+        try:
+            user.password_hash = generate_password_hash(new)
+            # Invalider immédiatement le jeton (usage unique)
+            user.reset_token_hash = None
+            user.reset_token_expires_at = None
+            db.session.commit()
+            flash("Mot de passe réinitialisé. Vous pouvez vous connecter.", "success")
+            return redirect(url_for('login'))
+        except Exception as e:
+            db.session.rollback()
+            app.logger.exception("Reset password commit failed for uid=%s: %s", uid, e)
+            flash("Erreur interne. Réessayez.", "danger")
+            return redirect(url_for('reset_password', token=token))
+
+    return render_template('reset_password.html', user=user)
 # ===========================================================================
 
 # ======================
@@ -986,11 +1130,6 @@ def email_config_ok() -> bool:
     return True
 # ===========================================================================
 
-    try:
-        send_email(to_addr, subject, body)
-    except Exception as e:
-        app.logger.warning("[NOTIF][EMAIL] échec envoi: %s", e)
-
 # ===== [TIGHRI_R1:NOTIFY_STUB] ==============================================
 def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
     """
@@ -1038,7 +1177,7 @@ def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
 
 # ===========================================================================
 
-@app.route('/professional/appointment/<int:appointment_id>/<action>', methods=['POST'], endpoint='professional_appointment_action')
+@app.route('/professional/appointment/<int:appointment_id>/<action>', methods=['POST'], endpoint='professional_appointment_action'])
 @login_required
 def professional_appointment_action(appointment_id, action):
     if current_user.user_type != 'professional':
