@@ -78,19 +78,12 @@ def _split_emails(raw: str) -> list[str]:
         x = chunk.strip()
         if x:
             vals.append(x)
-    # unique + ordre
     return list(dict.fromkeys(vals))
 
 def _admin_recipients() -> list[str]:
-    # ADMIN_EMAIL (déjà utilisé dans app.py pour seed), et option multi: ADMIN_NOTIF_EMAILS
     return _split_emails(os.getenv("ADMIN_NOTIF_EMAILS") or os.getenv("ADMIN_EMAIL") or "")
 
 def _smtp_env_ok() -> bool:
-    """
-    Loggue si la config SMTP semble manquante. On supporte EMAIL_* et MAIL_*.
-    On ne bloque pas l'envoi ici (c'est notifications.py qui fera foi), mais on journalise.
-    """
-    # Priorité EMAIL_*
     host = os.getenv("EMAIL_HOST") or os.getenv("MAIL_SERVER")
     user = os.getenv("EMAIL_USER") or os.getenv("MAIL_USERNAME")
     pw   = os.getenv("EMAIL_PASS") or os.getenv("MAIL_PASSWORD")
@@ -104,16 +97,12 @@ def _smtp_env_ok() -> bool:
     return ok
 
 def _safe_send_email_admin(to_addr: str | None, subject: str, body: str):
-    """
-    Envoi protégé pour éviter les exceptions 500 et produire des logs utiles.
-    """
     if not to_addr:
         current_app.logger.info("[ADMIN][NOTIF][EMAIL] destinataire manquant (skip) — %s", subject)
         return
     try:
         from notifications import send_email
         if not _smtp_env_ok():
-            # On tente quand même — notifications.py redonnera une erreur lisible
             pass
         ok = send_email(to_addr, subject, body)
         if ok:
@@ -154,7 +143,6 @@ def _build_notif(kind: str, ap: Appointment, role: str = 'patient') -> tuple[str
                     f"Bonjour,\n\nRappel : vous avez un RDV le {dt} (patient #{ap.patient_id}).\n\nTighri")
     return ("Notification", f"Bonjour,\n\nMise à jour RDV ({dt}).\n\nTighri")
 
-# API internes de notif RDV (admin)
 def _notify_patient(kind: str, ap: Appointment):
     subject, text = _build_notif(kind, ap, role='patient')
     user = User.query.get(ap.patient_id)
@@ -165,7 +153,6 @@ def _notify_pro(kind: str, ap: Appointment):
     if not pro:
         return
     subject, text = _build_notif(kind, ap, role='pro')
-    # email pro via User lié (username == pro.name)
     pro_user = None
     try:
         pro_user = User.query.filter_by(username=pro.name).first()
@@ -202,82 +189,11 @@ def _build_account_notif(kind: str, user: User | None = None, pro: Professional 
     if kind == "social_links_unapproved":
         return ("Liens sociaux mis en attente",
                 "Bonjour,\n\nVos liens sociaux ne sont pas/plus approuvés. Merci d’ajuster vos liens si nécessaire.\n\nTighri")
-    # fallback
     return ("Notification compte", "Bonjour,\n\nMise à jour de votre compte.\n\nTighri")
 
 def _notify_user_account(email: str | None, kind: str, pro: Professional | None = None):
     subject, text = _build_account_notif(kind, pro=pro)
     _safe_send_email_admin(email, subject, text)
-
-# ====== LIAISON User ↔ Professional (sans changer les modèles) ==============
-def _get_professional_for_user(user: User, old_username: str | None = None) -> Professional | None:
-    """
-    Retourne la fiche pro liée au user via le 'name == username'.
-    Essaie d'abord avec user.username, sinon old_username si fourni.
-    Ne crée rien ici (création dans la route si nécessaire).
-    """
-    if not user or user.user_type != 'professional':
-        return None
-    pro = Professional.query.filter_by(name=user.username).first()
-    if pro is None and old_username:
-        pro = Professional.query.filter_by(name=old_username).first()
-    return pro
-
-def _maybe_update_professional_from_form(pro: Professional, form):
-    """
-    Met à jour 'pro' avec les champs pro_* présents dans le formulaire.
-    N’écrase jamais si l’input est vide ou absent.
-    """
-    def _maybe_set(attr, key, cast=None):
-        if key in form:
-            raw = (form.get(key) or '').strip()
-            if raw == '':
-                return
-            val = raw
-            if cast:
-                try:
-                    val = cast(raw)
-                except Exception:
-                    return
-            setattr(pro, attr, val)
-
-    # Identité / contenu
-    _maybe_set("name", "pro_name")
-    _maybe_set("specialty", "pro_specialty")
-    _maybe_set("description", "pro_description")
-
-    # Localisation
-    _maybe_set("address", "pro_address")
-    _maybe_set("location", "pro_location")
-    _maybe_set("latitude", "pro_latitude", cast=float)
-    _maybe_set("longitude", "pro_longitude", cast=float)
-
-    # Contact & tarifs & expérience
-    _maybe_set("phone", "pro_phone")
-    _maybe_set("consultation_fee", "pro_consultation_fee", cast=lambda s: float(s.replace(',', '.')))
-    _maybe_set("experience_years", "pro_experience_years", cast=int)
-
-    # Dispo / types / statut
-    _maybe_set("availability", "pro_availability")                      # "disponible"/"indisponible"
-    _maybe_set("consultation_types", "pro_consultation_types")          # "cabinet,domicile,en_ligne"
-    _maybe_set("status", "pro_status")                                  # 'valide'/'en_attente'/'rejete'
-
-    # Mise en avant (si présents)
-    _maybe_set("is_featured", "pro_is_featured", cast=lambda v: v.lower() in ('1', 'true', 'on', 'yes'))
-    _maybe_set("featured_rank", "pro_featured_rank", cast=int)
-
-    # Réseaux sociaux
-    _maybe_set("facebook_url", "pro_facebook_url")
-    _maybe_set("instagram_url", "pro_instagram_url")
-    _maybe_set("tiktok_url", "pro_tiktok_url")
-    _maybe_set("youtube_url", "pro_youtube_url")
-
-    # Durées
-    _maybe_set("consultation_duration_minutes", "pro_duration_minutes", cast=int)
-    _maybe_set("buffer_between_appointments_minutes", "pro_buffer_minutes", cast=int)
-
-    # Image URL (si l’admin veut juste saisir un lien)
-    _maybe_set("image_url", "pro_image_url")
 
 # --------------------- AUTH ADMIN ---------------------
 @admin_bp.route('/login', methods=['GET', 'POST'], endpoint='admin_login')
@@ -349,7 +265,6 @@ def _ensure_order_table():
     ProfessionalOrder.__table__.create(bind=db.engine, checkfirst=True)
 
 def _load_order_map() -> dict[int, int]:
-    """Retourne {professional_id: order_priority}"""
     rows = ProfessionalOrder.query.all()
     return {r.professional_id: (r.order_priority if r.order_priority is not None else 9999) for r in rows}
 
@@ -391,13 +306,11 @@ def admin_professional_order():
     orders = _load_order_map()
     professionals = Professional.query.all()
 
-    # Tri d'affichage : ordre admin d'abord, puis nom (stable)
     professionals_sorted = sorted(
         professionals,
         key=lambda p: (orders.get(p.id, 9999), (p.name or '').lower())
     )
 
-    # Injection d'un attribut temporaire pour simplifier le template si besoin
     for p in professionals_sorted:
         setattr(p, 'order_priority', orders.get(p.id, 9999))
 
@@ -482,7 +395,7 @@ def admin_add_product():
         youtube_url   = (request.form.get('youtube_url')   or '').strip()
         social_links_approved = bool(request.form.get('social_links_approved'))
 
-        # ✅ durée/buffer (défauts 45 & 15 si vides)
+        # durée/buffer
         dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
         buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
         try:
@@ -494,7 +407,7 @@ def admin_add_product():
         except ValueError:
             buffer_between_appointments_minutes = 15
 
-        # ✅ upload fichier image (optionnel)
+        # upload fichier image (optionnel)
         file = request.files.get('image_file')
         if file and getattr(file, 'filename', ''):
             try:
@@ -533,7 +446,6 @@ def admin_add_product():
         db.session.add(professional)
         db.session.commit()
         flash('Professionnel ajouté avec succès!')
-        # Info admin de la création d’un pro (pas d’email pro si pas d’utilisateur lié)
         _notify_admin_event("[ADMIN] Nouveau professionnel ajouté", f"Pro: {professional.name} (id {professional.id}) — statut en_attente")
         return redirect(url_for('admin.admin_products'))
 
@@ -552,12 +464,21 @@ def admin_edit_product(product_id):
         professional.name = (request.form.get('name') or professional.name).strip()
         professional.description = (request.form.get('description') or professional.description).strip()
 
+        # tarif
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.')
         if fee_raw:
             try:
                 professional.consultation_fee = float(fee_raw)
             except ValueError:
                 flash("Tarif invalide.", "error")
+
+        # ✅ expérience (AJOUT)
+        exp_raw = (request.form.get('experience_years') or request.form.get('experience') or '').strip()
+        if exp_raw != '':
+            try:
+                professional.experience_years = max(0, int(exp_raw))
+            except ValueError:
+                flash("Années d'expérience invalide.", "error")
 
         professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
         professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
@@ -612,7 +533,7 @@ def admin_edit_product(product_id):
         professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
         professional.social_links_approved = bool(request.form.get('social_links_approved'))
 
-        # ✅ durée/buffer
+        # durée/buffer
         dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
         buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
         if dur_raw:
@@ -626,7 +547,7 @@ def admin_edit_product(product_id):
             except ValueError:
                 flash("Buffer invalide (minutes).", "error")
 
-        # ✅ upload fichier image (optionnel)
+        # upload fichier image (optionnel)
         file = request.files.get('image_file')
         if file and getattr(file, 'filename', ''):
             try:
@@ -677,12 +598,22 @@ def edit_professional(professional_id):
         professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
         professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
 
+        # tarif
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.').strip()
         if fee_raw != '':
             try:
                 professional.consultation_fee = float(fee_raw)
             except ValueError:
                 flash("Le tarif est invalide.", "error")
+                return redirect(url_for('admin.edit_professional', professional_id=professional_id))
+
+        # ✅ expérience (AJOUT)
+        exp_raw = (request.form.get('experience_years') or request.form.get('experience') or '').strip()
+        if exp_raw != '':
+            try:
+                professional.experience_years = max(0, int(exp_raw))
+            except ValueError:
+                flash("Années d'expérience invalide.", "error")
                 return redirect(url_for('admin.edit_professional', professional_id=professional_id))
 
         status = (request.form.get('status') or '').strip()
@@ -712,7 +643,7 @@ def edit_professional(professional_id):
         professional.youtube_url   = (request.form.get('youtube_url')   or '').strip() or None
         professional.social_links_approved = bool(request.form.get('social_links_approved'))
 
-        # ✅ durée/buffer
+        # durée/buffer
         dur_raw = (request.form.get('consultation_duration_minutes') or '').strip()
         buf_raw = (request.form.get('buffer_between_appointments_minutes') or '').strip()
         if dur_raw:
@@ -726,7 +657,7 @@ def edit_professional(professional_id):
             except ValueError:
                 flash("Buffer invalide (minutes).", "error")
 
-        # ✅ upload image (optionnel)
+        # upload image (optionnel)
         file = request.files.get('image_file')
         if file and getattr(file, 'filename', ''):
             try:
@@ -872,10 +803,6 @@ def admin_delete_unavailable_slot(professional_id, slot_id):
 # --------------------- UTILISATEURS ---------------------
 
 def _get_or_create_archived_user():
-    """
-    Retourne (ou crée) un utilisateur placeholder unique '[deleted]' vers lequel
-    on rattache les RDV des patients supprimés afin de conserver l'historique.
-    """
     placeholder_username = "[deleted]"
     placeholder_email = "deleted@tighri.local"
 
@@ -894,7 +821,7 @@ def _get_or_create_archived_user():
             phone=None,
         )
         db.session.add(u)
-        db.session.flush()  # obtenir u.id sans commit
+        db.session.flush()
     return u
 
 @admin_bp.route('/users', endpoint='admin_users')
@@ -944,7 +871,6 @@ def add_user():
         db.session.commit()
         flash('Utilisateur ajouté avec succès!')
 
-        # Notifs
         _notify_user_account(user.email, "account_created")
         _notify_admin_event("[ADMIN] Compte créé", f"User: {user.username} ({user.email}) — type={user.user_type}, admin={user.is_admin}")
 
@@ -960,75 +886,65 @@ def edit_user(user_id):
         return redirect(url_for('admin.admin_login'))
     user = User.query.get_or_404(user_id)
 
-    if request.method == 'GET':
-        # On passe la fiche pro liée (si l’UI veut l’afficher). Inoffensif si le template ne l’utilise pas.
-        pro = _get_professional_for_user(user)
-        return render_template('edit_user.html', user=user, pro=pro)
+    if request.method == 'POST':
+        old_username = user.username
 
-    # POST
-    old_username = user.username
+        username = (request.form.get('username') or user.username).strip()
+        email = (request.form.get('email') or user.email).strip().lower()
+        user_type = (request.form.get('user_type') or user.user_type).strip()
+        is_admin = 'is_admin' in request.form
+        new_pw = (request.form.get('new_password') or request.form.get('password') or '').strip()
+        phone = (request.form.get('phone') or user.phone or '').strip()
 
-    username = (request.form.get('username') or user.username).strip()
-    email = (request.form.get('email') or user.email).strip().lower()
-    user_type = (request.form.get('user_type') or user.user_type).strip()
-    is_admin = 'is_admin' in request.form
-    new_pw = (request.form.get('new_password') or request.form.get('password') or '').strip()
-    phone = (request.form.get('phone') or user.phone or '').strip()
+        if User.query.filter(User.username == username, User.id != user.id).first():
+            flash("Nom d'utilisateur déjà pris")
+            return redirect(url_for('admin.edit_user', user_id=user.id))
+        if User.query.filter(User.email == email, User.id != user.id).first():
+            flash("Email déjà enregistré")
+            return redirect(url_for('admin.edit_user', user_id=user.id))
 
-    if User.query.filter(User.username == username, User.id != user.id).first():
-        flash("Nom d'utilisateur déjà pris")
-        return redirect(url_for('admin.edit_user', user_id=user.id))
-    if User.query.filter(User.email == email, User.id != user.id).first():
-        flash("Email déjà enregistré")
-        return redirect(url_for('admin.edit_user', user_id=user.id))
+        user.username = username
+        user.email = email
+        user.user_type = user_type
+        user.is_admin = bool(is_admin)
+        user.phone = phone or None
+        if new_pw:
+            user.password_hash = generate_password_hash(new_pw)
 
-    user.username = username
-    user.email = email
-    user.user_type = user_type
-    user.is_admin = bool(is_admin)
-    user.phone = phone or None
-    if new_pw:
-        user.password_hash = generate_password_hash(new_pw)
-
-    # Synchronisation côté professionnel (sans FK, via name==username)
-    pro = None
-    try:
-        if user_type == 'professional':
-            pro = _get_professional_for_user(user, old_username=old_username)
-            if not pro:
-                # Si on a simplement renommé l'utilisateur, on essaie de renommer la fiche pro qui portait l'ancien username
-                if old_username and old_username != username:
+        try:
+            if user_type == 'professional':
+                pro = Professional.query.filter_by(name=username).first()
+                if not pro:
                     pro_old = Professional.query.filter_by(name=old_username).first()
-                    if pro_old:
+                    if pro_old and old_username != username:
                         pro_old.name = username
                         pro = pro_old
-            if not pro:
-                # Création douce si aucune fiche n’existe
-                pro = Professional(
-                    name=username,
-                    description="Profil en cours de complétion.",
-                    specialty="Psychologue",
-                    location="Casablanca",
-                    experience_years=0,
-                    consultation_fee=0.0,
-                    phone=user.phone or None,
-                    status="en_attente"
-                )
-                db.session.add(pro)
+                if not pro:
+                    pro = Professional(
+                        name=username,
+                        description="Profil en cours de complétion.",
+                        specialty="Psychologue",
+                        location="Casablanca",
+                        experience_years=0,
+                        consultation_fee=0.0,
+                        phone=user.phone or None,
+                        status="en_attente"
+                    )
+                    db.session.add(pro)
+        except Exception as e:
+            flash(f"Attention: la synchronisation du profil professionnel a rencontré un souci: {e}", "warning")
 
-            # Si le formulaire contient des champs pro_*, on les applique (sinon on ne touche à rien)
-            _maybe_update_professional_from_form(pro, request.form)
-    except Exception as e:
-        flash(f"Attention: la synchronisation du profil professionnel a rencontré un souci: {e}", "warning")
+        db.session.commit()
+        flash('Utilisateur modifié avec succès!')
 
-    db.session.commit()
-    flash('Utilisateur modifié avec succès!')
+        _notify_user_account(user.email, "account_updated")
+        _notify_admin_event("[ADMIN] Compte modifié", f"User: {user.username} ({user.email}) — type={user.user_type}, admin={user.is_admin}")
 
-    # Notifs compte modifié
-    _notify_user_account(user.email, "account_updated", pro=pro)
-    _notify_admin_event("[ADMIN] Compte modifié", f"User: {user.username} ({user.email}) — type={user.user_type}, admin={user.is_admin}")
+        return redirect(url_for('admin.admin_users'))
 
-    return redirect(url_for('admin.admin_users'))
+    # Pour pré-remplir la section pro dans le template (si tu l'utilises)
+    pro = Professional.query.filter_by(name=user.username).first()
+    return render_template('edit_user.html', user=user, pro=pro)
 
 @admin_bp.route('/users/delete/<int:user_id>', methods=['GET', 'POST'], endpoint='delete_user')
 @login_required
@@ -1039,7 +955,6 @@ def delete_user(user_id):
     user = User.query.get_or_404(user_id)
 
     try:
-        # Réassigner l'historique de RDV vers le compte "[deleted]" au lieu de mettre NULL
         archived = _get_or_create_archived_user()
         db.session.query(Appointment).filter_by(patient_id=user.id).update(
             {Appointment.patient_id: archived.id},
@@ -1086,7 +1001,6 @@ def update_appointment_status(appointment_id):
         appointment.status = new_status
         db.session.commit()
 
-        # Notifications (patient + pro + admin)
         if new_status == 'confirme':
             _notify_patient('accepted', appointment)
             _notify_pro('accepted', appointment)
@@ -1133,7 +1047,6 @@ def validate_professional(professional_id):
         professional.status = 'valide'
         db.session.commit()
 
-        # Notifs pro + admin
         pro_user = User.query.filter_by(username=professional.name).first()
         _notify_user_account(getattr(pro_user, 'email', None), "pro_validated", pro=professional)
         _notify_admin_event("[ADMIN] Pro validé", f"Pro: {professional.name} (id {professional.id})")
@@ -1153,7 +1066,6 @@ def reject_professional(professional_id):
         professional.status = 'rejete'
         db.session.commit()
 
-        # Notifs pro + admin
         pro_user = User.query.filter_by(username=professional.name).first()
         _notify_user_account(getattr(pro_user, 'email', None), "pro_rejected", pro=professional)
         _notify_admin_event("[ADMIN] Pro rejeté", f"Pro: {professional.name} (id {professional.id})")
@@ -1184,7 +1096,6 @@ def social_approval(professional_id):
         professional.social_links_approved = approved
         db.session.commit()
 
-        # Notifs pro + admin
         pro_user = User.query.filter_by(username=professional.name).first()
         _notify_user_account(getattr(pro_user, 'email', None),
                              "social_links_approved" if approved else "social_links_unapproved",
