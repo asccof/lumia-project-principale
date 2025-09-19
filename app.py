@@ -340,12 +340,13 @@ else:
 @app.route('/', endpoint='index')
 def index():
     """
-    Accueil : affiche 6 pros en respectant le classement admin (professional_order.order_priority ASC),
-    puis des tiebreakers stables. Fallback sûr si la table d'ordre n'existe pas encore.
+    Accueil :
+    - Top 9 pros triés par ordre admin → featured → featured_rank → récents
+    - Le reste des pros, même tri, pour le carrousel horizontal
+    Fallback sûr si la table d’ordre n’existe pas encore.
     """
     try:
-        # tri principal : ordre admin, puis featured, puis featured_rank, puis récents
-        featured_professionals = (
+        base_q = (
             db.session.query(Professional)
             .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
             .filter(Professional.status == 'valide')
@@ -356,21 +357,41 @@ def index():
                 Professional.created_at.desc(),
                 Professional.id.desc()
             )
-            .limit(6)
-            .all()
-        )
-    except Exception as e:
-        # En cas d'erreur (ex: table non présente), on ne casse pas l'accueil
-        app.logger.warning("Classement admin indisponible (%s), fallback 'featured puis récents'.", e)
-        featured_professionals = (
-            Professional.query
-            .filter_by(status='valide')
-            .order_by(Professional.is_featured.desc(), Professional.created_at.desc(), Professional.id.desc())
-            .limit(6)
-            .all()
         )
 
-    return render_template('index.html', professionals=featured_professionals)
+        # Top 9 (remplace l’ancien top 6 "professionnels en vedette")
+        top_professionals = base_q.limit(9).all()
+
+        # IDs du top pour l’exclusion
+        top_ids = [p.id for p in top_professionals]
+
+        # Tous les autres, même ordre
+        if top_ids:
+            more_professionals = base_q.filter(~Professional.id.in_(top_ids)).all()
+        else:
+            more_professionals = base_q.all()
+
+    except Exception as e:
+        # Fallback si la table professional_order n’existe pas encore ou autre souci
+        current_app.logger.warning("Classement admin indisponible (%s), fallback.", e)
+        base_fallback = (
+            Professional.query
+            .filter_by(status='valide')
+            .order_by(Professional.is_featured.desc(),
+                      db.func.coalesce(Professional.featured_rank, 999999).asc(),
+                      Professional.created_at.desc(),
+                      Professional.id.desc())
+        )
+        top_professionals = base_fallback.limit(9).all()
+        top_ids = [p.id for p in top_professionals]
+        more_professionals = base_fallback.filter(~Professional.id.in_(top_ids)).all() if top_ids else base_fallback.all()
+
+    return render_template(
+        'index.html',
+        top_professionals=top_professionals,
+        more_professionals=more_professionals
+    )
+
 
 @app.route('/professionals', endpoint='professionals')
 def professionals():
