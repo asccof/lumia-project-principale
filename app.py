@@ -4,7 +4,7 @@ from flask import (
 )
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-    # noqa
+# noqa
 from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime, date, timedelta, time as dtime
 from sqlalchemy import or_, text
@@ -15,11 +15,15 @@ import os, uuid, io, requests
 # --- OAuth (Google) ---
 from authlib.integrations.flask_client import OAuth
 
-# --- Reset password: tokens & crypto ---
+# --- Reset password: tokens signés (stateless) ---
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+
+# --- Random, hash (utilisés ailleurs au besoin) ---
 import secrets, hashlib
 
 from notifications import send_email, send_sms, send_whatsapp
 from admin_server import _build_notif  # on réutilise les mêmes textes d’emails que l’admin
+
 # --- Email wrapper (app.py) -----------------------------------------------
 from flask import current_app
 from notifications import send_email as _notif_send_email  # lit vos MAIL_* sur Render
@@ -211,9 +215,9 @@ with app.app_context():
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(120);"))
         db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);"))
 
-        # users: reset password (jeton hash + expiration)
-        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);"))
-        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;"))
+        # ❌ (désactivé) users: reset password en base — on passe en stateless
+        # db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);"))
+        # db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;"))
 
         db.session.commit()
     except Exception as e:
@@ -239,29 +243,33 @@ with app.app_context():
         app.logger.info(f"Admin '{admin_username}' créé.")
 # ===========================================================================
 
-# ===== Helpers reset mot de passe (token unique + expiration) ===============
-def _hash_token(tok: str) -> str:
-    return hashlib.sha256(tok.encode("utf-8")).hexdigest()
+# ===== Helpers reset mot de passe (stateless, signé + expiré) ===============
+def _reset_serializer():
+    # SECRET_KEY doit être défini en env sur Render
+    secret = current_app.config['SECRET_KEY']
+    return URLSafeTimedSerializer(secret_key=secret, salt='password-reset')
 
-def issue_reset_token(user, hours=24) -> str:
-    """Crée un jeton de reset à usage unique, valable X heures, et le stocke (hashé) en DB."""
-    tok = secrets.token_urlsafe(32)
-    user.reset_token_hash = _hash_token(tok)
-    user.reset_token_expires_at = datetime.utcnow() + timedelta(hours=hours)
-    db.session.commit()
-    return tok
+def generate_reset_token(user_id: int) -> str:
+    s = _reset_serializer()
+    return s.dumps({"uid": user_id})
 
-def consume_token_to_user(token: str):
-    """Retourne l'utilisateur si le jeton est valide (hash + non expiré)."""
-    if not token:
+def consume_token_to_user(token: str, max_age_seconds: int = 24*3600):
+    """
+    Valide/charge l'utilisateur à partir d'un token signé.
+    Renvoie l'objet User ou None si invalide/expiré.
+    """
+    s = _reset_serializer()
+    try:
+        data = s.loads(token, max_age=max_age_seconds)
+    except SignatureExpired:
         return None
-    h = _hash_token(token)
-    u = User.query.filter_by(reset_token_hash=h).first()
-    if not u:
+    except BadSignature:
         return None
-    if not u.reset_token_expires_at or u.reset_token_expires_at < datetime.utcnow():
+
+    uid = data.get("uid")
+    if not uid:
         return None
-    return u
+    return User.query.get(uid)
 # ===========================================================================
 
 # ===== [TIGHRI_R1:IMAGES_INLINE_FALLBACK] ===================================
@@ -677,8 +685,8 @@ def forgot_password():
             return redirect(url_for('login'))
 
         try:
-            # émettre un jeton à usage unique (hashé en DB)
-            raw_token = issue_reset_token(user, hours=24)
+            # émettre un token signé/expirable (stateless)
+            raw_token = generate_reset_token(user.id)
             reset_link = url_for('reset_password', token=raw_token, _external=True, _scheme='https')
 
             subj = f"{BRAND_NAME} — Réinitialisation du mot de passe"
@@ -704,7 +712,7 @@ def forgot_password():
 
 @app.route('/reset_password/<token>', methods=['GET', 'POST'], endpoint='reset_password')
 def reset_password(token):
-    # Vérifie le jeton (hash + expiration)
+    # Vérifie le jeton (signé + expiration 24h par défaut)
     user = consume_token_to_user(token)
     if not user:
         flash("Lien invalide ou expiré. Refaite une demande de réinitialisation.", "danger")
@@ -721,10 +729,8 @@ def reset_password(token):
             flash("La confirmation ne correspond pas.", "danger")
             return redirect(url_for('reset_password', token=token))
 
-        # Applique le nouveau mot de passe et invalide le jeton
+        # Applique le nouveau mot de passe
         user.password_hash = generate_password_hash(new)
-        user.reset_token_hash = None
-        user.reset_token_expires_at = None
         db.session.commit()
 
         flash("Mot de passe réinitialisé. Vous pouvez vous connecter.", "success")
@@ -1102,11 +1108,6 @@ def email_config_ok() -> bool:
         return False
     return True
 # ===========================================================================
-
-    try:
-        send_email(to_addr, subject, body)
-    except Exception as e:
-        app.logger.warning("[NOTIF][EMAIL] échec envoi: %s", e)
 
 # ===== [TIGHRI_R1:NOTIFY_STUB] ==============================================
 def notify_user_account_and_phone(user_id: int, kind: str, ap: Appointment):
