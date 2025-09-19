@@ -65,7 +65,7 @@ def _admin_process_and_save_profile_image(file_storage) -> str:
     TARGET_SIZE = (512, 512)
     img_square = ImageOps.fit(img_no_exif, TARGET_SIZE, Image.Resampling.LANCZOS)
 
-    out_name = f"{uuid.uuid4().hex}.jpg"  # ✅ correction f-string
+    out_name = f"{uuid.uuid4().hex}.jpg"
     out_path = _admin_upload_dir() / out_name
     img_square.save(out_path, format="JPEG", quality=88, optimize=True)
     return out_name
@@ -208,6 +208,76 @@ def _build_account_notif(kind: str, user: User | None = None, pro: Professional 
 def _notify_user_account(email: str | None, kind: str, pro: Professional | None = None):
     subject, text = _build_account_notif(kind, pro=pro)
     _safe_send_email_admin(email, subject, text)
+
+# ====== LIAISON User ↔ Professional (sans changer les modèles) ==============
+def _get_professional_for_user(user: User, old_username: str | None = None) -> Professional | None:
+    """
+    Retourne la fiche pro liée au user via le 'name == username'.
+    Essaie d'abord avec user.username, sinon old_username si fourni.
+    Ne crée rien ici (création dans la route si nécessaire).
+    """
+    if not user or user.user_type != 'professional':
+        return None
+    pro = Professional.query.filter_by(name=user.username).first()
+    if pro is None and old_username:
+        pro = Professional.query.filter_by(name=old_username).first()
+    return pro
+
+def _maybe_update_professional_from_form(pro: Professional, form):
+    """
+    Met à jour 'pro' avec les champs pro_* présents dans le formulaire.
+    N’écrase jamais si l’input est vide ou absent.
+    """
+    def _maybe_set(attr, key, cast=None):
+        if key in form:
+            raw = (form.get(key) or '').strip()
+            if raw == '':
+                return
+            val = raw
+            if cast:
+                try:
+                    val = cast(raw)
+                except Exception:
+                    return
+            setattr(pro, attr, val)
+
+    # Identité / contenu
+    _maybe_set("name", "pro_name")
+    _maybe_set("specialty", "pro_specialty")
+    _maybe_set("description", "pro_description")
+
+    # Localisation
+    _maybe_set("address", "pro_address")
+    _maybe_set("location", "pro_location")
+    _maybe_set("latitude", "pro_latitude", cast=float)
+    _maybe_set("longitude", "pro_longitude", cast=float)
+
+    # Contact & tarifs & expérience
+    _maybe_set("phone", "pro_phone")
+    _maybe_set("consultation_fee", "pro_consultation_fee", cast=lambda s: float(s.replace(',', '.')))
+    _maybe_set("experience_years", "pro_experience_years", cast=int)
+
+    # Dispo / types / statut
+    _maybe_set("availability", "pro_availability")                      # "disponible"/"indisponible"
+    _maybe_set("consultation_types", "pro_consultation_types")          # "cabinet,domicile,en_ligne"
+    _maybe_set("status", "pro_status")                                  # 'valide'/'en_attente'/'rejete'
+
+    # Mise en avant (si présents)
+    _maybe_set("is_featured", "pro_is_featured", cast=lambda v: v.lower() in ('1', 'true', 'on', 'yes'))
+    _maybe_set("featured_rank", "pro_featured_rank", cast=int)
+
+    # Réseaux sociaux
+    _maybe_set("facebook_url", "pro_facebook_url")
+    _maybe_set("instagram_url", "pro_instagram_url")
+    _maybe_set("tiktok_url", "pro_tiktok_url")
+    _maybe_set("youtube_url", "pro_youtube_url")
+
+    # Durées
+    _maybe_set("consultation_duration_minutes", "pro_duration_minutes", cast=int)
+    _maybe_set("buffer_between_appointments_minutes", "pro_buffer_minutes", cast=int)
+
+    # Image URL (si l’admin veut juste saisir un lien)
+    _maybe_set("image_url", "pro_image_url")
 
 # --------------------- AUTH ADMIN ---------------------
 @admin_bp.route('/login', methods=['GET', 'POST'], endpoint='admin_login')
@@ -890,64 +960,75 @@ def edit_user(user_id):
         return redirect(url_for('admin.admin_login'))
     user = User.query.get_or_404(user_id)
 
-    if request.method == 'POST':
-        old_username = user.username
+    if request.method == 'GET':
+        # On passe la fiche pro liée (si l’UI veut l’afficher). Inoffensif si le template ne l’utilise pas.
+        pro = _get_professional_for_user(user)
+        return render_template('edit_user.html', user=user, pro=pro)
 
-        username = (request.form.get('username') or user.username).strip()
-        email = (request.form.get('email') or user.email).strip().lower()
-        user_type = (request.form.get('user_type') or user.user_type).strip()
-        is_admin = 'is_admin' in request.form
-        new_pw = (request.form.get('new_password') or request.form.get('password') or '').strip()
-        phone = (request.form.get('phone') or user.phone or '').strip()
+    # POST
+    old_username = user.username
 
-        if User.query.filter(User.username == username, User.id != user.id).first():
-            flash("Nom d'utilisateur déjà pris")
-            return redirect(url_for('admin.edit_user', user_id=user.id))
-        if User.query.filter(User.email == email, User.id != user.id).first():
-            flash("Email déjà enregistré")
-            return redirect(url_for('admin.edit_user', user_id=user.id))
+    username = (request.form.get('username') or user.username).strip()
+    email = (request.form.get('email') or user.email).strip().lower()
+    user_type = (request.form.get('user_type') or user.user_type).strip()
+    is_admin = 'is_admin' in request.form
+    new_pw = (request.form.get('new_password') or request.form.get('password') or '').strip()
+    phone = (request.form.get('phone') or user.phone or '').strip()
 
-        user.username = username
-        user.email = email
-        user.user_type = user_type
-        user.is_admin = bool(is_admin)
-        user.phone = phone or None
-        if new_pw:
-            user.password_hash = generate_password_hash(new_pw)
+    if User.query.filter(User.username == username, User.id != user.id).first():
+        flash("Nom d'utilisateur déjà pris")
+        return redirect(url_for('admin.edit_user', user_id=user.id))
+    if User.query.filter(User.email == email, User.id != user.id).first():
+        flash("Email déjà enregistré")
+        return redirect(url_for('admin.edit_user', user_id=user.id))
 
-        try:
-            if user_type == 'professional':
-                pro = Professional.query.filter_by(name=username).first()
-                if not pro:
+    user.username = username
+    user.email = email
+    user.user_type = user_type
+    user.is_admin = bool(is_admin)
+    user.phone = phone or None
+    if new_pw:
+        user.password_hash = generate_password_hash(new_pw)
+
+    # Synchronisation côté professionnel (sans FK, via name==username)
+    pro = None
+    try:
+        if user_type == 'professional':
+            pro = _get_professional_for_user(user, old_username=old_username)
+            if not pro:
+                # Si on a simplement renommé l'utilisateur, on essaie de renommer la fiche pro qui portait l'ancien username
+                if old_username and old_username != username:
                     pro_old = Professional.query.filter_by(name=old_username).first()
-                    if pro_old and old_username != username:
+                    if pro_old:
                         pro_old.name = username
                         pro = pro_old
-                if not pro:
-                    pro = Professional(
-                        name=username,
-                        description="Profil en cours de complétion.",
-                        specialty="Psychologue",
-                        location="Casablanca",
-                        experience_years=0,
-                        consultation_fee=0.0,
-                        phone=user.phone or None,
-                        status="en_attente"
-                    )
-                    db.session.add(pro)
-        except Exception as e:
-            flash(f"Attention: la synchronisation du profil professionnel a rencontré un souci: {e}", "warning")
+            if not pro:
+                # Création douce si aucune fiche n’existe
+                pro = Professional(
+                    name=username,
+                    description="Profil en cours de complétion.",
+                    specialty="Psychologue",
+                    location="Casablanca",
+                    experience_years=0,
+                    consultation_fee=0.0,
+                    phone=user.phone or None,
+                    status="en_attente"
+                )
+                db.session.add(pro)
 
-        db.session.commit()
-        flash('Utilisateur modifié avec succès!')
+            # Si le formulaire contient des champs pro_*, on les applique (sinon on ne touche à rien)
+            _maybe_update_professional_from_form(pro, request.form)
+    except Exception as e:
+        flash(f"Attention: la synchronisation du profil professionnel a rencontré un souci: {e}", "warning")
 
-        # Notifs compte modifié
-        _notify_user_account(user.email, "account_updated")
-        _notify_admin_event("[ADMIN] Compte modifié", f"User: {user.username} ({user.email}) — type={user.user_type}, admin={user.is_admin}")
+    db.session.commit()
+    flash('Utilisateur modifié avec succès!')
 
-        return redirect(url_for('admin.admin_users'))
+    # Notifs compte modifié
+    _notify_user_account(user.email, "account_updated", pro=pro)
+    _notify_admin_event("[ADMIN] Compte modifié", f"User: {user.username} ({user.email}) — type={user.user_type}, admin={user.is_admin}")
 
-    return render_template('edit_user.html', user=user)
+    return redirect(url_for('admin.admin_users'))
 
 @admin_bp.route('/users/delete/<int:user_id>', methods=['GET', 'POST'], endpoint='delete_user')
 @login_required
