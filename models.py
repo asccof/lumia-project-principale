@@ -5,6 +5,9 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+# ======================
+# Utilisateurs
+# ======================
 class User(UserMixin, db.Model):
     __tablename__ = "users"
 
@@ -16,7 +19,7 @@ class User(UserMixin, db.Model):
     # nullable=True pour autoriser les comptes créés via Google (sans mot de passe local)
     password_hash = db.Column(db.String(255), nullable=True)
 
-    # Téléphone utilisateur (utilisé dans les formulaires / contact)
+    # Téléphone utilisateur
     phone = db.Column(db.String(30))
 
     # Rôle applicatif: 'patient' | 'professional'
@@ -25,11 +28,15 @@ class User(UserMixin, db.Model):
     # Admin global
     is_admin = db.Column(db.Boolean, default=False)
 
-    # --- LIAISON OAUTH (Google, etc.) ---
+    # --- Liaison OAuth (Google, etc.) ---
     oauth_provider = db.Column(db.String(30))                 # ex: 'google'
     oauth_sub = db.Column(db.String(255), unique=True, index=True)  # identifiant 'sub' Google
     picture_url = db.Column(db.Text)                          # photo de profil Google
     full_name = db.Column(db.String(120))                     # nom affiché Google
+
+    # Reset password
+    reset_token_hash = db.Column(db.String(255))
+    reset_token_expires_at = db.Column(db.DateTime)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -45,7 +52,31 @@ class User(UserMixin, db.Model):
     def __repr__(self):
         return f"<User id={self.id} {self.username} type={self.user_type} admin={self.is_admin}>"
 
+# ======================
+# Référentiels (Phase 1)
+# ======================
 
+class City(db.Model):
+    __tablename__ = "cities"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), unique=True, nullable=False)
+
+class Specialty(db.Model):
+    __tablename__ = "specialties"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), unique=True, nullable=False)
+    category = db.Column(db.String(80))  # ex: Psychothérapie/Coaching…
+
+# Pivot Pro <-> Spécialités secondaires
+professional_specialties = db.Table(
+    "professional_specialties",
+    db.Column("professional_id", db.Integer, db.ForeignKey("professionals.id"), primary_key=True),
+    db.Column("specialty_id", db.Integer, db.ForeignKey("specialties.id"), primary_key=True),
+)
+
+# ======================
+# Professionnels
+# ======================
 class Professional(db.Model):
     __tablename__ = "professionals"
 
@@ -54,16 +85,30 @@ class Professional(db.Model):
     # Identité / contenu
     name = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text)
+
+    # Ancienne spécialité texte (compat ascendante)
     specialty = db.Column(db.String(120))
+
+    # Normalisation (Phase 1)
+    city_id = db.Column(db.Integer, db.ForeignKey("cities.id"))
+    city = db.relationship("City", lazy="joined")
+
+    primary_specialty_id = db.Column(db.Integer, db.ForeignKey("specialties.id"))
+    primary_specialty = db.relationship("Specialty", foreign_keys=[primary_specialty_id], lazy="joined")
+
+    specialties = db.relationship("Specialty", secondary=professional_specialties, lazy="subquery")
+
+    # Expérience / tarif
     experience_years = db.Column(db.Integer)
     consultation_fee = db.Column(db.Float)  # MAD
     image_url = db.Column(db.Text)
 
     # Dispo & types de consultation
     availability = db.Column(db.String(50), default='disponible')
-    consultation_types = db.Column(db.String(120))  # ex: "cabinet,domicile,en_ligne"
+    # ex: "cabinet,domicile,en_ligne"
+    consultation_types = db.Column(db.String(120))
 
-    # Localisation (ville), adresse précise + géoloc
+    # Localisation (ancienne colonne texte), adresse précise + géoloc
     location = db.Column(db.String(120))
     address = db.Column(db.String(255))
     latitude = db.Column(db.Float)
@@ -72,12 +117,11 @@ class Professional(db.Model):
     # Téléphone du pro
     phone = db.Column(db.String(30))
 
-    # Réseaux sociaux (URLs)
+    # Réseaux sociaux (URLs) + approbation admin
     facebook_url = db.Column(db.Text)
     instagram_url = db.Column(db.Text)
     tiktok_url = db.Column(db.Text)
     youtube_url = db.Column(db.Text)
-    # L’admin doit approuver l’affichage public
     social_links_approved = db.Column(db.Boolean, default=False)
 
     # Validation par l’admin: 'valide' | 'en_attente' | 'rejete'
@@ -90,6 +134,10 @@ class Professional(db.Model):
     # Mise en avant locale
     is_featured = db.Column(db.Boolean, default=False)
     featured_rank = db.Column(db.Integer)  # 1 = top
+
+    # ✅ Badges (Phase 1)
+    certified_tighri = db.Column(db.Boolean, default=False)
+    approved_anthecc = db.Column(db.Boolean, default=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -109,13 +157,15 @@ class Professional(db.Model):
     def __repr__(self):
         return f"<Professional id={self.id} {self.name} [{self.specialty}] status={self.status}>"
 
-
+# ======================
+# Rendez-vous & disponibilité
+# ======================
 class Appointment(db.Model):
     __tablename__ = "appointments"
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # ✅ Historique conservé : nullable + SET NULL côté DB
+    # Historique conservé : nullable + SET NULL côté DB
     patient_id = db.Column(
         db.Integer,
         db.ForeignKey('users.id', ondelete='SET NULL'),
@@ -135,7 +185,7 @@ class Appointment(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # ✅ passive_deletes sur le backref pour laisser la DB gérer le SET NULL
+    # passive_deletes sur le backref pour laisser la DB gérer le SET NULL
     patient = db.relationship(
         'User',
         backref=db.backref('appointments', passive_deletes=True),
@@ -154,7 +204,6 @@ class Appointment(db.Model):
     def __repr__(self):
         return f"<Appt id={self.id} pro={self.professional_id} patient={self.patient_id} at={self.appointment_date} status={self.status}>"
 
-
 class ProfessionalAvailability(db.Model):
     __tablename__ = "professional_availabilities"
     id = db.Column(db.Integer, primary_key=True)
@@ -164,7 +213,6 @@ class ProfessionalAvailability(db.Model):
     end_time = db.Column(db.String(5), nullable=False)    # "HH:MM"
     is_available = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
-
 
 class UnavailableSlot(db.Model):
     __tablename__ = "unavailable_slots"
