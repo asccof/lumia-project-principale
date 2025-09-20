@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Résultats — Professionnels{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Résultats de recherche</h1>
+  {% if professionals %}
+    <div class="row g-3">
+      {% for p in professionals %}
+        <div class="col-md-4">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title mb-1">{{ p.name }}</h5>
+              <div class="text-muted mb-2">
+                {% if p.primary_specialty %}{{ p.primary_specialty.name }}
+                {% elif p.specialty %}{{ p.specialty }}
+                {% else %}Professionnel{% endif %}
+                {% if p.city %} • {{ p.city.name }}{% endif %}
+              </div>
+              <p class="card-text" style="min-height:3em">
+                {{ (p.description or '')[:120] }}{% if p.description and p.description|length>120 %}…{% endif %}
+              </p>
+              {% if p.certified_tighri %}<span class="badge text-bg-success">Certifié Tighri</span>{% endif %}
+              {% if p.approved_anthecc %}<span class="badge text-bg-warning">Agréé ANTHECC</span>{% endif %}
+            </div>
+            <div class="card-footer bg-white border-0">
+              <a class="btn btn-primary w-100" href="{{ url_for('professional_detail', professional_id=p.id) }}">Voir le profil</a>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">Aucun professionnel ne correspond à votre recherche.</div>
+  {% endif %}
+</div>
+{% endblock %}
