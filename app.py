@@ -132,6 +132,42 @@ def _normalize_lang(code: Optional[str]) -> str:
         return DEFAULT_LANG
     code = code.lower().strip()
     return code if code in SUPPORTED_LANGS else DEFAULT_LANG
+# --- DB CONFIG & LANG ----
+import os
+from flask import g, request, make_response, redirect, url_for
+
+# DB: forcer psycopg v3 si DATABASE_URL arrive en postgres:// ou +psycopg2
+db_url = os.getenv("DATABASE_URL", "").strip()
+if db_url:
+    if db_url.startswith("postgres://"):
+        db_url = "postgresql://" + db_url[len("postgres://"):]
+    if "+psycopg2" in db_url:
+        db_url = db_url.replace("+psycopg2", "+psycopg")
+    elif "postgresql://" in db_url and "+psycopg" not in db_url:
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg://")
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///app.db"
+
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Lang: expose g.current_locale (utilisé par <html lang="..."> et le label)
+@app.before_request
+def _load_locale():
+    lang = request.cookies.get("lang", "fr").lower()
+    g.current_locale = lang
+    g.current_locale_label = {"fr": "Français", "ar": "العربية", "en": "English"}.get(lang, "Français")
+
+# Route utilisée par base.html : /set-language/<lang>
+@app.route("/set-language/<lang>")
+def set_language(lang):
+    lang = (lang or "fr").lower()
+    if lang not in {"fr", "ar", "en"}:
+        lang = "fr"
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    # Cookie 1 an
+    resp.set_cookie("lang", lang, max_age=60 * 60 * 24 * 365, samesite="Lax", secure=True)
+    return resp
 
 
 @app.before_request
@@ -301,50 +337,61 @@ def anthecc():
 # -----------------------------------------------------------------------------
 # Listing / recherche de professionnels
 # -----------------------------------------------------------------------------
+from flask import render_template, request
+from sqlalchemy import or_
+
 @app.route("/professionals")
 def professionals():
-    """
-    Filtres robustes sans join fragile :
-    - q (nom ou spécialité)
-    - city
-    - specialty
-    - mode : 'cabinet' / 'domicile' / 'video'
-    """
     q = (request.args.get("q") or "").strip()
     city = (request.args.get("city") or "").strip()
     specialty = (request.args.get("specialty") or "").strip()
-    mode = (request.args.get("mode") or "").strip().lower()
+    mode = (request.args.get("mode") or "").strip().lower()  # cabinet / domicile / video / ""
 
-    query = db.session.query(Professional)
+    qry = Professional.query
 
+    # Recherche texte "q"
     if q:
         like = f"%{q}%"
-        # On cherche dans full_name et specialty (si colonne présente)
-        query = query.filter(
-            or_(Professional.full_name.ilike(like), Professional.specialty.ilike(like))
-        )
+        filters = []
+        if hasattr(Professional, "full_name"):
+            filters.append(Professional.full_name.ilike(like))
+        if hasattr(Professional, "username"):
+            filters.append(Professional.username.ilike(like))
+        if hasattr(Professional, "bio"):
+            filters.append(Professional.bio.ilike(like))
+        if filters:
+            qry = qry.filter(or_(*filters))
 
-    if city:
-        query = query.filter(Professional.city.ilike(f"%{city}%"))
+    # Ville
+    if city and hasattr(Professional, "city"):
+        qry = qry.filter(Professional.city.ilike(f"%{city}%"))
 
+    # Spécialité (champ texte côté Professional, ex: specialty / specialties_text)
+    # -> Pas de join: on cherche un champ plausible. Ajuste le nom si besoin.
     if specialty:
-        query = query.filter(Professional.specialty.ilike(f"%{specialty}%"))
+        like = f"%{specialty}%"
+        if hasattr(Professional, "specialty"):
+            qry = qry.filter(Professional.specialty.ilike(like))
+        elif hasattr(Professional, "specialties_text"):
+            qry = qry.filter(Professional.specialties_text.ilike(like))
+        # sinon : on n’applique pas de filtre spécialité (aucun join ici, volontairement)
 
-    if mode in {"cabinet", "domicile", "video"}:
-        # Si “modes” est une liste csv, on filtre par LIKE
-        query = query.filter(Professional.modes.ilike(f"%{mode}%"))
+    # Mode de consultation via booléens usuels (modifie les noms si différents chez toi)
+    if mode == "cabinet" and hasattr(Professional, "mode_cabinet"):
+        qry = qry.filter(Professional.mode_cabinet.is_(True))
+    elif mode == "domicile" and hasattr(Professional, "mode_domicile"):
+        qry = qry.filter(Professional.mode_domicile.is_(True))
+    elif mode == "video" and hasattr(Professional, "mode_video"):
+        qry = qry.filter(Professional.mode_video.is_(True))
 
-    # Pagination très simple
-    page = max(int(request.args.get("page", 1)), 1)
-    per_page = min(max(int(request.args.get("per_page", 20)), 1), 60)
-    items = query.order_by(Professional.id.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    # Tri si tu as un champ rating, sinon laisse tomber
+    if hasattr(Professional, "rating"):
+        professionals_list = qry.order_by(Professional.rating.desc().nullslast()).all()
+    else:
+        professionals_list = qry.all()
 
-    return render_template(
-        "professionals.html",
-        items=items,
-        q=q, city=city, specialty=specialty, mode=mode,
-        page=page, per_page=per_page
-    )
+    return render_template("professionals.html", professionals=professionals_list)
+
 
 
 # -----------------------------------------------------------------------------
