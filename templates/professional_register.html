@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="{{ g.get('current_locale','fr') }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -30,14 +30,36 @@
         <input name="phone" required class="form-control" placeholder="06 12 34 56 78">
       </div>
 
+      <!-- Spécialité (normalisée si disponible) -->
       <div class="col-md-6">
         <label class="form-label">Spécialité</label>
-        <input name="specialty" class="form-control" placeholder="Psychologue, Thérapeute, Coach…">
+        {% if specialties is defined and specialties %}
+          <select name="specialty_id" class="form-select" required>
+            <option value="">Choisir une spécialité</option>
+            {% for s in specialties %}
+              <option value="{{ s.id }}">{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input name="specialty" class="form-control" placeholder="Psychologue, Thérapeute, Coach…">
+        {% endif %}
       </div>
+
+      <!-- Ville (normalisée si disponible) -->
       <div class="col-md-6">
         <label class="form-label">Ville</label>
-        <input name="city" class="form-control" placeholder="Casablanca">
+        {% if cities is defined and cities %}
+          <select name="city_id" class="form-select" required>
+            <option value="">Choisir une ville</option>
+            {% for c in cities %}
+              <option value="{{ c.id }}">{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <input name="city" class="form-control" placeholder="Casablanca">
+        {% endif %}
       </div>
+
       <div class="col-md-6">
         <label class="form-label">Années d’expérience</label>
         <input name="experience" type="number" min="0" class="form-control" placeholder="0">
@@ -46,6 +68,23 @@
         <label class="form-label">Tarif consultation (MAD)</label>
         <input name="consultation_fee" type="number" step="0.01" class="form-control" placeholder="300">
       </div>
+
+      <!-- Types de consultation -->
+      <div class="col-12">
+        <label class="form-label">Types de consultation</label>
+        <div class="d-flex flex-wrap gap-3">
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="consultation_types" value="cabinet"> <span class="ms-1">Cabinet</span>
+          </label>
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="consultation_types" value="visio"> <span class="ms-1">Visio</span>
+          </label>
+          <label class="form-check">
+            <input class="form-check-input" type="checkbox" name="consultation_types" value="domicile"> <span class="ms-1">Domicile</span>
+          </label>
+        </div>
+      </div>
+
       <div class="col-12">
         <label class="form-label">Description</label>
         <textarea name="description" rows="3" class="form-control" placeholder="Décrivez votre pratique…"></textarea>
