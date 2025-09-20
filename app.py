@@ -1,14 +1,13 @@
 # app.py
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
-    send_from_directory, Response, current_app
+    send_from_directory, Response, current_app, g, session
 )
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime, date, timedelta, time as dtime
 from sqlalchemy import or_, text
-from sqlalchemy.exc import ArgumentError
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import os, uuid, io, requests
@@ -277,6 +276,29 @@ else:
 # ===========================================================================
 
 # ======================
+# Localisation (langue) — persistance cookie + session
+# ======================
+SUPPORTED_LANGS = {'fr', 'ar', 'en'}
+DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
+
+@app.before_request
+def _load_lang():
+    lang = request.args.get('lang') or session.get('lang') or request.cookies.get('lang') or DEFAULT_LANG
+    if lang not in SUPPORTED_LANGS:
+        lang = DEFAULT_LANG
+    g.lang = lang
+    session['lang'] = lang  # dispo dans les templates
+
+@app.route('/set-language/<lang_code>', endpoint='set_language')
+def set_language(lang_code):
+    if lang_code not in SUPPORTED_LANGS:
+        lang_code = DEFAULT_LANG
+    session['lang'] = lang_code
+    resp = redirect(request.referrer or url_for('index'))
+    resp.set_cookie('lang', lang_code, max_age=60*60*24*180, samesite='Lax', secure=True)
+    return resp
+
+# ======================
 # Pages publiques
 # ======================
 @app.route('/', endpoint='index')
@@ -330,49 +352,28 @@ def index():
 
 @app.route('/professionals', endpoint='professionals')
 def professionals():
-    """
-    Liste/recherche des professionnels.
-    NOTE: pour éviter l'erreur 'Expected mapped entity or selectable/table as join target'
-    (vue dans tes logs), on encapsule la requête dans un try/except ArgumentError
-    et on retombe sur un filtrage simple sans ILIKE composés si besoin.
-    """
-    specialty = (request.args.get('specialty') or 'all').strip()
-    search_query = (request.args.get('q') or '').strip()
+    specialty = request.args.get('specialty', 'all')
+    search_query = request.args.get('q', '')
 
-    base_query = Professional.query.filter(Professional.status == 'valide')
+    base_query = Professional.query.filter_by(status='valide')
 
-    try:
-        if search_query:
-            like = f'%{search_query}%'
-            conditions = [
-                Professional.name.ilike(like),
-                Professional.specialty.ilike(like),
-                Professional.location.ilike(like),
-                Professional.description.ilike(like),
-            ]
-            # champs optionnels
-            if hasattr(Professional, "address"):
-                conditions.insert(2, Professional.address.ilike(like))
-            pros = base_query.filter(or_(*conditions)) \
-                             .order_by(Professional.created_at.desc(), Professional.id.desc()) \
-                             .all()
-        elif specialty != 'all':
-            pros = base_query.filter(Professional.specialty == specialty) \
-                             .order_by(Professional.created_at.desc(), Professional.id.desc()) \
-                             .all()
-        else:
-            pros = base_query.order_by(Professional.created_at.desc(), Professional.id.desc()).all()
-    except ArgumentError as e:
-        # Fallback ultra simple en cas de tentative de 'join' implicite par le dialecte
-        app.logger.warning("Recherche /professionals fallback (ArgumentError): %s", e)
-        pros = Professional.query.filter(Professional.status == 'valide') \
-                                 .order_by(Professional.created_at.desc(), Professional.id.desc()) \
-                                 .all()
+    if search_query:
+        like = f'%{search_query}%'
+        conditions = [
+            Professional.name.ilike(like),
+            Professional.specialty.ilike(like),
+            Professional.location.ilike(like),
+            Professional.description.ilike(like),
+        ]
+        if hasattr(Professional, "address"):
+            conditions.insert(2, Professional.address.ilike(like))
+        pros = base_query.filter(or_(*conditions)).all()
+    elif specialty != 'all':
+        pros = base_query.filter_by(specialty=specialty).all()
+    else:
+        pros = base_query.all()
 
-    return render_template('professionals.html',
-                           professionals=pros,
-                           specialty=specialty,
-                           search_query=search_query)
+    return render_template('professionals.html', professionals=pros, specialty=specialty, search_query=search_query)
 
 @app.route('/professional/<int:professional_id>', endpoint='professional_detail')
 def professional_detail(professional_id):
@@ -861,6 +862,31 @@ def profile_media(filename):
         return resp
     return _avatar_fallback_response()
 
+# >>> Correctif zoom/lightbox : redirection 302 vers la vraie image
+@app.route("/media/profile/<int:professional_id>", endpoint='profile_photo')
+def profile_photo(professional_id):
+    pro = Professional.query.get_or_404(professional_id)
+    raw_url = (pro.image_url or "").strip()
+
+    # 1) Fichier local géré par /media/profiles/<filename>
+    if raw_url.startswith("/media/profiles/"):
+        fname = raw_url.split("/media/profiles/")[-1]
+        return redirect(url_for('profile_media', filename=fname, _external=False), code=302)
+
+    # 2) Pas d'image -> fallback
+    if not raw_url:
+        return _avatar_fallback_response()
+
+    # 3) URL externe -> redirection 302 directe (force https si http)
+    if raw_url.startswith("http://"):
+        raw_url = "https://" + raw_url[len("http://"):]
+    parsed = urlparse(raw_url)
+    if parsed.scheme in ("http", "https"):
+        return redirect(raw_url, code=302)
+
+    # 4) Autre cas -> fallback
+    return _avatar_fallback_response()
+
 @app.route('/professional/profile/photo', methods=['GET', 'POST'], endpoint='professional_upload_photo')
 @login_required
 def professional_upload_photo():
@@ -1334,43 +1360,6 @@ def site_status():
     }
     return render_template('site_status.html', status=status, stats=stats)
 
-# ===== Proxy d’images pour photos de profils =====
-@app.route("/media/profile/<int:professional_id>", endpoint='profile_photo')
-def profile_photo(professional_id):
-    pro = Professional.query.get_or_404(professional_id)
-    raw_url = (pro.image_url or "").strip()
-
-    if raw_url.startswith("/media/profiles/"):
-        fname = raw_url.split("/media/profiles/")[-1]
-        return redirect(url_for('profile_media', filename=fname, _external=True, _scheme='https'))
-
-    if not raw_url:
-        return _avatar_fallback_response()
-
-    if raw_url.startswith("http://"):
-        raw_url = "https://" + raw_url[len("http://"):]
-
-    parsed = urlparse(raw_url)
-    if parsed.scheme not in ("http", "https"):
-        return _avatar_fallback_response()
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
-        "Referer": "https://www.tighri.com",
-    }
-    try:
-        r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
-        r.raise_for_status()
-    except Exception:
-        return _avatar_fallback_response()
-
-    content_type = r.headers.get("Content-Type", "image/jpeg")
-    data = r.content
-
-    resp = Response(data, mimetype=content_type)
-    resp.headers["Cache-Control"] = "public, max-age=86400"
-    return resp
-
 # === Alias rétro-compatible pour l'ancien endpoint "avatar" ===
 @app.route("/avatar", endpoint="avatar")
 def avatar_alias_qs():
@@ -1384,7 +1373,7 @@ def avatar_alias_path(professional_id):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
 # ===== Favicon (évite le 404) ==============================
-@app.route("/favicon.ico")
+@app.route("/favicon.ico", endpoint="favicon")
 def favicon():
     fav_path = Path(app.static_folder or (BASE_DIR / "static")) / "favicon.ico"
     if fav_path.exists():
@@ -1392,5 +1381,11 @@ def favicon():
         resp.headers["Cache-Control"] = "public, max-age=604800"
         return resp
     return ("", 204)
+
+# ===== Page ANTHECC (corrige le BuildError dans base.html) =
+@app.route('/anthecc', endpoint='anthecc')
+def anthecc():
+    # Si tu as un template 'anthecc.html', remplace par: return render_template('anthecc.html')
+    return "ANTHECC — page en construction", 200
 
 # Pas de bloc __main__ (gunicorn utilise app:app)
