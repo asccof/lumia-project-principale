@@ -9,15 +9,17 @@
     --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;
   }
   body{background:var(--bg);color:var(--ink)}
-  header{background:linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);color:#fff;
-    padding:8rem 0 2rem;margin-top:0;text-align:center}
+  header{background:linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);color:#fff;padding:8rem 0 2rem;text-align:center}
   header h1{margin:0 0 .5rem;font-size:3rem;font-weight:700}
-  header p{margin:0 auto 1.5rem;max-width:600px;font-size:1.2rem;opacity:.95}
+  header p{margin:0 auto 1.5rem;max-width:700px;font-size:1.15rem;opacity:.95}
 
-  .search-bar{display:flex;justify-content:center;margin:2rem 0 1rem}
-  .search-bar input{width:400px;padding:1rem 1.25rem;border:1.5px solid var(--primary);border-radius:30px 0 0 30px;font-size:1rem;outline:none;background:#fff}
-  .search-bar button{padding:1rem 1.5rem;border:none;background:var(--primary);color:#fff;font-size:1rem;border-radius:0 30px 30px 0;cursor:pointer;font-weight:700}
+  .search-wrap{max-width:1100px;margin:-2.5rem auto 1rem;padding:0 1rem}
+  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
+  .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
+  .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
   .search-bar button:hover{background:var(--primary-dark)}
+  @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
+  @media (max-width:640px){ .search-bar{grid-template-columns:1fr} }
 
   .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
   .section{background:#fff;border-radius:18px;box-shadow:var(--shadow);padding:2.5rem;min-width:320px;max-width:400px;flex:1 1 320px;text-align:center}
@@ -32,8 +34,7 @@
   @media (max-width:1024px){ .professionals{grid-template-columns:repeat(2,minmax(260px,1fr));} }
   @media (max-width:640px){ .professionals{grid-template-columns:1fr;} }
 
-  .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);
-    padding:1.25rem;min-width:260px;max-width:340px;width:100%;text-align:center}
+  .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:340px;width:100%;text-align:center}
   .professional-card .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
   .professional-card .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
   .professional-card h4{margin:.5rem 0 .2rem;color:#6D28D9}
@@ -41,14 +42,12 @@
   .professional-card a{color:var(--primary);text-decoration:none;font-weight:600}
   .professional-card a:hover{text-decoration:underline}
 
-  /* Carrousel horizontal */
   .strip{max-width:1200px;margin:0 auto 4rem;padding:0 2rem}
   .strip h3{color:#6D28D9;margin:0 0 1rem;font-size:1.5rem}
   .hscroll{display:flex;gap:1rem;overflow-x:auto;padding-bottom:.5rem;scroll-snap-type:x mandatory}
   .hscroll::-webkit-scrollbar{height:8px}
   .hscroll::-webkit-scrollbar-thumb{background:#d8cfff;border-radius:999px}
-  .card-mini{scroll-snap-align:start;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);
-    padding:1rem;min-width:240px;max-width:240px;text-align:center;flex:0 0 auto}
+  .card-mini{scroll-snap-align:start;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1rem;min-width:240px;max-width:240px;text-align:center;flex:0 0 auto}
   .card-mini .avatar-box{width:84px;height:84px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .6rem}
   .card-mini .avatar-img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
   .card-mini h4{margin:.4rem 0 .1rem;color:#6D28D9;font-size:1rem}
@@ -57,7 +56,7 @@
   .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
   .about-container{max-width:1200px;margin:0 auto;text-align:center}
   .about-section h2{color:var(--primary);font-size:2.2rem;margin:0 0 1rem}
-  .about-section p{color:var(--muted);font-size:1.05rem;line-height:1.8;max-width:800px;margin:0 auto 1.25rem}
+  .about-section p{color:#4B3869;font-size:1.05rem;line-height:1.8;max-width:800px;margin:0 auto 1.25rem}
 
   .services-section{padding:4rem 2rem;background:var(--bg)}
   .services-container{max-width:1200px;margin:0 auto}
@@ -65,7 +64,7 @@
   .services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem}
   .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);text-align:center}
   .service-card h3{color:#6D28D9;margin:.25rem 0 1rem}
-  .service-card p{color:var(--muted);margin:0}
+  .service-card p{color:#4B3869;margin:0}
 
   .contact-section{background:var(--primary);color:#fff;padding:4rem 2rem;text-align:center}
   .contact-container{max-width:800px;margin:0 auto}
@@ -75,52 +74,59 @@
   .contact-item{display:flex;flex-direction:column;align-items:center;gap:.35rem}
   .contact-item strong{font-size:1.05rem}
   .contact-actions{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin-top:1.25rem}
-  .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#ffffff;color:#6D28D9;border:2px solid #ffffff;
-    padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,0.18);transition:.2s}
+  .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#ffffff;color:#6D28D9;border:2px solid #ffffff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,0.18);transition:.2s}
   .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
   .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
-
-  /* Lightbox minimal */
-  .lightbox-backdrop{
-    position:fixed; inset:0; display:none; align-items:center; justify-content:center;
-    background:rgba(0,0,0,.6); z-index:9999; padding:1rem;
-  }
-  .lightbox-backdrop.is-open{display:flex}
-  .lightbox-img{
-    max-width:min(1024px, 95vw); max-height:90vh; border-radius:12px; background:#fff;
-    box-shadow:0 12px 40px rgba(0,0,0,.25);
-  }
-  .lightbox-close{
-    position:absolute; top:12px; right:12px; border:0; background:#fff; border-radius:10px; padding:.5rem .75rem; cursor:pointer;
-    box-shadow:0 2px 10px rgba(0,0,0,.2); font-weight:700;
-  }
-
-  @media (max-width:768px){
-    header{padding:6.5rem 1rem 2rem}
-    header h1{font-size:2rem}
-    .search-bar{flex-direction:column;align-items:stretch;padding:0 1rem;gap:.5rem}
-    .search-bar input,.search-bar button{width:100%;border-radius:12px}
-    .sections{flex-direction:column;align-items:center;padding:0 1rem;gap:1rem;margin:2rem 0}
-    .featured{padding:0 1rem}
-    .about-section,.services-section{padding:2rem 1rem;margin:2rem 0}
-    .services-grid{grid-template-columns:1fr}
-    .contact-section{padding:2rem 1rem}
-  }
 </style>
 {% endblock %}
 
 {% block content %}
-  <!-- HEADER -->
   <header id="top">
     <h1>Tighri</h1>
     <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
   </header>
 
-  <!-- SEARCH -->
-  <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
-    <input type="text" name="q" placeholder="Rechercher un professionnel, une spécialité, une ville...">
-    <button type="submit">Rechercher</button>
-  </form>
+  <!-- SEARCH avec filtres -->
+  <div class="search-wrap">
+    <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
+      <!-- Champ libre -->
+      <input type="text" name="q" placeholder="Nom, mot-clé..." aria-label="Recherche libre">
+
+      <!-- Ville -->
+      {% if cities is defined and cities %}
+        <select name="city_id" aria-label="Ville">
+          <option value="">Ville</option>
+          {% for c in cities %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="city" placeholder="Ville" aria-label="Ville">
+      {% endif %}
+
+      <!-- Spécialité -->
+      {% if specialties is defined and specialties %}
+        <select name="specialty_id" aria-label="Spécialité">
+          <option value="">Spécialité</option>
+          {% for s in specialties %}
+            <option value="{{ s.id }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="specialty" placeholder="Spécialité" aria-label="Spécialité">
+      {% endif %}
+
+      <!-- Mode -->
+      <select name="mode" aria-label="Mode de consultation">
+        <option value="">Mode</option>
+        <option value="cabinet">Cabinet</option>
+        <option value="visio">Visio</option>
+        <option value="domicile">Domicile</option>
+      </select>
+
+      <button type="submit">Rechercher</button>
+    </form>
+  </div>
 
   <!-- 2 BLOCS -->
   <div class="sections">
@@ -136,7 +142,7 @@
     </div>
   </div>
 
-  <!-- PROFESSIONNELS EN VEDETTE (Top 9) -->
+  <!-- PROFESSIONNELS EN VEDETTE -->
   <div class="featured">
     <h3>Professionnels en vedette</h3>
     {% set grid = top_professionals if top_professionals is defined else professionals %}
@@ -144,17 +150,17 @@
       {% for professional in grid %}
         <div class="professional-card">
           <div class="avatar-box">
-            <img
-              class="avatar-img js-zoom"
-              src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-              data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
-              alt="Photo de {{ professional.name|e }}"
-              width="96" height="96" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer"
-              onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
+            <img class="avatar-img js-zoom"
+                 src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+                 data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+                 alt="Photo de {{ professional.name|e }}"
+                 width="96" height="96" loading="lazy"
+                 onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
           </div>
-
           <h4>{{ professional.name }}</h4>
-          <p>{{ professional.specialty }}</p>
+          <p>
+            {% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}Professionnel{% endif %}
+          </p>
           <p>
             {% set d = professional.description or '' %}
             {{ d[:80] }}{% if d|length > 80 %}…{% endif %}
@@ -165,7 +171,6 @@
     </div>
   </div>
 
-  <!-- AUTRES PROFESSIONNELS (carrousel horizontal) -->
   {% if other_professionals is defined and other_professionals %}
   <section class="strip">
     <h3>Autres professionnels</h3>
@@ -173,16 +178,15 @@
       {% for professional in other_professionals %}
       <div class="card-mini">
         <div class="avatar-box">
-          <img
-            class="avatar-img js-zoom"
-            src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-            data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
-            alt="Photo de {{ professional.name|e }}"
-            width="84" height="84" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer"
-            onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
+          <img class="avatar-img js-zoom"
+               src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               alt="Photo de {{ professional.name|e }}"
+               width="84" height="84" loading="lazy"
+               onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
         </div>
         <h4>{{ professional.name }}</h4>
-        <p>{{ professional.specialty or '—' }}</p>
+        <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}—{% endif %}</p>
         <a href="{{ url_for('professional_detail', professional_id=professional.id) }}" style="color:var(--primary);font-weight:600;text-decoration:none">Voir</a>
       </div>
       {% endfor %}
@@ -204,30 +208,12 @@
     <div class="services-container">
       <h2>Nos Services</h2>
       <div class="services-grid">
-        <div class="service-card">
-          <h3>Consultations en Cabinet</h3>
-          <p>Rencontrez des professionnels dans leur cabinet pour des séances en face à face.</p>
-        </div>
-        <div class="service-card">
-          <h3>Consultations à Domicile</h3>
-          <p>Certains professionnels se déplacent à votre domicile pour plus de confort.</p>
-        </div>
-        <div class="service-card">
-          <h3>Consultations en Vidéo</h3>
-          <p>Consultez en ligne en toute sécurité depuis chez vous.</p>
-        </div>
-        <div class="service-card">
-          <h3>Gestion de Planning</h3>
-          <p>Réservez vos créneaux et recevez des rappels automatiques.</p>
-        </div>
-        <div class="service-card">
-          <h3>Profils Vérifiés</h3>
-          <p>Les diplômes et identités sont vérifiés par notre équipe.</p>
-        </div>
-        <div class="service-card">
-          <h3>Support 24/7</h3>
-          <p>Nous vous accompagnons à chaque étape de votre parcours.</p>
-        </div>
+        <div class="service-card"><h3>Consultations en Cabinet</h3><p>Rencontrez des professionnels en face à face.</p></div>
+        <div class="service-card"><h3>Consultations à Domicile</h3><p>Certains professionnels se déplacent chez vous.</p></div>
+        <div class="service-card"><h3>Consultations en Vidéo</h3><p>Consultez en ligne en toute sécurité.</p></div>
+        <div class="service-card"><h3>Gestion de Planning</h3><p>Réservez vos créneaux, rappel 24h avant.</p></div>
+        <div class="service-card"><h3>Profils Vérifiés</h3><p>Diplômes et identités vérifiés par Tighri.</p></div>
+        <div class="service-card"><h3>Support 24/7</h3><p>Nous vous accompagnons à chaque étape.</p></div>
       </div>
     </div>
   </section>
@@ -237,38 +223,21 @@
     <div class="contact-container">
       <h2>Nous contacter</h2>
       <p><strong>Bienvenue au Centre d'écoute et de conseil Tighri.</strong><br>Besoin d'aide ou de conseils gratuits ? Contactez-nous.</p>
-
       <div class="contact-info" style="margin-top:1rem;">
-        <div class="contact-item">
-          <strong>Email</strong>
-          <span>contact@tighri.ma</span>
-        </div>
-        <div class="contact-item">
-          <strong>Téléphone</strong>
-          <span>06 63 40 01 90</span>
-        </div>
-        <div class="contact-item">
-          <strong>WhatsApp</strong>
-          <span class="contact-badge">Disponible</span>
-        </div>
+        <div class="contact-item"><strong>Email</strong><span>contact@tighri.ma</span></div>
+        <div class="contact-item"><strong>Téléphone</strong><span>06 63 40 01 90</span></div>
+        <div class="contact-item"><strong>WhatsApp</strong><span class="contact-badge">Disponible</span></div>
       </div>
-
       <div class="contact-actions">
-        <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">
-          ✉️ Contacter par e-mail
-        </a>
-        <a class="contact-btn" href="tel:+212663400190">
-          📞 Appeler le <span>06 63 40 01 90</span>
-        </a>
+        <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">✉️ Contacter par e-mail</a>
+        <a class="contact-btn" href="tel:+212663400190">📞 Appeler le <span>06 63 40 01 90</span></a>
         <a class="contact-btn" target="_blank" rel="noopener"
-           href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">
-          💬 WhatsApp direct
-        </a>
+           href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">💬 WhatsApp direct</a>
       </div>
     </div>
   </section>
 
-  <!-- Lightbox (une seule fois par page) -->
+  <!-- Lightbox -->
   <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
     <button class="lightbox-close" id="lbClose" aria-label="Fermer">✕</button>
     <img id="lbImg" class="lightbox-img" alt="Agrandissement">
@@ -278,25 +247,16 @@
       const backdrop = document.getElementById('lbBackdrop');
       const imgBig   = document.getElementById('lbImg');
       const btnClose = document.getElementById('lbClose');
-
       function open(src){ imgBig.src = src; backdrop.classList.add('is-open'); }
       function close(){ backdrop.classList.remove('is-open'); imgBig.src=''; }
-
       document.addEventListener('click', function(e){
-        const t = e.target.closest('.js-zoom');
-        if(!t) return;
-        e.preventDefault();
+        const t = e.target.closest('.js-zoom'); if(!t) return; e.preventDefault();
         const src = t.getAttribute('data-full') || t.src || t.getAttribute('src') || '';
         if(src) open(src);
       });
-
       btnClose.addEventListener('click', close);
-      backdrop.addEventListener('click', function(e){
-        if(e.target === backdrop) close();
-      });
-      document.addEventListener('keydown', function(e){
-        if(e.key === 'Escape') close();
-      });
+      backdrop.addEventListener('click', function(e){ if(e.target === backdrop) close(); });
+      document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
     })();
   </script>
 {% endblock %}
