@@ -7,7 +7,7 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime, date, timedelta, time as dtime
-from sqlalchemy import or_, text, and_
+from sqlalchemy import or_, text
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import os, uuid, io, requests
@@ -44,7 +44,7 @@ except Exception:
 
 BASE_DIR = Path(__file__).resolve().parent
 
-# Racine persistante des uploads
+# Racine persistante des uploads (monte un Render Disk et mets UPLOAD_ROOT=/var/data/uploads)
 UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
 UPLOAD_FOLDER = Path(UPLOAD_ROOT) / 'profiles'
 ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
@@ -70,7 +70,7 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# Dossier d’upload
+# Dossier d’upload des images de profils (persistant)
 app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
 app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
 
@@ -93,7 +93,7 @@ google = oauth.register(
     client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
 )
 
-# --- Normalisation URI Postgres -> psycopg3 ---
+# --- Normalisation de l'URI Postgres -> psycopg3 ---
 def _normalize_pg_uri(uri: str) -> str:
     if not uri:
         return uri
@@ -112,13 +112,18 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-# --- Config DB + modèles ---
-from models import (
-    db, User, Professional, Appointment,
-    ProfessionalAvailability, UnavailableSlot,
-    City, Specialty, professional_specialties
-)
-from admin_server import admin_bp, ProfessionalOrder, _build_notif  # BP admin + helpers
+# --- Config DB ---
+from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
+# Référentiels optionnels (si non présents, on continue en mode dégradé)
+try:
+    from models import City, Specialty
+    _REFS_AVAILABLE = True
+except Exception:
+    City = None  # type: ignore
+    Specialty = None  # type: ignore
+    _REFS_AVAILABLE = False
+
+from admin_server import admin_bp, ProfessionalOrder, _build_notif  # importe aussi le BP admin
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
 if not uri:
@@ -143,10 +148,11 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ===== Langue (Phase 1) =====================================================
+# ===== Langue (FR/AR/EN) ====================================================
 @app.before_request
 def _set_lang():
-    lang = session.get("lang") or request.cookies.get("lang") or "fr"
+    # Cookie "lang" prioritaire, sinon session, sinon 'fr'
+    lang = request.cookies.get("lang") or session.get("lang") or "fr"
     g.current_locale = lang
     g.current_locale_label = {"fr": "Français", "ar": "العربية", "en": "English"}.get(lang, "Français")
 
@@ -156,15 +162,17 @@ def set_language(lang):
         lang = "fr"
     session["lang"] = lang
     resp = make_response(redirect(request.referrer or url_for("index")))
-    resp.set_cookie("lang", lang, max_age=60*60*24*365)
+    # 1 an
+    resp.set_cookie("lang", lang, max_age=60 * 60 * 24 * 365)
     return resp
 # ===========================================================================
 
-# ===== Mini-migrations sûres ===============================================
+# ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
 with app.app_context():
+    # create_all va aussi créer la table 'professional_order' (via import ci-dessus)
     db.create_all()
     try:
-        # Ajouts sur professionals (idempotents)
+        # professionals: adresse + géoloc + téléphone + réseaux sociaux
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;"))
@@ -174,41 +182,62 @@ with app.app_context():
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS tiktok_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS youtube_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;"))
+        # Durée & buffer par défaut
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 45;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 15;"))
 
-        # Phase 1 : colonnes normalisées + badges
+        # users: téléphone + oauth
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR(30);"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_sub VARCHAR(255);"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS picture_url TEXT;"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(120);"))
+        db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);"))
+
+        # users: reset password (jeton hash + expiration)
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);"))
+        db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;"))
+
+        # Phase 1 : normalisation + badges (ajout non bloquant)
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS certified_tighri BOOLEAN DEFAULT FALSE;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS approved_anthecc BOOLEAN DEFAULT FALSE;"))
-        # FK soft (si supporté)
-        db.session.execute(text("""
-            DO $$ BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_prof_city'
-            ) THEN
-                ALTER TABLE professionals
-                ADD CONSTRAINT fk_prof_city FOREIGN KEY (city_id) REFERENCES cities(id) ON DELETE SET NULL;
-            END IF;
-            END $$;
-        """))
-        db.session.execute(text("""
-            DO $$ BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_prof_primary_spec'
-            ) THEN
-                ALTER TABLE professionals
-                ADD CONSTRAINT fk_prof_primary_spec FOREIGN KEY (primary_specialty_id) REFERENCES specialties(id) ON DELETE SET NULL;
-            END IF;
-            END $$;
-        """))
+
+        # Contraintes FK optionnelles (si tables présentes)
+        if _REFS_AVAILABLE:
+            try:
+                db.session.execute(text("""
+                    DO $$ BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_prof_city'
+                    ) THEN
+                        ALTER TABLE professionals
+                        ADD CONSTRAINT fk_prof_city FOREIGN KEY (city_id) REFERENCES cities(id) ON DELETE SET NULL;
+                    END IF;
+                    END $$;
+                """))
+            except Exception:
+                pass
+            try:
+                db.session.execute(text("""
+                    DO $$ BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_prof_primary_spec'
+                    ) THEN
+                        ALTER TABLE professionals
+                        ADD CONSTRAINT fk_prof_primary_spec FOREIGN KEY (primary_specialty_id) REFERENCES specialties(id) ON DELETE SET NULL;
+                    END IF;
+                    END $$;
+                """))
+            except Exception:
+                pass
 
         db.session.commit()
     except Exception as e:
-        app.logger.warning(f"Mini-migration colonnes Phase1: {e}")
+        app.logger.warning(f"Mini-migration colonnes: {e}")
 
-    # Seed admin si absent (inchangé)
+    # Seed admin si absent
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -228,7 +257,7 @@ with app.app_context():
         app.logger.info(f"Admin '{admin_username}' créé.")
 # ===========================================================================
 
-# ===== Helpers reset mot de passe ==========================================
+# ===== Helpers reset mot de passe (token unique + expiration) ===============
 def _hash_token(tok: str) -> str:
     return hashlib.sha256(tok.encode("utf-8")).hexdigest()
 
@@ -251,7 +280,7 @@ def consume_token_to_user(token: str):
     return u
 # ===========================================================================
 
-# ===== Images profils =======================================================
+# ===== [TIGHRI_R1:IMAGES_INLINE_FALLBACK] ===================================
 TARGET_SIZE = (512, 512)
 
 def _ext_ok(filename: str) -> bool:
@@ -293,7 +322,7 @@ def _process_and_save_profile_image(file_storage) -> str:
     return out_name
 # ===========================================================================
 
-# ===== Pack optionnel (inchangé) ===========================================
+# ===== [TIGHRI_R1:PACK_REGISTRATION_SAFE] ===================================
 try:
     from tighri_r1 import register_tighri_r1
 except Exception as e:
@@ -315,9 +344,11 @@ else:
 @app.route('/', endpoint='index')
 def index():
     """
-    Accueil avec mise en avant + référentiels normalisés.
+    Accueil :
+      - top_professionals : 9 pros classés (ordre admin, puis featured/rank, puis récents)
+      - other_professionals : tous les autres (même tri), pour le carrousel horizontal
+    Fallback si la table d'ordre n'existe pas/en erreur.
     """
-    # Classement tel que déjà en place (ordre admin / featured / récents)
     try:
         base = (
             db.session.query(Professional)
@@ -353,35 +384,42 @@ def index():
         top_ids = [p.id for p in top_professionals]
         more_professionals = fb.filter(~Professional.id.in_(top_ids)).all() if top_ids else fb.offset(9).all()
 
-    # Référentiels pour l’UI (liste déroulante si tu l’ajoutes plus tard)
-    cities = City.query.order_by(City.name.asc()).all()
-    specialties = Specialty.query.order_by(Specialty.name.asc()).all()
+    # Référentiels (si absents côté modèles, on envoie des listes vides)
+    try:
+        cities = City.query.order_by(City.name.asc()).all() if _REFS_AVAILABLE else []
+    except Exception:
+        cities = []
+    try:
+        specialties = Specialty.query.order_by(Specialty.name.asc()).all() if _REFS_AVAILABLE else []
+    except Exception:
+        specialties = []
 
     return render_template(
         'index.html',
         top_professionals=top_professionals,
-        other_professionals=more_professionals,
+        other_professionals=more_professionals,  # <— nom attendu par ton template index.html
         cities=cities,
         specialties=specialties
     )
 
-# Liste de pros avec filtres normalisés (compatible avec l’existant)
 @app.route('/professionals', endpoint='professionals')
 def professionals():
-    q = (request.args.get('q') or '').strip()
+    # Compat existante
+    specialty = request.args.get('specialty', 'all')
+    search_query = (request.args.get('q') or '').strip()
 
-    # Filtres normalisés (optionnels)
+    # Nouveaux filtres normalisés (optionnels)
     city_id = (request.args.get('city_id') or '').strip()
     city_txt = (request.args.get('city') or '').strip()
     spec_id = (request.args.get('specialty_id') or '').strip()
     spec_txt = (request.args.get('specialty') or '').strip()
-    mode = (request.args.get('mode') or '').strip().lower()  # cabinet | visio | domicile
+    mode = (request.args.get('mode') or '').strip().lower()  # cabinet | visio | domicile | en_ligne
 
     base_query = Professional.query.filter_by(status='valide')
 
-    # Plein texte simple
-    if q:
-        like = f"%{q}%"
+    # Recherche texte existante (conservée)
+    if search_query:
+        like = f'%{search_query}%'
         conditions = [
             Professional.name.ilike(like),
             Professional.specialty.ilike(like),
@@ -391,31 +429,54 @@ def professionals():
         if hasattr(Professional, "address"):
             conditions.insert(2, Professional.address.ilike(like))
         base_query = base_query.filter(or_(*conditions))
+    elif specialty != 'all':
+        # ancien filtre par spécialité texte
+        base_query = base_query.filter_by(specialty=specialty)
 
-    # Filtre Ville
+    # 🔎 Ville (id prioritaire, sinon texte) — seulement si référentiel dispo
     if city_id.isdigit():
-        base_query = base_query.filter(Professional.city_id == int(city_id))
+        base_query = base_query.filter(text("city_id = :cid")).params(cid=int(city_id))
     elif city_txt:
-        base_query = base_query.outerjoin(City).filter(
-            or_(City.name.ilike(f"%{city_txt}%"), Professional.address.ilike(f"%{city_txt}%"))
-        )
+        if _REFS_AVAILABLE:
+            try:
+                base_query = base_query.outerjoin(City).filter(
+                    or_(City.name.ilike(f"%{city_txt}%"),
+                        getattr(Professional, "address").ilike(f"%{city_txt}%") if hasattr(Professional, "address") else text("1=0"))
+                )
+            except Exception:
+                # fallback texte simple sur location/address
+                base_query = base_query.filter(
+                    or_(Professional.location.ilike(f"%{city_txt}%"),
+                        getattr(Professional, "address").ilike(f"%{city_txt}%") if hasattr(Professional, "address") else text("1=0"))
+                )
+        else:
+            base_query = base_query.filter(
+                or_(Professional.location.ilike(f"%{city_txt}%"),
+                    getattr(Professional, "address").ilike(f"%{city_txt}%") if hasattr(Professional, "address") else text("1=0"))
+            )
 
-    # Filtre Spécialité
+    # 🔎 Spécialité (id prioritaire, sinon texte) — seulement si référentiel dispo
     if spec_id.isdigit():
+        # primary_specialty_id = spec_id ou many-to-many (si présent)
         base_query = base_query.filter(
             or_(
-                Professional.primary_specialty_id == int(spec_id),
-                Professional.specialties.any(Specialty.id == int(spec_id))
+                text("primary_specialty_id = :sid"),
+                text("id IN (SELECT professional_id FROM professional_specialties WHERE specialty_id = :sid)")
             )
-        )
+        ).params(sid=int(spec_id))
     elif spec_txt:
         like = f"%{spec_txt}%"
-        base_query = base_query.outerjoin(Professional.primary_specialty).outerjoin(Professional.specialties)
-        base_query = base_query.filter(
-            or_(Specialty.name.ilike(like), Professional.specialty.ilike(like))
-        )
+        if _REFS_AVAILABLE:
+            try:
+                base_query = base_query.outerjoin(text("specialties ON professionals.primary_specialty_id = specialties.id")) \
+                    .filter(or_(text("specialties.name ILIKE :lk"), Professional.specialty.ilike(like))) \
+                    .params(lk=like)
+            except Exception:
+                base_query = base_query.filter(Professional.specialty.ilike(like))
+        else:
+            base_query = base_query.filter(Professional.specialty.ilike(like))
 
-    # Filtre mode consultation
+    # 🔎 Mode de consultation (cabinet/visio/domicile/en_ligne)
     if mode in ("cabinet", "visio", "domicile", "en_ligne"):
         key = "en_ligne" if mode in ("visio", "en_ligne") else mode
         base_query = base_query.filter(
@@ -432,16 +493,17 @@ def professionals():
         Professional.id.desc()
     ).all()
 
-    # Page de liste existante / ou celle fournie
-    # Si tu as déjà templates/professionals.html, on garde.
-    # Sinon, remplace par "professionals_list.html".
-    return render_template('professionals.html', professionals=pros, specialty=request.args.get('specialty', 'all'), search_query=q)
+    return render_template('professionals.html', professionals=pros, specialty=specialty, search_query=search_query)
 
 @app.route('/professional/<int:professional_id>', endpoint='professional_detail')
 def professional_detail(professional_id):
     professional = Professional.query.get_or_404(professional_id)
-    reviews = []  # placeholder : tu pourras brancher plus tard
-    return render_template('professional_detail.html', professional=professional, reviews=reviews)
+    # NOTE: si tu passes des reviews, ajoute-les ici
+    return render_template('professional_detail.html', professional=professional)
+
+@app.route('/anthecc', endpoint='anthecc')
+def anthecc():
+    return render_template('anthecc.html')
 
 @app.route('/about', endpoint='about')
 def about():
@@ -451,15 +513,8 @@ def about():
 def contact():
     return render_template('contact.html')
 
-# ===== Page ANTHECC (Phase 1) ==============================================
-@app.route('/anthecc', endpoint='anthecc')
-def anthecc():
-    # Crée un template "anthecc.html" minimal, ou réutilise base avec contenu statique
-    return render_template('anthecc.html')
-# ===========================================================================
-
 # ======================
-# Authentification & Comptes (inchangé)
+# Authentification & Comptes
 # ======================
 @app.route('/register', methods=['GET', 'POST'], endpoint='register')
 def register():
@@ -502,8 +557,8 @@ def professional_register():
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-        specialty_txt = request.form.get('specialty', '').strip()
-        city_txt = request.form.get('city', '').strip()
+        specialty = request.form.get('specialty', '').strip()
+        city = request.form.get('city', '').strip()
         experience_raw = request.form.get('experience', '0')
         description = request.form.get('description', '').strip()
         fee_raw = request.form.get('consultation_fee', '0')
@@ -534,10 +589,6 @@ def professional_register():
         except ValueError:
             consultation_fee = 0.0
 
-        # Mapper ville/specialty texte -> référentiels si présents
-        city_ref = City.query.filter(City.name.ilike(city_txt)).first() if city_txt else None
-        spec_ref = Specialty.query.filter(Specialty.name.ilike(specialty_txt)).first() if specialty_txt else None
-
         try:
             user = User(
                 username=username,
@@ -551,10 +602,8 @@ def professional_register():
             professional = Professional(
                 name=username,
                 description=description or "Profil en cours de complétion.",
-                specialty=specialty_txt or "Psychologue",  # compat legacy
-                location=city_txt or "Casablanca",        # compat legacy
-                primary_specialty=spec_ref,
-                city=city_ref,
+                specialty=specialty or "Psychologue",
+                location=city or "Casablanca",
                 experience_years=experience,
                 consultation_fee=consultation_fee,
                 phone=phone or None,
@@ -565,9 +614,7 @@ def professional_register():
                 tiktok_url=tiktok_url or None,
                 youtube_url=youtube_url or None,
                 social_links_approved=False,
-                status='en_attente',
-                certified_tighri=False,
-                approved_anthecc=False
+                status='en_attente'
             )
             db.session.add(professional)
 
@@ -682,7 +729,7 @@ def logout():
     logout_user()
     return redirect(url_for('index'))
 
-# ===== Password routes (inchangé) ==========================================
+# ===== [TIGHRI_R1:AUTH_PASSWORD_ROUTES] =====================================
 @app.route('/change_password', methods=['GET', 'POST'], endpoint='change_password')
 @login_required
 def change_password():
@@ -788,7 +835,7 @@ def reset_password(token):
 # ===========================================================================
 
 # ======================
-# Espace Professionnel (inchangé)
+# Espace Professionnel
 # ======================
 @app.route('/professional_dashboard', endpoint='professional_dashboard')
 @login_required
@@ -836,18 +883,6 @@ def professional_edit_profile():
         loc = (request.form.get('location') or '').strip()
         if loc:
             pro.location = loc
-
-        # Normalisation via référentiels si fournis
-        city_txt = (request.form.get('city_name') or '').strip()
-        if city_txt:
-            ref = City.query.filter(City.name.ilike(city_txt)).first()
-            if ref:
-                pro.city = ref
-        spec_txt = (request.form.get('primary_specialty_name') or '').strip()
-        if spec_txt:
-            ref = Specialty.query.filter(Specialty.name.ilike(spec_txt)).first()
-            if ref:
-                pro.primary_specialty = ref
 
         lat = (request.form.get('latitude') or '').strip()
         lng = (request.form.get('longitude') or '').strip()
@@ -922,19 +957,13 @@ def professional_edit_profile():
             except ValueError:
                 flash("Buffer invalide (minutes).", "error")
 
-        # Badges (optionnel si formulaire les expose)
-        if request.form.get('certified_tighri') is not None:
-            pro.certified_tighri = request.form.get('certified_tighri') in ('1','true','on','yes')
-        if request.form.get('approved_anthecc') is not None:
-            pro.approved_anthecc = request.form.get('approved_anthecc') in ('1','true','on','yes')
-
         db.session.commit()
         flash("Profil mis à jour avec succès!")
         return redirect(url_for('professional_dashboard'))
 
     return render_template('professional_edit_profile.html', professional=pro)
 
-# ===== Helpers d'avatar / fallback =====
+# ===== Helpers d'avatar / fallback sûrs =====
 PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
 AVATAR_DEFAULT_REL = "img/avatar-default.png"  # à placer dans static/img/
 
@@ -946,8 +975,8 @@ def _avatar_fallback_response():
         return resp
     return redirect(PHOTO_PLACEHOLDER)
 
-# Photos proxy / media
-@app.route("/media/profiles/<path:filename>", endpoint='profile_media')
+# ===== Photos de profil =====
+@app.route('/media/profiles/<path:filename>', endpoint='profile_media')
 def profile_media(filename):
     safe_name = os.path.basename(filename)
     file_path = Path(UPLOAD_FOLDER) / safe_name
@@ -957,6 +986,484 @@ def profile_media(filename):
         return resp
     return _avatar_fallback_response()
 
+@app.route('/professional/profile/photo', methods=['GET', 'POST'], endpoint='professional_upload_photo')
+@login_required
+def professional_upload_photo():
+    if current_user.user_type != 'professional':
+        flash('Accès non autorisé')
+        return redirect(url_for('index'))
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé")
+        return redirect(url_for('professional_dashboard'))
+
+    if request.method == 'POST':
+        file = request.files.get('photo')
+        if not file:
+            flash("Veuillez sélectionner une image.", "warning")
+            return redirect(url_for('professional_upload_photo'))
+        try:
+            saved_name = _process_and_save_profile_image(file)
+            pro.image_url = f"/media/profiles/{saved_name}"
+            db.session.commit()
+            flash("Photo de profil mise à jour avec succès.", "success")
+            return redirect(url_for('professional_dashboard'))
+        except RuntimeError:
+            app.logger.exception("PIL manquant pour traitement image.")
+            flash("Le traitement d'image nécessite Pillow. Merci d'installer la dépendance.", "danger")
+        except ValueError as e:
+            flash(str(e), "danger")
+        except Exception:
+            app.logger.exception("Erreur interne lors du traitement de l'image")
+            flash("Erreur interne lors du traitement de l'image.", "danger")
+            return redirect(url_for('professional_upload_photo'))
+
+    return render_template('upload_photo.html')
+
+@app.route('/professional/availability', methods=['GET', 'POST'], endpoint='professional_availability')
+@login_required
+def professional_availability():
+    if current_user.user_type != 'professional':
+        flash('Accès non autorisé')
+        return redirect(url_for('index'))
+
+    professional = Professional.query.filter_by(name=current_user.username).first()
+    if not professional:
+        flash('Profil professionnel non trouvé')
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
+
+        def add_window(day, s, e, avail_flag):
+            s = (s or '').strip()
+            e = (e or '').strip()
+            if avail_flag and s and e:
+                av = ProfessionalAvailability(
+                    professional_id=professional.id,
+                    day_of_week=day,
+                    start_time=s,
+                    end_time=e,
+                    is_available=True
+                )
+                db.session.add(av)
+
+        for day in range(7):
+            base_flag = request.form.get(f'available_{day}') == 'on'
+            add_window(day,
+                       request.form.get(f'start_time_{day}', ''),
+                       request.form.get(f'end_time_{day}', ''),
+                       base_flag)
+            add_window(day,
+                       request.form.get(f'start_time_{day}_2', ''),
+                       request.form.get(f'end_time_{day}_2', ''),
+                       request.form.get(f'available_{day}_2') == 'on' or base_flag)
+            add_window(day,
+                       request.form.get(f'start_time_{day}_3', ''),
+                       request.form.get(f'end_time_{day}_3', ''),
+                       request.form.get(f'available_{day}_3') == 'on' or base_flag)
+
+        db.session.commit()
+        flash('Disponibilités mises à jour avec succès!')
+        return redirect(url_for('professional_availability'))
+
+    all_avs = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
+    windows_by_day = {d: [] for d in range(7)}
+    for av in all_avs:
+        windows_by_day.get(av.day_of_week, []).append(av)
+    availability_dict = {d: (windows_by_day[d][0] if windows_by_day[d] else None) for d in range(7)}
+
+    return render_template('professional_availability.html',
+                           professional=professional,
+                           availabilities=availability_dict,
+                           windows_by_day=windows_by_day)
+
+@app.route('/professional/unavailable-slots', methods=['GET', 'POST'], endpoint='professional_unavailable_slots')
+@login_required
+def professional_unavailable_slots():
+    if current_user.user_type != 'professional':
+        flash('Accès non autorisé')
+        return redirect(url_for('index'))
+
+    professional = Professional.query.filter_by(name=current_user.username).first()
+    if not professional:
+        flash('Profil professionnel non trouvé')
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        date_str = request.form.get('date', '')
+        start_time = request.form.get('start_time', '')
+        end_time = request.form.get('end_time', '')
+        reason = request.form.get('reason', '').strip()
+
+        try:
+            slot_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            flash('Format de date invalide')
+            return redirect(url_for('professional_unavailable_slots'))
+
+        if slot_date < date.today():
+            flash('Vous ne pouvez pas bloquer une date dans le passé')
+            return redirect(url_for('professional_unavailable_slots'))
+
+        if not start_time or not end_time:
+            flash("Heure de début et de fin obligatoires.")
+            return redirect(url_for('professional_unavailable_slots'))
+
+        slot = UnavailableSlot(
+            professional_id=professional.id,
+            date=slot_date,
+            start_time=start_time,
+            end_time=end_time,
+            reason=reason
+        )
+        db.session.add(slot)
+        db.session.commit()
+
+        flash('Créneau indisponible ajouté avec succès!')
+        return redirect(url_for('professional_unavailable_slots'))
+
+    unavailable_slots = UnavailableSlot.query.filter_by(professional_id=professional.id) \
+                                             .order_by(UnavailableSlot.date.desc()) \
+                                             .all()
+    return render_template('professional_unavailable_slots.html',
+                           professional=professional,
+                           unavailable_slots=unavailable_slots)
+
+@app.route('/professional/unavailable-slots/<int:slot_id>/delete', methods=['POST'], endpoint='delete_unavailable_slot')
+@login_required
+def delete_unavailable_slot(slot_id):
+    if current_user.user_type != 'professional':
+        flash('Accès non autorisé')
+        return redirect(url_for('index'))
+
+    professional = Professional.query.filter_by(name=current_user.username).first()
+    if not professional:
+        flash('Profil professionnel non trouvé')
+        return redirect(url_for('index'))
+
+    slot = UnavailableSlot.query.get_or_404(slot_id)
+    if slot.professional_id != professional.id:
+        flash('Accès non autorisé')
+        return redirect(url_for('professional_unavailable_slots'))
+
+    db.session.delete(slot)
+    db.session.commit()
+    flash('Créneau indisponible supprimé!')
+    return redirect(url_for('professional_unavailable_slots'))
+
+# === Alias propre pour corriger le bouton “Voir mes RDV” sur le dashboard pro
+@app.route('/professional/appointments', endpoint='professional_appointments')
+@login_required
+def professional_appointments():
+    return redirect(url_for('my_appointments'))
+
+@app.route('/professional/appointments/list', endpoint='professional_appointments_list')
+@login_required
+def professional_appointments_list():
+    # alias secondaire si tu veux un lien direct ailleurs
+    return redirect(url_for('my_appointments'))
+
+@app.route('/professional/appointments/view', endpoint='professional_appointments_view')
+@login_required
+def professional_appointments_view():
+    return redirect(url_for('my_appointments'))
+
+# ======================
+# Helpers slots (durée/buffer)
+# ======================
+def _str_to_time(hhmm: str) -> dtime:
+    return datetime.strptime(hhmm, "%H:%M").time()
+
+def _add_minutes(t: dtime, minutes: int) -> dtime:
+    return (datetime.combine(date.today(), t) + timedelta(minutes=minutes)).time()
+
+def _overlap(start1: dtime, end1: dtime, start2: dtime, end2: dtime) -> bool:
+    return start1 < end2 and start2 < end1
+
+# ======================
+# API REST
+# ======================
+@app.route('/api/professionals', endpoint='api_professionals')
+def api_professionals():
+    pros = Professional.query.all()
+    return jsonify([{
+        'id': p.id,
+        'name': p.name,
+        'description': p.description,
+        'consultation_fee': p.consultation_fee,
+        'image_url': p.image_url,
+        'specialty': p.specialty,
+        'availability': p.availability,
+        'address': getattr(p, 'address', None),
+        'latitude': getattr(p, 'latitude', None),
+        'longitude': getattr(p, 'longitude', None),
+        'consultation_duration_minutes': getattr(p, 'consultation_duration_minutes', 45),
+        'buffer_between_appointments_minutes': getattr(p, 'buffer_between_appointments_minutes', 15),
+        'certified_tighri': getattr(p, 'certified_tighri', False),
+        'approved_anthecc': getattr(p, 'approved_anthecc', False),
+        'city': (p.city.name if _REFS_AVAILABLE and getattr(p, 'city', None) else None),
+        'primary_specialty': (p.primary_specialty.name if _REFS_AVAILABLE and getattr(p, 'primary_specialty', None) else None),
+    } for p in pros])
+
+@app.route('/api/professional/<int:professional_id>/available-slots', endpoint='api_available_slots')
+def api_available_slots(professional_id):
+    professional = Professional.query.get_or_404(professional_id)
+    if professional.status != 'valide':
+        return jsonify({'error': 'Professionnel non validé'}), 400
+
+    requested_date = request.args.get('date', date.today().isoformat())
+    try:
+        target_date = datetime.strptime(requested_date, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({'error': 'Format de date invalide'}), 400
+
+    day_of_week = target_date.weekday()
+    availabilities = ProfessionalAvailability.query.filter_by(
+        professional_id=professional_id,
+        day_of_week=day_of_week,
+        is_available=True
+    ).all()
+
+    unavailable_slots = UnavailableSlot.query.filter_by(
+        professional_id=professional_id,
+        date=target_date
+    ).all()
+
+    confirmed = Appointment.query.filter_by(
+        professional_id=professional_id,
+        status='confirme'
+    ).filter(
+        db.func.date(Appointment.appointment_date) == target_date
+    ).all()
+
+    duration = int(getattr(professional, 'consultation_duration_minutes', 45) or 45)
+    buffer_m = int(getattr(professional, 'buffer_between_appointments_minutes', 15) or 15)
+    step = max(1, duration + buffer_m)
+
+    slots = []
+    for availability in availabilities:
+        start_time = _str_to_time(availability.start_time)
+        end_time = _str_to_time(availability.end_time)
+
+        current = start_time
+        while _add_minutes(current, duration) <= end_time:
+            slot_start = current
+            slot_end = _add_minutes(current, duration)
+
+            is_unavailable = any(
+                _overlap(slot_start, slot_end, _str_to_time(u.start_time), _str_to_time(u.end_time))
+                for u in unavailable_slots
+            )
+
+            is_booked = any(
+                _overlap(
+                    slot_start, slot_end,
+                    a.appointment_date.time(),
+                    _add_minutes(a.appointment_date.time(), duration)
+                )
+                for a in confirmed
+            )
+
+            if not is_unavailable and not is_booked:
+                slots.append({
+                    'start_time': slot_start.strftime('%H:%M'),
+                    'end_time': slot_end.strftime('%H:%M'),
+                    'available': True
+                })
+
+            current = _add_minutes(current, step)
+
+    return jsonify({
+        'professional_id': professional_id,
+        'date': target_date.isoformat(),
+        'duration_minutes': duration,
+        'buffer_minutes': buffer_m,
+        'available_slots': slots
+    })
+
+# ======================
+# Réservation & Mes RDV
+# ======================
+@app.route('/book_appointment/<int:professional_id>', methods=['GET', 'POST'], endpoint='book_appointment')
+@login_required
+def book_appointment(professional_id):
+    professional = Professional.query.get_or_404(professional_id)
+
+    if professional.status != 'valide':
+        flash("Ce professionnel n'est pas encore validé par l'administration.")
+        return redirect(url_for('professionals'))
+
+    duration = int(getattr(professional, 'consultation_duration_minutes', 45) or 45)
+
+    if request.method == 'POST':
+        appointment_date = request.form.get('appointment_date', '')
+        appointment_time = request.form.get('appointment_time', '')
+        consultation_type = request.form.get('consultation_type', 'cabinet')
+        notes = request.form.get('notes', '')
+
+        try:
+            appointment_date_obj = datetime.strptime(appointment_date, '%Y-%m-%d').date()
+        except ValueError:
+            flash("Format de date invalide.")
+            return redirect(url_for('book_appointment', professional_id=professional_id))
+
+        if appointment_date_obj < date.today():
+            flash("Impossible de réserver un rendez-vous dans le passé.")
+            return redirect(url_for('book_appointment', professional_id=professional_id))
+
+        try:
+            appointment_datetime = datetime.strptime(
+                f"{appointment_date} {appointment_time}", "%Y-%m-%d %H:%M"
+            )
+        except ValueError:
+            flash("Format de date/heure invalide.")
+            return redirect(url_for('book_appointment', professional_id=professional_id))
+
+        day_of_week = appointment_datetime.weekday()
+        availabilities = ProfessionalAvailability.query.filter_by(
+            professional_id=professional_id,
+            day_of_week=day_of_week,
+            is_available=True
+        ).all()
+
+        start_t = appointment_datetime.time()
+        end_t = _add_minutes(start_t, duration)
+
+        inside_any_window = any(
+            (_str_to_time(av.start_time) <= start_t) and (end_t <= _str_to_time(av.end_time))
+            for av in availabilities
+        )
+        if not inside_any_window:
+            flash("Cette heure n'est pas disponible pour ce professionnel.")
+            return redirect(url_for('book_appointment', professional_id=professional_id))
+
+        existing_confirmed = Appointment.query.filter_by(
+            professional_id=professional_id,
+            status='confirme'
+        ).filter(
+            db.func.date(Appointment.appointment_date) == appointment_date_obj
+        ).all()
+        conflict_confirmed = any(
+            _overlap(start_t, end_t, a.appointment_date.time(), _add_minutes(a.appointment_date.time(), duration))
+            for a in existing_confirmed
+        )
+        if conflict_confirmed:
+            flash("Ce créneau est déjà réservé.")
+            return redirect(url_for('book_appointment', professional_id=professional_id))
+
+        day_unavailable = UnavailableSlot.query.filter_by(
+            professional_id=professional_id,
+            date=appointment_date_obj
+        ).all()
+        conflict_unavail = any(
+            _overlap(start_t, end_t, _str_to_time(s.start_time), _str_to_time(s.end_time))
+            for s in day_unavailable
+        )
+        if conflict_unavail:
+            flash("Ce créneau est marqué comme indisponible.")
+            return redirect(url_for('book_appointment', professional_id=professional_id))
+
+        appointment = Appointment(
+            patient_id=current_user.id,
+            professional_id=professional_id,
+            appointment_date=appointment_datetime,
+            consultation_type=consultation_type,
+            status='en_attente',
+            notes=notes
+        )
+        db.session.add(appointment)
+        db.session.commit()
+
+        # Notifications (user + pro par mail si dispos)
+        try:
+            subject, text = _build_notif('pending', appointment, role='patient')
+            safe_send_email(current_user.email, subject, text)
+        except Exception:
+            pass
+
+        try:
+            pro_user = User.query.filter_by(username=professional.name).first()
+            if pro_user and pro_user.email:
+                subject, text = _build_notif('pending', appointment, role='pro')
+                safe_send_email(pro_user.email, subject, text)
+        except Exception:
+            pass
+
+        flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
+        return redirect(url_for('my_appointments'))
+
+    availabilities = ProfessionalAvailability.query.filter_by(
+        professional_id=professional_id, is_available=True
+    ).all()
+    today = date.today()
+    unavailable_dates = [
+        (today + timedelta(days=i)).isoformat()
+        for i in range(30)
+        if UnavailableSlot.query.filter_by(
+            professional_id=professional_id, date=(today + timedelta(days=i))
+        ).first()
+    ]
+
+    return render_template('book_appointment.html',
+                           professional=professional,
+                           availabilities=availabilities,
+                           unavailable_dates=unavailable_dates)
+
+@app.route('/my_appointments', endpoint='my_appointments')
+@login_required
+def my_appointments():
+    if current_user.user_type == 'professional':
+        appointments = Appointment.query.join(Professional).filter(
+            Professional.name == current_user.username
+        ).all()
+    else:
+        appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
+    return render_template('my_appointments.html', appointments=appointments)
+
+# ===== [TIGHRI_R1:CRON_REMINDER] ============================================
+@app.get('/cron/send-reminders-24h', endpoint='cron_send_reminders_24h')
+def cron_send_reminders_24h():
+    token = request.args.get('token', '')
+    if token != os.environ.get('CRON_TOKEN', 'dev'):
+        return jsonify({'ok': False, 'error': 'unauthorized'}), 403
+
+    now = datetime.utcnow()
+    start = now + timedelta(hours=24)
+    end = now + timedelta(hours=25)
+
+    rows = (db.session.query(Appointment)
+            .filter(Appointment.status == 'confirme')
+            .filter(Appointment.appointment_date >= start,
+                    Appointment.appointment_date < end)
+            .all())
+    for ap in rows:
+        try:
+            subject, text = _build_notif('reminder', ap, role='patient')
+            user = User.query.get(ap.patient_id)
+            safe_send_email(getattr(user, 'email', None), subject, text)
+        except Exception:
+            pass
+    return jsonify({'ok': True, 'reminders_sent': len(rows)})
+
+# ======================
+# Site Status
+# ======================
+@app.route('/site-status', endpoint='site_status')
+def site_status():
+    status = app.config.get('SITE_STATUS', {})
+    stats = {
+        'total_professionals': Professional.query.count(),
+        'total_users': User.query.count(),
+        'total_appointments': Appointment.query.count(),
+        'database_file': 'tighri.db',
+        'server_port': 5000,
+        'admin_port': 8080
+    }
+    return render_template('site_status.html', status=status, stats=stats)
+
+# ===== Proxy d’images pour photos de profils =====
 @app.route("/media/profile/<int:professional_id>", endpoint='profile_photo')
 def profile_photo(professional_id):
     pro = Professional.query.get_or_404(professional_id)
@@ -993,7 +1500,7 @@ def profile_photo(professional_id):
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
 
-# Alias rétro-compatibles
+# === Alias rétro-compatible pour l'ancien endpoint "avatar" ===
 @app.route("/avatar", endpoint="avatar")
 def avatar_alias_qs():
     pid = request.args.get("professional_id", type=int)
@@ -1005,34 +1512,14 @@ def avatar_alias_qs():
 def avatar_alias_path(professional_id):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
-# ======================
-# API dispo & RDV (inchangé)
-# ======================
-@app.route('/api/professionals', endpoint='api_professionals')
-def api_professionals():
-    pros = Professional.query.all()
-    return jsonify([{
-        'id': p.id,
-        'name': p.name,
-        'description': p.description,
-        'consultation_fee': p.consultation_fee,
-        'image_url': p.image_url,
-        'specialty': p.specialty,
-        'availability': p.availability,
-        'address': getattr(p, 'address', None),
-        'latitude': getattr(p, 'latitude', None),
-        'longitude': getattr(p, 'longitude', None),
-        'consultation_duration_minutes': getattr(p, 'consultation_duration_minutes', 45),
-        'buffer_between_appointments_minutes': getattr(p, 'buffer_between_appointments_minutes', 15),
-        'certified_tighri': getattr(p, 'certified_tighri', False),
-        'approved_anthecc': getattr(p, 'approved_anthecc', False),
-        'city': (p.city.name if getattr(p, 'city', None) else None),
-        'primary_specialty': (p.primary_specialty.name if getattr(p, 'primary_specialty', None) else None),
-    } for p in pros])
+# ===== Favicon (évite le 404) ==============================
+@app.route("/favicon.ico", endpoint="favicon")
+def favicon():
+    fav_path = Path(app.static_folder or (BASE_DIR / "static")) / "favicon.ico"
+    if fav_path.exists():
+        resp = send_from_directory(app.static_folder, "favicon.ico", conditional=True)
+        resp.headers["Cache-Control"] = "public, max-age=604800"
+        return resp
+    return ("", 204)
 
-# (… tes autres routes API RDV existantes, inchangées …)
-# CRON / site-status etc. restent en place dans ton fichier original
-
-# Entrée WSGI
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
+# Pas de bloc __main__ (gunicorn utilise app:app)
