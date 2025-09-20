@@ -3,72 +3,57 @@
 
 {% block extra_css %}
 <style>
-  :root{
-    --primary:#8B5CF6; --primary-dark:#6D28D9;
-    --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa;
-  }
+  :root{ --primary:#8B5CF6; --primary-dark:#6D28D9; --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; }
   .page{max-width:1000px;margin:0 auto;padding:1rem 1rem 2.5rem}
   .back a{color:var(--primary);text-decoration:none}
   .back a:hover{text-decoration:underline}
-
   .prof-header{display:flex;gap:1.25rem;align-items:center;margin:1rem 0}
   .prof-avatar{width:112px;height:112px;border-radius:50%;overflow:hidden;background:#eee;flex:0 0 112px}
   .prof-avatar img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
-
   .badge{display:inline-block;margin:.25rem .4rem .25rem 0;padding:.25rem .6rem;border-radius:999px;background:#f4f0ff;color:#6D28D9;font-weight:700;font-size:.85rem}
-
+  .badge.success{background:#e7f8ee;color:#0f7a3a}
+  .badge.gold{background:#fff6d8;color:#a46c00}
   .section{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;margin:1rem 0}
   .section h2{margin:0 0 .5rem;color:#6D28D9}
-
   .cta{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:.75rem}
   .btn{display:inline-flex;align-items:center;gap:.5rem;padding:.65rem 1.1rem;border-radius:999px;border:2px solid transparent;cursor:pointer;font-weight:700;text-decoration:none}
   .btn-primary{background:var(--primary);color:#fff}
   .btn-primary:hover{background:var(--primary-dark)}
   .btn-ghost{background:#fff;border-color:#eee;color:#6D28D9}
   .btn-ghost:hover{border-color:#d8cfff}
-
-  /* Lightbox minimal (même styles que l'accueil) */
-  .lightbox-backdrop{
-    position:fixed; inset:0; display:none; align-items:center; justify-content:center;
-    background:rgba(0,0,0,.6); z-index:9999; padding:1rem;
-  }
+  .lightbox-backdrop{position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.6); z-index:9999; padding:1rem;}
   .lightbox-backdrop.is-open{display:flex}
-  .lightbox-img{
-    max-width:min(1024px, 95vw); max-height:90vh; border-radius:12px; background:#fff;
-    box-shadow:0 12px 40px rgba(0,0,0,.25);
-  }
-  .lightbox-close{
-    position:absolute; top:12px; right:12px; border:0; background:#fff; border-radius:10px; padding:.5rem .75rem; cursor:pointer;
-    box-shadow:0 2px 10px rgba(0,0,0,.2); font-weight:700;
-  }
-
-  @media (max-width:720px){
-    .prof-header{align-items:flex-start}
-  }
+  .lightbox-img{max-width:min(1024px, 95vw); max-height:90vh; border-radius:12px; background:#fff; box-shadow:0 12px 40px rgba(0,0,0,.25);}
+  .lightbox-close{position:absolute; top:12px; right:12px; border:0; background:#fff; border-radius:10px; padding:.5rem .75rem; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,.2); font-weight:700;}
+  @media (max-width:720px){ .prof-header{align-items:flex-start} }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page">
-  <div class="back">
-    <a href="{{ url_for('index') }}">&larr; Retour</a>
-  </div>
+  <div class="back"><a href="{{ url_for('index') }}">&larr; Retour</a></div>
 
   <div class="prof-header">
     <div class="prof-avatar">
-      <img
-        class="js-zoom"
+      <img class="js-zoom"
         src="{{ url_for('profile_photo', professional_id=professional.id) }}"
         data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
-        alt="Photo de {{ professional.name|e }}"
-        loading="lazy" width="112" height="112"
+        alt="Photo de {{ professional.name|e }}" loading="lazy" width="112" height="112"
         onerror="this.onerror=null;this.src='https://placehold.co/224x224?text=Photo';">
     </div>
     <div>
       <h1 style="margin:.2rem 0 0">{{ professional.name }}</h1>
-      <div style="color:#6D28D9;font-weight:600">{{ professional.specialty or 'Professionnel' }}</div>
+      <div style="color:#6D28D9;font-weight:600">
+        {% if professional.specialty %}{{ professional.specialty }}
+        {% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}
+        {% else %}Professionnel{% endif %}
+      </div>
+
+      <!-- Badges -->
       {% if professional.location %}<span class="badge" title="Ville">{{ professional.location }}</span>{% endif %}
       {% if professional.status %}<span class="badge" title="Statut">{{ professional.status }}</span>{% endif %}
+      {% if professional.certified_tighri %}<span class="badge success" title="Diplômes et identité vérifiés">Certifié Tighri ✓</span>{% endif %}
+      {% if professional.approved_anthecc %}<a href="{{ url_for('anthecc') }}" class="badge gold" title="Agréé par l'association ANTHECC">Agréé ANTHECC ★</a>{% endif %}
 
       <div class="cta">
         <a class="btn btn-primary" href="{{ url_for('book_appointment', professional_id=professional.id) }}">Prendre rendez-vous</a>
@@ -95,10 +80,8 @@
     </ul>
   </div>
 
-  {# ✅ Bloc Maps + Réseaux sociaux (public : n’affiche que si approved) #}
   {% include "_pro_social_block.html" %}
 
-  <!-- Bloc Avis : affichage uniquement -->
   <div id="reviews" class="section">
     <h2>Avis</h2>
     {% if reviews %}
@@ -117,7 +100,7 @@
   </div>
 </div>
 
-<!-- Lightbox (une seule fois sur la page) -->
+<!-- Lightbox -->
 <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
   <button class="lightbox-close" id="lbClose" aria-label="Fermer">✕</button>
   <img id="lbImg" class="lightbox-img" alt="Agrandissement">
@@ -127,25 +110,16 @@
     const backdrop = document.getElementById('lbBackdrop');
     const imgBig   = document.getElementById('lbImg');
     const btnClose = document.getElementById('lbClose');
-
     function open(src){ imgBig.src = src; backdrop.classList.add('is-open'); }
     function close(){ backdrop.classList.remove('is-open'); imgBig.src=''; }
-
     document.addEventListener('click', function(e){
-      const t = e.target.closest('.js-zoom');
-      if(!t) return;
-      e.preventDefault();
+      const t = e.target.closest('.js-zoom'); if(!t) return; e.preventDefault();
       const src = t.getAttribute('data-full') || t.src || t.getAttribute('src') || '';
       if(src) open(src);
     });
-
     btnClose.addEventListener('click', close);
-    backdrop.addEventListener('click', function(e){
-      if(e.target === backdrop) close();
-    });
-    document.addEventListener('keydown', function(e){
-      if(e.key === 'Escape') close();
-    });
+    backdrop.addEventListener('click', function(e){ if(e.target === backdrop) close(); });
+    document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
   })();
 </script>
 {% endblock %}
