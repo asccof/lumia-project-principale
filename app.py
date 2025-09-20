@@ -1089,5 +1089,13 @@ with app.app_context():
         )
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
+# --- Filet de sécurité: alias si l'endpoint attendu par le template n'existe pas
+if 'professional_edit_profile' not in app.view_functions:
+    @app.route('/professional/profile', methods=['GET', 'POST'], endpoint='professional_edit_profile')
+    @login_required
+    def _professional_edit_profile_alias():
+        # Si on ne sait pas quel handler utiliser, on renvoie vers le dashboard
+        flash("Redirection vers votre espace professionnel.", "info")
+        return redirect(url_for('professional_dashboard'))
 
 # Pas de __main__ : Gunicorn lance app:app
