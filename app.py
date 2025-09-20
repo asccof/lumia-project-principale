@@ -848,6 +848,81 @@ def delete_unavailable_slot(slot_id: int):
     db.session.delete(slot); db.session.commit()
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
+# --- imports (laisse-les si tu les as déjà) ---
+from flask import request, render_template, redirect, url_for, flash
+from flask_login import login_required, current_user
+
+# --- ROUTE: édition du profil pro ---
+@app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
+@login_required
+def professional_edit_profile():
+    # Récupère ou crée le profil du user connecté
+    professional = Professional.query.filter_by(user_id=current_user.id).first()
+    if professional is None:
+        professional = Professional(user_id=current_user.id)
+        db.session.add(professional)
+        # pas de commit ici; on committra en bas
+
+    if request.method == "POST":
+        f = request.form
+
+        # Textes simples
+        professional.name = f.get("name", "").strip() or None
+        professional.specialty = f.get("specialty", "").strip() or None
+        professional.description = f.get("description", "").strip() or None
+        professional.location = f.get("location", "").strip() or None
+        professional.address = f.get("address", "").strip() or None
+        professional.phone = f.get("phone", "").strip() or None
+
+        # Nombres (tolère vide)
+        def to_float(v):
+            try:
+                return float(v) if v not in (None, "",) else None
+            except ValueError:
+                return None
+
+        def to_int(v):
+            try:
+                return int(v) if v not in (None, "",) else None
+            except ValueError:
+                return None
+
+        professional.latitude  = to_float(f.get("latitude"))
+        professional.longitude = to_float(f.get("longitude"))
+        professional.consultation_fee = to_int(f.get("consultation_fee"))
+        professional.consultation_duration_minutes = to_int(f.get("consultation_duration_minutes")) or 45
+        professional.buffer_between_appointments_minutes = to_int(f.get("buffer_between_appointments_minutes")) or 15
+
+        # Types de consultation (checkbox -> liste -> csv)
+        types = f.getlist("consultation_types")  # ex: ["cabinet","en_ligne"]
+        professional.consultation_types = ",".join(sorted(set(t for t in types if t)))
+
+        # Liens sociaux (et ré-approbation auto si modifiés)
+        old_links = (
+            (professional.facebook_url or ""),
+            (professional.instagram_url or ""),
+            (professional.tiktok_url or ""),
+            (professional.youtube_url or ""),
+        )
+        professional.facebook_url  = f.get("facebook_url", "").strip() or None
+        professional.instagram_url = f.get("instagram_url", "").strip() or None
+        professional.tiktok_url    = f.get("tiktok_url", "").strip() or None
+        professional.youtube_url   = f.get("youtube_url", "").strip() or None
+        new_links = (
+            (professional.facebook_url or ""),
+            (professional.instagram_url or ""),
+            (professional.tiktok_url or ""),
+            (professional.youtube_url or ""),
+        )
+        if new_links != old_links:
+            professional.social_links_approved = False  # force revalidation admin
+
+        db.session.commit()
+        flash("Profil mis à jour.", "success")
+        return redirect(url_for("professional_dashboard"))
+
+    # GET -> affiche le formulaire
+    return render_template("professional_edit_profile.html", professional=professional)
 
 # Alias “voir mes RDV”
 @app.route("/professional/appointments", endpoint="professional_appointments")
