@@ -297,6 +297,11 @@ def set_language(lang_code):
     resp = redirect(request.referrer or url_for('index'))
     resp.set_cookie('lang', lang_code, max_age=60*60*24*180, samesite='Lax', secure=True)
     return resp
+@app.route('/set-language', endpoint='set_language_query')
+def set_language_query():
+    # accepte ?lang=fr (ancien usage) ou ?lang_code=fr
+    lang_code = request.args.get('lang') or request.args.get('lang_code') or DEFAULT_LANG
+    return set_language(lang_code)
 
 # ======================
 # Pages publiques
