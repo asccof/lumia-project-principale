@@ -85,6 +85,381 @@ try:
     Path(UPLOAD_FOLDER).mkdir(parents=True, exist_ok=True)
 except Exception as e:
     app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
+import os
+from datetime import timedelta
+from typing import Optional
+
+from flask import (
+    Flask, render_template, request, redirect, url_for,
+    make_response, g, send_from_directory, abort, flash
+)
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import (
+    LoginManager, UserMixin, login_user, logout_user,
+    current_user, login_required
+)
+from sqlalchemy import or_, text
+
+# -----------------------------------------------------------------------------
+# App & Config
+# -----------------------------------------------------------------------------
+app = Flask(__name__)
+
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "change-me")
+# Render fournit DATABASE_URL (postgres). Fallback sqlite local pour dev.
+db_url = os.environ.get("DATABASE_URL", "sqlite:///tighri.sqlite3")
+# Render (psycopg) accepte 'postgresql://' et 'postgres://'
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=180)
+
+db = SQLAlchemy(app)
+
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+
+# -----------------------------------------------------------------------------
+# i18n minimal (cookie + injection Jinja)
+# -----------------------------------------------------------------------------
+SUPPORTED_LANGS = {"fr": "Français", "ar": "العربية", "en": "English"}
+DEFAULT_LANG = "fr"
+
+
+def _normalize_lang(code: Optional[str]) -> str:
+    if not code:
+        return DEFAULT_LANG
+    code = code.lower().strip()
+    return code if code in SUPPORTED_LANGS else DEFAULT_LANG
+
+
+@app.before_request
+def _load_lang_from_cookie():
+    lang = _normalize_lang(request.cookies.get("lang"))
+    g.current_lang = lang
+    g.current_lang_label = SUPPORTED_LANGS[lang]
+
+
+@app.context_processor
+def inject_lang():
+    lang = getattr(g, "current_lang", DEFAULT_LANG)
+    return {
+        "current_lang": lang,
+        "current_lang_label": SUPPORTED_LANGS[lang],
+        "SUPPORTED_LANGS": SUPPORTED_LANGS,
+    }
+
+
+def _lang_response(lang_code: str, fallback_endpoint: str = "index"):
+    lang = _normalize_lang(lang_code)
+    resp = make_response(redirect(request.referrer or url_for(fallback_endpoint)))
+    # 6 mois
+    resp.set_cookie("lang", lang, max_age=60 * 60 * 24 * 30 * 6, httponly=False, samesite="Lax")
+    return resp
+
+
+@app.route("/set-language/<lang_code>")
+def set_language(lang_code):
+    return _lang_response(lang_code)
+
+
+# tolère aussi la querystring /set-language?lang=fr
+@app.route("/set-language")
+def set_language_qs():
+    lang_code = request.args.get("lang") or request.args.get("lang_code") or DEFAULT_LANG
+    return _lang_response(lang_code)
+
+
+# -----------------------------------------------------------------------------
+# Modèles (souples : on tente d’importer, sinon fallback minimal)
+# -----------------------------------------------------------------------------
+# Si tu as déjà un fichier models.py, on l’utilise. Sinon, on crée des modèles
+# simples et suffisants pour faire tourner l’app.
+try:
+    from models import User, Professional  # type: ignore
+    HAVE_EXTERNAL_MODELS = True
+except Exception:
+    HAVE_EXTERNAL_MODELS = False
+
+    class User(db.Model, UserMixin):  # type: ignore
+        __tablename__ = "users"
+        id = db.Column(db.Integer, primary_key=True)
+        username = db.Column(db.String(80), unique=True, nullable=False)
+        email = db.Column(db.String(120), unique=True, nullable=False)
+        password_hash = db.Column(db.String(255), nullable=False)
+
+    class Professional(db.Model):  # type: ignore
+        __tablename__ = "professionals"
+        id = db.Column(db.Integer, primary_key=True)
+        full_name = db.Column(db.String(160), nullable=False)
+        city = db.Column(db.String(80), nullable=True)
+        specialty = db.Column(db.String(160), nullable=True)   # ex: "Psychologue"
+        modes = db.Column(db.String(80), nullable=True)        # ex: "cabinet,video"
+        photo_version = db.Column(db.Integer, default=0)
+
+        # helpers facultatifs
+        def has_mode(self, m: str) -> bool:
+            if not self.modes:
+                return False
+            return m.lower() in [x.strip().lower() for x in self.modes.split(",")]
+
+# -----------------------------------------------------------------------------
+# Login manager
+# -----------------------------------------------------------------------------
+@login_manager.user_loader
+def load_user(user_id: str):
+    try:
+        return db.session.get(User, int(user_id))  # type: ignore
+    except Exception:
+        return None
+
+# -----------------------------------------------------------------------------
+# Utilitaires pour images
+# -----------------------------------------------------------------------------
+AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
+PLACEHOLDER_AVATAR = os.path.join(app.root_path, "static", "avatar_default.webp")
+
+
+def _avatar_file_for(pid: int) -> Optional[str]:
+    """Retourne un chemin absolu vers l’avatar si trouvé, sinon None."""
+    if not os.path.isdir(AVATAR_DIR):
+        return None
+    # Essaie .webp / .jpg / .png
+    for ext in (".webp", ".jpg", ".jpeg", ".png"):
+        path = os.path.join(AVATAR_DIR, f"{pid}{ext}")
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+# -----------------------------------------------------------------------------
+# Routes “techniques”
+# -----------------------------------------------------------------------------
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "favicon.ico",
+        mimetype="image/vnd.microsoft.icon",
+        max_age=60 * 60 * 24 * 7,
+    )
+
+
+@app.route("/robots.txt")
+def robots():
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "robots.txt",
+        mimetype="text/plain",
+        max_age=60 * 60 * 24 * 7,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Pages publiques
+# -----------------------------------------------------------------------------
+@app.route("/")
+def index():
+    # Top profils (ex: 8), puis “plus” (ex: 12)
+    top_professionals = (
+        db.session.query(Professional)
+        .order_by(Professional.id.desc())
+        .limit(8)
+        .all()
+    )
+    more_professionals = (
+        db.session.query(Professional)
+        .order_by(Professional.id.desc())
+        .offset(8)
+        .limit(12)
+        .all()
+    )
+    return render_template(
+        "index.html",
+        top_professionals=top_professionals,
+        more_professionals=more_professionals,
+    )
+
+
+@app.route("/about")
+def about():
+    return render_template("about.html")
+
+
+@app.route("/contact")
+def contact():
+    return render_template("contact.html")
+
+
+@app.route("/anthecc")
+def anthecc():
+    # Page simple de présentation ANTHECC
+    return render_template("anthecc.html")
+
+
+# -----------------------------------------------------------------------------
+# Listing / recherche de professionnels
+# -----------------------------------------------------------------------------
+@app.route("/professionals")
+def professionals():
+    """
+    Filtres robustes sans join fragile :
+    - q (nom ou spécialité)
+    - city
+    - specialty
+    - mode : 'cabinet' / 'domicile' / 'video'
+    """
+    q = (request.args.get("q") or "").strip()
+    city = (request.args.get("city") or "").strip()
+    specialty = (request.args.get("specialty") or "").strip()
+    mode = (request.args.get("mode") or "").strip().lower()
+
+    query = db.session.query(Professional)
+
+    if q:
+        like = f"%{q}%"
+        # On cherche dans full_name et specialty (si colonne présente)
+        query = query.filter(
+            or_(Professional.full_name.ilike(like), Professional.specialty.ilike(like))
+        )
+
+    if city:
+        query = query.filter(Professional.city.ilike(f"%{city}%"))
+
+    if specialty:
+        query = query.filter(Professional.specialty.ilike(f"%{specialty}%"))
+
+    if mode in {"cabinet", "domicile", "video"}:
+        # Si “modes” est une liste csv, on filtre par LIKE
+        query = query.filter(Professional.modes.ilike(f"%{mode}%"))
+
+    # Pagination très simple
+    page = max(int(request.args.get("page", 1)), 1)
+    per_page = min(max(int(request.args.get("per_page", 20)), 1), 60)
+    items = query.order_by(Professional.id.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+    return render_template(
+        "professionals.html",
+        items=items,
+        q=q, city=city, specialty=specialty, mode=mode,
+        page=page, per_page=per_page
+    )
+
+
+# -----------------------------------------------------------------------------
+# Médias / Avatar & Zoom photo profil
+# -----------------------------------------------------------------------------
+@app.route("/media/profile/<int:professional_id>")
+def media_profile(professional_id: int):
+    """
+    Sert l’image (zoom/pleine taille) si dispo, sinon placeholder.
+    On supporte ?s=...&f=webp&v=... sans les utiliser strictement, pour compat.
+    """
+    file_path = _avatar_file_for(professional_id)
+    if file_path and os.path.isfile(file_path):
+        # envoie depuis le dossier avatars
+        return send_from_directory(
+            AVATAR_DIR,
+            os.path.basename(file_path),
+            max_age=60 * 60 * 24 * 7,
+        )
+    # placeholder
+    if os.path.isfile(PLACEHOLDER_AVATAR):
+        return send_from_directory(
+            os.path.join(app.root_path, "static"),
+            "avatar_default.webp",
+            max_age=60 * 60 * 24 * 1,
+        )
+    abort(404)
+
+
+@app.route("/avatar")
+def avatar_proxy():
+    """
+    Redirection “douce” utilisée par certains templates : /avatar?professional_id=20&s=384&f=webp&v=0
+    On redirige vers /media/profile/<id>, qui gère déjà la compat.
+    """
+    pid = request.args.get("professional_id", type=int)
+    if not pid:
+        abort(400)
+    return redirect(url_for("media_profile", professional_id=pid), code=302)
+
+
+# -----------------------------------------------------------------------------
+# Auth (squelettes très simples pour ne rien casser côté templates)
+# -----------------------------------------------------------------------------
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username_or_email = (request.form.get("username") or "").strip()
+        user = (
+            db.session.query(User)  # type: ignore
+            .filter(or_(User.username == username_or_email, User.email == username_or_email))
+            .first()
+        )
+        if user:
+            login_user(user, remember=True)
+            flash("Connexion réussie.", "success")
+            return redirect(request.args.get("next") or url_for("index"))
+        flash("Identifiants invalides.", "danger")
+    return render_template("login.html")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    # Simple placeholder
+    if request.method == "POST":
+        flash("Compte créé (exemple).", "success")
+        return redirect(url_for("login"))
+    return render_template("register.html")
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    flash("Déconnexion réussie.", "success")
+    return redirect(url_for("index"))
+
+
+# -----------------------------------------------------------------------------
+# Admin/Status (optionnel, affiché dans la navbar si /admin)
+# -----------------------------------------------------------------------------
+@app.route("/admin/status")
+def site_status():
+    # Exemple : statut simple
+    try:
+        db.session.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return render_template("status.html", db_ok=db_ok)
+
+
+# -----------------------------------------------------------------------------
+# Erreurs
+# -----------------------------------------------------------------------------
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("errors/404.html"), 404
+
+
+@app.errorhandler(500)
+def server_error(e):
+    # log déjà géré par Flask. On montre une page simple.
+    return render_template("errors/500.html"), 500
+
+
+# -----------------------------------------------------------------------------
+# Main (dev local)
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
+    if not HAVE_EXTERNAL_MODELS:
+        # En dev local, créer les tables de fallback si besoin.
+        with app.app_context():
+            db.create_all()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "5000")))
 
 # --- OAuth (Google) configuration ---
 oauth = OAuth(app)
