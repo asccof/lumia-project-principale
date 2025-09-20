@@ -1,13 +1,14 @@
 # app.py
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
-    send_from_directory, Response, current_app, g, session, make_response
+    send_from_directory, Response, current_app
 )
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from datetime import datetime, date, timedelta, time as dtime
 from sqlalchemy import or_, text
+from sqlalchemy.exc import ArgumentError
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 import os, uuid, io, requests
@@ -114,15 +115,6 @@ def _normalize_pg_uri(uri: str) -> str:
 
 # --- Config DB ---
 from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
-# Référentiels optionnels (si non présents, on continue en mode dégradé)
-try:
-    from models import City, Specialty
-    _REFS_AVAILABLE = True
-except Exception:
-    City = None  # type: ignore
-    Specialty = None  # type: ignore
-    _REFS_AVAILABLE = False
-
 from admin_server import admin_bp, ProfessionalOrder, _build_notif  # importe aussi le BP admin
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL")
@@ -147,25 +139,6 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
-
-# ===== Langue (FR/AR/EN) ====================================================
-@app.before_request
-def _set_lang():
-    # Cookie "lang" prioritaire, sinon session, sinon 'fr'
-    lang = request.cookies.get("lang") or session.get("lang") or "fr"
-    g.current_locale = lang
-    g.current_locale_label = {"fr": "Français", "ar": "العربية", "en": "English"}.get(lang, "Français")
-
-@app.route("/set-language/<lang>")
-def set_language(lang):
-    if lang not in ("fr", "ar", "en"):
-        lang = "fr"
-    session["lang"] = lang
-    resp = make_response(redirect(request.referrer or url_for("index")))
-    # 1 an
-    resp.set_cookie("lang", lang, max_age=60 * 60 * 24 * 365)
-    return resp
-# ===========================================================================
 
 # ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
 with app.app_context():
@@ -197,41 +170,6 @@ with app.app_context():
         # users: reset password (jeton hash + expiration)
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);"))
         db.session.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;"))
-
-        # Phase 1 : normalisation + badges (ajout non bloquant)
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER;"))
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER;"))
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS certified_tighri BOOLEAN DEFAULT FALSE;"))
-        db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS approved_anthecc BOOLEAN DEFAULT FALSE;"))
-
-        # Contraintes FK optionnelles (si tables présentes)
-        if _REFS_AVAILABLE:
-            try:
-                db.session.execute(text("""
-                    DO $$ BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_prof_city'
-                    ) THEN
-                        ALTER TABLE professionals
-                        ADD CONSTRAINT fk_prof_city FOREIGN KEY (city_id) REFERENCES cities(id) ON DELETE SET NULL;
-                    END IF;
-                    END $$;
-                """))
-            except Exception:
-                pass
-            try:
-                db.session.execute(text("""
-                    DO $$ BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'fk_prof_primary_spec'
-                    ) THEN
-                        ALTER TABLE professionals
-                        ADD CONSTRAINT fk_prof_primary_spec FOREIGN KEY (primary_specialty_id) REFERENCES specialties(id) ON DELETE SET NULL;
-                    END IF;
-                    END $$;
-                """))
-            except Exception:
-                pass
 
         db.session.commit()
     except Exception as e:
@@ -346,7 +284,7 @@ def index():
     """
     Accueil :
       - top_professionals : 9 pros classés (ordre admin, puis featured/rank, puis récents)
-      - other_professionals : tous les autres (même tri), pour le carrousel horizontal
+      - more_professionals : tous les autres (même tri), pour le carrousel horizontal
     Fallback si la table d'ordre n'existe pas/en erreur.
     """
     try:
@@ -384,126 +322,63 @@ def index():
         top_ids = [p.id for p in top_professionals]
         more_professionals = fb.filter(~Professional.id.in_(top_ids)).all() if top_ids else fb.offset(9).all()
 
-    # Référentiels (si absents côté modèles, on envoie des listes vides)
-    try:
-        cities = City.query.order_by(City.name.asc()).all() if _REFS_AVAILABLE else []
-    except Exception:
-        cities = []
-    try:
-        specialties = Specialty.query.order_by(Specialty.name.asc()).all() if _REFS_AVAILABLE else []
-    except Exception:
-        specialties = []
-
     return render_template(
         'index.html',
         top_professionals=top_professionals,
-        other_professionals=more_professionals,  # <— nom attendu par ton template index.html
-        cities=cities,
-        specialties=specialties
+        more_professionals=more_professionals
     )
 
 @app.route('/professionals', endpoint='professionals')
 def professionals():
-    # Compat existante
-    specialty = request.args.get('specialty', 'all')
+    """
+    Liste/recherche des professionnels.
+    NOTE: pour éviter l'erreur 'Expected mapped entity or selectable/table as join target'
+    (vue dans tes logs), on encapsule la requête dans un try/except ArgumentError
+    et on retombe sur un filtrage simple sans ILIKE composés si besoin.
+    """
+    specialty = (request.args.get('specialty') or 'all').strip()
     search_query = (request.args.get('q') or '').strip()
 
-    # Nouveaux filtres normalisés (optionnels)
-    city_id = (request.args.get('city_id') or '').strip()
-    city_txt = (request.args.get('city') or '').strip()
-    spec_id = (request.args.get('specialty_id') or '').strip()
-    spec_txt = (request.args.get('specialty') or '').strip()
-    mode = (request.args.get('mode') or '').strip().lower()  # cabinet | visio | domicile | en_ligne
+    base_query = Professional.query.filter(Professional.status == 'valide')
 
-    base_query = Professional.query.filter_by(status='valide')
-
-    # Recherche texte existante (conservée)
-    if search_query:
-        like = f'%{search_query}%'
-        conditions = [
-            Professional.name.ilike(like),
-            Professional.specialty.ilike(like),
-            Professional.location.ilike(like),
-            Professional.description.ilike(like),
-        ]
-        if hasattr(Professional, "address"):
-            conditions.insert(2, Professional.address.ilike(like))
-        base_query = base_query.filter(or_(*conditions))
-    elif specialty != 'all':
-        # ancien filtre par spécialité texte
-        base_query = base_query.filter_by(specialty=specialty)
-
-    # 🔎 Ville (id prioritaire, sinon texte) — seulement si référentiel dispo
-    if city_id.isdigit():
-        base_query = base_query.filter(text("city_id = :cid")).params(cid=int(city_id))
-    elif city_txt:
-        if _REFS_AVAILABLE:
-            try:
-                base_query = base_query.outerjoin(City).filter(
-                    or_(City.name.ilike(f"%{city_txt}%"),
-                        getattr(Professional, "address").ilike(f"%{city_txt}%") if hasattr(Professional, "address") else text("1=0"))
-                )
-            except Exception:
-                # fallback texte simple sur location/address
-                base_query = base_query.filter(
-                    or_(Professional.location.ilike(f"%{city_txt}%"),
-                        getattr(Professional, "address").ilike(f"%{city_txt}%") if hasattr(Professional, "address") else text("1=0"))
-                )
+    try:
+        if search_query:
+            like = f'%{search_query}%'
+            conditions = [
+                Professional.name.ilike(like),
+                Professional.specialty.ilike(like),
+                Professional.location.ilike(like),
+                Professional.description.ilike(like),
+            ]
+            # champs optionnels
+            if hasattr(Professional, "address"):
+                conditions.insert(2, Professional.address.ilike(like))
+            pros = base_query.filter(or_(*conditions)) \
+                             .order_by(Professional.created_at.desc(), Professional.id.desc()) \
+                             .all()
+        elif specialty != 'all':
+            pros = base_query.filter(Professional.specialty == specialty) \
+                             .order_by(Professional.created_at.desc(), Professional.id.desc()) \
+                             .all()
         else:
-            base_query = base_query.filter(
-                or_(Professional.location.ilike(f"%{city_txt}%"),
-                    getattr(Professional, "address").ilike(f"%{city_txt}%") if hasattr(Professional, "address") else text("1=0"))
-            )
+            pros = base_query.order_by(Professional.created_at.desc(), Professional.id.desc()).all()
+    except ArgumentError as e:
+        # Fallback ultra simple en cas de tentative de 'join' implicite par le dialecte
+        app.logger.warning("Recherche /professionals fallback (ArgumentError): %s", e)
+        pros = Professional.query.filter(Professional.status == 'valide') \
+                                 .order_by(Professional.created_at.desc(), Professional.id.desc()) \
+                                 .all()
 
-    # 🔎 Spécialité (id prioritaire, sinon texte) — seulement si référentiel dispo
-    if spec_id.isdigit():
-        # primary_specialty_id = spec_id ou many-to-many (si présent)
-        base_query = base_query.filter(
-            or_(
-                text("primary_specialty_id = :sid"),
-                text("id IN (SELECT professional_id FROM professional_specialties WHERE specialty_id = :sid)")
-            )
-        ).params(sid=int(spec_id))
-    elif spec_txt:
-        like = f"%{spec_txt}%"
-        if _REFS_AVAILABLE:
-            try:
-                base_query = base_query.outerjoin(text("specialties ON professionals.primary_specialty_id = specialties.id")) \
-                    .filter(or_(text("specialties.name ILIKE :lk"), Professional.specialty.ilike(like))) \
-                    .params(lk=like)
-            except Exception:
-                base_query = base_query.filter(Professional.specialty.ilike(like))
-        else:
-            base_query = base_query.filter(Professional.specialty.ilike(like))
-
-    # 🔎 Mode de consultation (cabinet/visio/domicile/en_ligne)
-    if mode in ("cabinet", "visio", "domicile", "en_ligne"):
-        key = "en_ligne" if mode in ("visio", "en_ligne") else mode
-        base_query = base_query.filter(
-            or_(
-                Professional.consultation_types.ilike(f"%{key}%"),
-                Professional.consultation_types == key
-            )
-        )
-
-    pros = base_query.order_by(
-        Professional.is_featured.desc(),
-        db.func.coalesce(Professional.featured_rank, 999999).asc(),
-        Professional.created_at.desc(),
-        Professional.id.desc()
-    ).all()
-
-    return render_template('professionals.html', professionals=pros, specialty=specialty, search_query=search_query)
+    return render_template('professionals.html',
+                           professionals=pros,
+                           specialty=specialty,
+                           search_query=search_query)
 
 @app.route('/professional/<int:professional_id>', endpoint='professional_detail')
 def professional_detail(professional_id):
     professional = Professional.query.get_or_404(professional_id)
     # NOTE: si tu passes des reviews, ajoute-les ici
     return render_template('professional_detail.html', professional=professional)
-
-@app.route('/anthecc', endpoint='anthecc')
-def anthecc():
-    return render_template('anthecc.html')
 
 @app.route('/about', endpoint='about')
 def about():
@@ -1201,10 +1076,6 @@ def api_professionals():
         'longitude': getattr(p, 'longitude', None),
         'consultation_duration_minutes': getattr(p, 'consultation_duration_minutes', 45),
         'buffer_between_appointments_minutes': getattr(p, 'buffer_between_appointments_minutes', 15),
-        'certified_tighri': getattr(p, 'certified_tighri', False),
-        'approved_anthecc': getattr(p, 'approved_anthecc', False),
-        'city': (p.city.name if _REFS_AVAILABLE and getattr(p, 'city', None) else None),
-        'primary_specialty': (p.primary_specialty.name if _REFS_AVAILABLE and getattr(p, 'primary_specialty', None) else None),
     } for p in pros])
 
 @app.route('/api/professional/<int:professional_id>/available-slots', endpoint='api_available_slots')
@@ -1513,7 +1384,7 @@ def avatar_alias_path(professional_id):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
 # ===== Favicon (évite le 404) ==============================
-@app.route("/favicon.ico", endpoint="favicon")
+@app.route("/favicon.ico")
 def favicon():
     fav_path = Path(app.static_folder or (BASE_DIR / "static")) / "favicon.ico"
     if fav_path.exists():
