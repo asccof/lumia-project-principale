@@ -1,7 +1,7 @@
 # app.py
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
-    send_from_directory, Response, current_app, g, session
+    send_from_directory, Response, current_app, make_response
 )
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -52,6 +52,11 @@ BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
 ENABLE_SMS = (os.getenv("ENABLE_SMS", "true").lower() == "true")
 ENABLE_WHATSAPP = (os.getenv("ENABLE_WHATSAPP", "true").lower() == "true")
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
+
+# ---- Langues (compatible avec tes templates) ----
+DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
+SUPPORTED_LANGS = {"fr", "ar", "en"}
+LANG_COOKIE = "lang"
 # ===========================================================================
 
 # --- App principale ---
@@ -139,9 +144,8 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ===== [TIGHRI_R1:MINI_MIGRATIONS_SAFE] =====================================
+# ===== [Mini migrations & seed admin] =======================================
 with app.app_context():
-    # create_all va aussi créer la table 'professional_order' (via import ci-dessus)
     db.create_all()
     try:
         # professionals: adresse + géoloc + téléphone + réseaux sociaux
@@ -154,7 +158,6 @@ with app.app_context():
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS tiktok_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS youtube_url TEXT;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;"))
-        # Durée & buffer par défaut
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 45;"))
         db.session.execute(text("ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 15;"))
 
@@ -217,7 +220,7 @@ def consume_token_to_user(token: str):
     return u
 # ===========================================================================
 
-# ===== [TIGHRI_R1:IMAGES_INLINE_FALLBACK] ===================================
+# ===== [IMAGES] =============================================================
 TARGET_SIZE = (512, 512)
 
 def _ext_ok(filename: str) -> bool:
@@ -259,7 +262,7 @@ def _process_and_save_profile_image(file_storage) -> str:
     return out_name
 # ===========================================================================
 
-# ===== [TIGHRI_R1:PACK_REGISTRATION_SAFE] ===================================
+# ===== [PACK TIGHRI R1] =====================================================
 try:
     from tighri_r1 import register_tighri_r1
 except Exception as e:
@@ -275,33 +278,35 @@ else:
     )
 # ===========================================================================
 
-# ======================
-# Localisation (langue) — persistance cookie + session
-# ======================
-SUPPORTED_LANGS = {'fr', 'ar', 'en'}
-DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
-
-@app.before_request
-def _load_lang():
-    lang = request.args.get('lang') or session.get('lang') or request.cookies.get('lang') or DEFAULT_LANG
-    if lang not in SUPPORTED_LANGS:
-        lang = DEFAULT_LANG
-    g.lang = lang
-    session['lang'] = lang  # dispo dans les templates
-
-@app.route('/set-language/<lang_code>', endpoint='set_language')
-def set_language(lang_code):
+# ====== Langue (routes compatibles avec tes templates) ======================
+@app.route('/set-language/<lang_code>', endpoint='set_language', methods=['GET'])
+@app.route('/set-language', endpoint='set_language', methods=['GET'])
+def set_language(lang_code=None):
+    """
+    Accepte:
+      - /set-language/<lang_code> (ex: /set-language/fr)
+      - /set-language?lang=fr (compatible avec templates existants)
+    """
+    if not lang_code:
+        lang_code = request.args.get('lang') or request.args.get('lang_code') or DEFAULT_LANG
+    lang_code = (lang_code or DEFAULT_LANG).lower()
     if lang_code not in SUPPORTED_LANGS:
         lang_code = DEFAULT_LANG
-    session['lang'] = lang_code
-    resp = redirect(request.referrer or url_for('index'))
-    resp.set_cookie('lang', lang_code, max_age=60*60*24*180, samesite='Lax', secure=True)
+
+    # Redirige vers la page d’origine ou l’accueil
+    next_url = request.referrer or url_for('index')
+    resp = make_response(redirect(next_url))
+    # Cookie 6 mois
+    resp.set_cookie(LANG_COOKIE, lang_code, max_age=60*60*24*180, samesite="Lax", secure=True)
     return resp
-@app.route('/set-language', endpoint='set_language_query')
-def set_language_query():
-    # accepte ?lang=fr (ancien usage) ou ?lang_code=fr
-    lang_code = request.args.get('lang') or request.args.get('lang_code') or DEFAULT_LANG
-    return set_language(lang_code)
+
+# (facultatif) filtre Jinja: lang courant utile aux templates
+@app.context_processor
+def inject_lang():
+    lang = request.cookies.get(LANG_COOKIE, DEFAULT_LANG)
+    if lang not in SUPPORTED_LANGS:
+        lang = DEFAULT_LANG
+    return {"current_lang": lang, "SUPPORTED_LANGS": SUPPORTED_LANGS}
 
 # ======================
 # Pages publiques
@@ -355,6 +360,11 @@ def index():
         more_professionals=more_professionals
     )
 
+@app.route('/anthecc', endpoint='anthecc')
+def anthecc():
+    # Page placeholder pour ne pas casser la navbar si le lien existe dans base.html
+    return render_template('anthecc.html') if Path(BASE_DIR / "templates/anthecc.html").exists() else "ANTHECC", 200
+
 @app.route('/professionals', endpoint='professionals')
 def professionals():
     specialty = request.args.get('specialty', 'all')
@@ -383,7 +393,6 @@ def professionals():
 @app.route('/professional/<int:professional_id>', endpoint='professional_detail')
 def professional_detail(professional_id):
     professional = Professional.query.get_or_404(professional_id)
-    # NOTE: si tu passes des reviews, ajoute-les ici
     return render_template('professional_detail.html', professional=professional)
 
 @app.route('/about', endpoint='about')
@@ -867,31 +876,6 @@ def profile_media(filename):
         return resp
     return _avatar_fallback_response()
 
-# >>> Correctif zoom/lightbox : redirection 302 vers la vraie image
-@app.route("/media/profile/<int:professional_id>", endpoint='profile_photo')
-def profile_photo(professional_id):
-    pro = Professional.query.get_or_404(professional_id)
-    raw_url = (pro.image_url or "").strip()
-
-    # 1) Fichier local géré par /media/profiles/<filename>
-    if raw_url.startswith("/media/profiles/"):
-        fname = raw_url.split("/media/profiles/")[-1]
-        return redirect(url_for('profile_media', filename=fname, _external=False), code=302)
-
-    # 2) Pas d'image -> fallback
-    if not raw_url:
-        return _avatar_fallback_response()
-
-    # 3) URL externe -> redirection 302 directe (force https si http)
-    if raw_url.startswith("http://"):
-        raw_url = "https://" + raw_url[len("http://"):]
-    parsed = urlparse(raw_url)
-    if parsed.scheme in ("http", "https"):
-        return redirect(raw_url, code=302)
-
-    # 4) Autre cas -> fallback
-    return _avatar_fallback_response()
-
 @app.route('/professional/profile/photo', methods=['GET', 'POST'], endpoint='professional_upload_photo')
 @login_required
 def professional_upload_photo():
@@ -1068,7 +1052,6 @@ def professional_appointments():
 @app.route('/professional/appointments/list', endpoint='professional_appointments_list')
 @login_required
 def professional_appointments_list():
-    # alias secondaire si tu veux un lien direct ailleurs
     return redirect(url_for('my_appointments'))
 
 @app.route('/professional/appointments/view', endpoint='professional_appointments_view')
@@ -1324,7 +1307,7 @@ def my_appointments():
         appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
     return render_template('my_appointments.html', appointments=appointments)
 
-# ===== [TIGHRI_R1:CRON_REMINDER] ============================================
+# ===== [CRON REMINDER 24h] ==================================================
 @app.get('/cron/send-reminders-24h', endpoint='cron_send_reminders_24h')
 def cron_send_reminders_24h():
     token = request.args.get('token', '')
@@ -1365,6 +1348,43 @@ def site_status():
     }
     return render_template('site_status.html', status=status, stats=stats)
 
+# ===== Proxy d’images pour photos de profils =====
+@app.route("/media/profile/<int:professional_id>", endpoint='profile_photo')
+def profile_photo(professional_id):
+    pro = Professional.query.get_or_404(professional_id)
+    raw_url = (pro.image_url or "").strip()
+
+    if raw_url.startswith("/media/profiles/"):
+        fname = raw_url.split("/media/profiles/")[-1]
+        return redirect(url_for('profile_media', filename=fname, _external=True, _scheme='https'))
+
+    if not raw_url:
+        return _avatar_fallback_response()
+
+    if raw_url.startswith("http://"):
+        raw_url = "https://" + raw_url[len("http://"):]
+
+    parsed = urlparse(raw_url)
+    if parsed.scheme not in ("http", "https"):
+        return _avatar_fallback_response()
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
+        "Referer": "https://www.tighri.com",
+    }
+    try:
+        r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
+        r.raise_for_status()
+    except Exception:
+        return _avatar_fallback_response()
+
+    content_type = r.headers.get("Content-Type", "image/jpeg")
+    data = r.content
+
+    resp = Response(data, mimetype=content_type)
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
+
 # === Alias rétro-compatible pour l'ancien endpoint "avatar" ===
 @app.route("/avatar", endpoint="avatar")
 def avatar_alias_qs():
@@ -1378,7 +1398,7 @@ def avatar_alias_path(professional_id):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
 # ===== Favicon (évite le 404) ==============================
-@app.route("/favicon.ico", endpoint="favicon")
+@app.route("/favicon.ico")
 def favicon():
     fav_path = Path(app.static_folder or (BASE_DIR / "static")) / "favicon.ico"
     if fav_path.exists():
@@ -1386,11 +1406,5 @@ def favicon():
         resp.headers["Cache-Control"] = "public, max-age=604800"
         return resp
     return ("", 204)
-
-# ===== Page ANTHECC (corrige le BuildError dans base.html) =
-@app.route('/anthecc', endpoint='anthecc')
-def anthecc():
-    # Si tu as un template 'anthecc.html', remplace par: return render_template('anthecc.html')
-    return "ANTHECC — page en construction", 200
 
 # Pas de bloc __main__ (gunicorn utilise app:app)
