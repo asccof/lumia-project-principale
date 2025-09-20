@@ -137,7 +137,12 @@ google = oauth.register(
 )
 
 # ========== Langue (compatible base.html) ==========
-def _normalize_lang(code: Optional[str]) -> str:
+# ===== Langue (compat avec base.html) =====
+DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
+SUPPORTED_LANGS = {"fr", "ar", "en"}
+LANG_COOKIE = "lang"
+
+def _normalize_lang(code: str | None) -> str:
     if not code:
         return DEFAULT_LANG
     code = code.lower().strip()
@@ -149,19 +154,13 @@ def _load_locale():
     g.current_locale = lang
     g.current_locale_label = {"fr": "Français", "ar": "العربية", "en": "English"}.get(lang, "Français")
 
-# IMPORTANT : base.html appelle url_for('set_language', lang='fr')
-@app.route("/set-language/<lang>", endpoint="set_language", methods=["GET"])
-def set_language_path(lang: str):
-    lang = _normalize_lang(lang)
-    resp = make_response(redirect(request.referrer or url_for("index")))
-    resp.set_cookie(LANG_COOKIE, lang, max_age=60*60*24*180, samesite="Lax", secure=True)
-    return resp
-
-# tolère aussi /set-language?lang=fr
-@app.route("/set-language", methods=["GET"])
-def set_language_qs():
-    lang = _normalize_lang(request.args.get("lang") or request.args.get("lang_code"))
-    resp = make_response(redirect(request.referrer or url_for("index")))
+# ⚠️ Même endpoint pour 2 routes → url_for('set_language', ...) marchera
+@app.route('/set-language/<lang>', methods=['GET'], endpoint='set_language')
+@app.route('/set-language', methods=['GET'], endpoint='set_language')
+def set_language(lang: str | None = None):
+    # accepte lang via segment, ?lang=, ou ?lang_code= (compat base.html)
+    lang = _normalize_lang(lang or request.args.get('lang') or request.args.get('lang_code'))
+    resp = make_response(redirect(request.referrer or url_for('index')))
     resp.set_cookie(LANG_COOKIE, lang, max_age=60*60*24*180, samesite="Lax", secure=True)
     return resp
 
@@ -169,6 +168,7 @@ def set_language_qs():
 def inject_lang():
     lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
     return {"current_lang": lang, "SUPPORTED_LANGS": SUPPORTED_LANGS}
+
 
 # ========== Helpers images ==========
 AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
