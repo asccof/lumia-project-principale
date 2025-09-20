@@ -107,9 +107,10 @@
               <i class="fa-solid fa-globe me-2"></i>{{ current_lang_label or 'Français' }}
             </a>
             <ul class="dropdown-menu dropdown-menu-end">
-              <li><a class="dropdown-item" href="{{ url_for('set_language', lang_code='fr') }}">Français</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('set_language', lang_code='ar') }}">العربية</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('set_language', lang_code='en') }}">English</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('set_language', lang='fr') }}">Français</a></li>
+<li><a class="dropdown-item" href="{{ url_for('set_language', lang='ar') }}">العربية</a></li>
+<li><a class="dropdown-item" href="{{ url_for('set_language', lang='en') }}">English</a></li>
+>
             </ul>
           </li>
 
