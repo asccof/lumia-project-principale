@@ -216,7 +216,13 @@ def _text_dir(lang):
 @app.context_processor
 def inject_i18n():
     lang = getattr(g, "current_locale", DEFAULT_LANG)
-    return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
+    return {
+        "t": t,
+        "current_lang": lang,
+        "current_lang_label": _lang_label(lang),
+        "text_dir": _text_dir,            # on expose la fonction
+        "text_dir_value": _text_dir(lang) # bonus : la valeur directe si un template en a besoin
+    }
 
 # Routes pour changer de langue (cookie domaine = .tighri.ma / .tighri.com)
 @app.route("/set-language/<code>")
