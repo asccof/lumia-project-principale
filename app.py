@@ -1,4 +1,4 @@
-voici app.py
+
 # app.py — version unifiée et propre pour Tighri
 
 from __future__ import annotations
