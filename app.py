@@ -255,11 +255,45 @@ def _load_locale():
 @app.route('/set-language/<lang>', methods=['GET'], endpoint='set_language')
 @app.route('/set-language', methods=['GET'], endpoint='set_language')
 def set_language(lang: str | None = None):
-    # accepte lang via segment, ?lang=, ou ?lang_code= (compat base.html)
-    lang = _normalize_lang(lang or request.args.get('lang') or request.args.get('lang_code'))
-    resp = make_response(redirect(request.referrer or url_for('index')))
-    resp.set_cookie(LANG_COOKIE, lang, max_age=60*60*24*180, samesite="Lax", secure=True)
+    def _cookie_domain_for_host(host: str) -> str | None:
+        """Retourne un domaine 'apex' pour le cookie si le host matche tighri.ma|tighri.com."""
+        host = (host or "").split(":")[0].lower()
+        for base in ("tighri.ma", "tighri.com"):
+            if host == base or host.endswith("." + base):
+                return "." + base  # couvre www. et autres sous-domaines du même TLD
+        return None  # cookie scoping par défaut (host-only)
+
+    def _same_registrable_domain(a: str, b: str) -> bool:
+        """Vérifie si les deux hosts appartiennent au même 'apex' (tighri.ma vs tighri.com)."""
+        def base(h: str) -> str:
+            h = (h or "").split(":")[0].lower()
+            for dom in ("tighri.ma", "tighri.com"):
+                if h == dom or h.endswith("." + dom):
+                    return dom
+            return h
+        return base(a) == base(b)
+
+    # 1) Normaliser la langue demandée
+    sel = _normalize_lang(lang or request.args.get('lang') or request.args.get('lang_code'))
+
+    # 2) Construire la réponse de redirection — on privilégie le referrer s'il est "même domaine"
+    ref = request.referrer
+    target = ref if (ref and _same_registrable_domain(urlparse(ref).hostname or "", request.host)) else url_for('index')
+    resp = make_response(redirect(target))
+
+    # 3) Poser le cookie sur l'apex du domaine courant (couvre www. et sous-domaines)
+    cookie_domain = _cookie_domain_for_host(request.host)
+    resp.set_cookie(
+        LANG_COOKIE,
+        sel,
+        max_age=60*60*24*180,
+        samesite="Lax",
+        secure=True,
+        domain=cookie_domain,  # .tighri.ma ou .tighri.com si applicable
+        path="/",
+    )
     return resp
+
 
 @app.context_processor
 def inject_lang():
