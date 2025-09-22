@@ -355,6 +355,75 @@ def _vary_on_cookie_for_lang(resp):
 def inject_lang():
     lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
     return {"current_lang": lang, "SUPPORTED_LANGS": SUPPORTED_LANGS}
+# --- LANG SWITCH: durcissement cache + domaine canonique + debug ----
+from flask import jsonify
+
+# 1) Domaine canonique (évite que le cookie soit sur .ma et que tu lises sur .com)
+PRIMARY_HOST = os.getenv("PRIMARY_HOST", "www.tighri.ma")
+COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", None)  # ex: ".tighri.ma" (inclut sous-domaines) ou laisse vide
+
+@app.before_request
+def _enforce_canonical_host():
+    # Si tu utilises plusieurs domaines (ex: .ma et .com), on force vers le primaire
+    # => le cookie de langue restera sur un seul domaine.
+    host = (request.host or "").split(":")[0]
+    if PRIMARY_HOST and host and host != PRIMARY_HOST:
+        # garde le schéma + chemin + query, remplace juste l’hôte
+        target = request.url.replace(host, PRIMARY_HOST, 1)
+        return redirect(target, code=301)
+
+# 2) Set-language (repose le cookie avec domain si fourni)
+@app.route('/set-language/<lang>', methods=['GET'], endpoint='set_language_path')
+@app.route('/set-language', methods=['GET'], endpoint='set_language_qs')
+def set_language(lang: str | None = None):
+    lang = _normalize_lang(lang or request.args.get('lang') or request.args.get('lang_code'))
+    resp = make_response(redirect(request.referrer or url_for('index')))
+    cookie_kwargs = dict(
+        key=LANG_COOKIE,
+        value=lang,
+        max_age=60*60*24*180,
+        samesite="Lax",
+        secure=True,
+        httponly=False,
+        path="/",
+    )
+    if COOKIE_DOMAIN:
+        cookie_kwargs["domain"] = COOKIE_DOMAIN
+    resp.set_cookie(**cookie_kwargs)
+    return resp
+
+# 3) Pas de cache HTML côté proxy (Cloudflare) et on varie sur le cookie
+@app.after_request
+def _vary_on_cookie_and_no_cache(resp):
+    try:
+        # Évite que Cloudflare serve la même HTML à tout le monde
+        if resp.mimetype and 'text/html' in resp.mimetype:
+            # empêche le cache HTML côté proxy/navigateur
+            resp.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            resp.headers['Pragma'] = 'no-cache'
+            # indique qu'on varie selon les cookies
+            vary = resp.headers.get('Vary', '')
+            parts = [p.strip() for p in vary.split(',') if p.strip()]
+            if 'Cookie' not in [p.title() for p in parts]:
+                parts.append('Cookie')
+            if parts:
+                resp.headers['Vary'] = ', '.join(parts)
+    except Exception:
+        pass
+    return resp
+
+# 4) DEBUG : vérifie côté serveur que la langue est bien lue
+@app.route("/debug/lang")
+def debug_lang():
+    return jsonify({
+        "cookie_lang": request.cookies.get(LANG_COOKIE),
+        "g.current_locale": getattr(g, "current_locale", None),
+        "label": getattr(g, "current_locale_label", None),
+        "host": request.host,
+        "primary_host": PRIMARY_HOST,
+        "cookie_domain_env": COOKIE_DOMAIN,
+    })
+# --- FIN BLOC ---
 
 
 # ========== Helpers images ==========
