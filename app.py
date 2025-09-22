@@ -922,12 +922,16 @@ from flask_login import login_required, current_user
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
-    # Récupère ou crée le profil du user connecté
-    professional = Professional.query.filter_by(user_id=current_user.id).first()
-    if professional is None:
-        professional = Professional(user_id=current_user.id)
-        db.session.add(professional)
-        # pas de commit ici; on committra en bas
+    # Récupère ou crée le profil de façon robuste, quel que soit le schéma (user_id ou relation user)
+    professional = get_or_create_professional_for_current_user(
+        db, Professional, User, current_user,
+        defaults={
+            # Pré-remplissages doux si les champs existent dans le modèle
+            "name": getattr(current_user, "username", None) or getattr(current_user, "email", None) or "Profil",
+            "location": None,
+            "specialty": None,
+        }
+    )
 
     if request.method == "POST":
         f = request.form
@@ -940,7 +944,7 @@ def professional_edit_profile():
         professional.address = f.get("address", "").strip() or None
         professional.phone = f.get("phone", "").strip() or None
 
-        # Nombres (tolère vide)
+        # Convertisseurs tolérants
         def to_float(v):
             try:
                 return float(v) if v not in (None, "",) else None
@@ -963,7 +967,7 @@ def professional_edit_profile():
         types = f.getlist("consultation_types")  # ex: ["cabinet","en_ligne"]
         professional.consultation_types = ",".join(sorted(set(t for t in types if t)))
 
-        # Liens sociaux (et ré-approbation auto si modifiés)
+        # Liens sociaux (ré-approbation auto si modifiés)
         old_links = (
             (professional.facebook_url or ""),
             (professional.instagram_url or ""),
@@ -989,6 +993,7 @@ def professional_edit_profile():
 
     # GET -> affiche le formulaire
     return render_template("professional_edit_profile.html", professional=professional)
+
 
 # Alias “voir mes RDV”
 @app.route("/professional/appointments", endpoint="professional_appointments")
