@@ -220,6 +220,17 @@ def _load_user(user_id: str):
         return db.session.get(User, int(user_id))
     except Exception:
         return None
+@app.after_request
+def _vary_on_cookie_for_lang(resp):
+    # N'applique qu'aux pages HTML (laisse les images/CSS/JS tranquilles)
+    ct = resp.headers.get("Content-Type", "")
+    if "text/html" in ct:
+        # Indique aux caches/CDN que le contenu varie selon les cookies (ici: lang)
+        existing_vary = resp.headers.get("Vary")
+        resp.headers["Vary"] = "Cookie" if not existing_vary else f"{existing_vary}, Cookie"
+        # Empêche la mise en cache partagée (CDN/Proxy). Le navigateur peut garder un court cache privé si tu veux.
+        resp.headers["Cache-Control"] = "private, no-store, no-cache, max-age=0, must-revalidate"
+    return resp
 
 # ========== OAuth Google ==========
 oauth = OAuth(app)
