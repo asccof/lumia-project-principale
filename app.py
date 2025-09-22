@@ -1,4 +1,4 @@
-# app.py — version unifiée et propre pour Tighri
+# app.py — version unifiée, propre et compatible (Tighri)
 
 from __future__ import annotations
 import os, io, uuid, secrets, hashlib, requests
@@ -19,106 +19,6 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
-from i18n_ext import init_i18n
-init_i18n(app)
-
-# --- Helpers robustes pour récupérer/créer le profil pro sans casser le modèle ---
-
-# --- Helpers robustes pour récupérer/créer le profil pro sans casser le modèle ---
-
-def _query_professional_for_user(db, Professional, User, current_user):
-    """
-    Retourne une requête SQLAlchemy pour trouver le Professional du current_user,
-    en s'adaptant au schéma actuel.
-    Ordre de préférence:
-      1) name == current_user.username (schéma actuel)
-      2) colonne user_id (si jamais elle apparaît un jour)
-      3) relation user (si jamais elle apparaît un jour)
-      4) fallback très conservateur (jointure par id) -> évité si possible
-    """
-    # cas 0 : schéma actuel — on associe par le nom d'utilisateur
-    if hasattr(Professional, "name") and getattr(current_user, "username", None):
-        return Professional.query.filter_by(name=current_user.username)
-
-    # cas 1 : colonne user_id présente
-    if hasattr(Professional, "user_id"):
-        return Professional.query.filter_by(user_id=current_user.id)
-
-    # cas 2 : relation 'user' présente (définie via db.relationship)
-    if hasattr(Professional, "user"):
-        return Professional.query.filter_by(user=current_user)
-
-    # cas 3 : dernier recours (à éviter) — jointure id=id
-    try:
-        return db.session.query(Professional).join(User, User.id == Professional.id).filter(User.id == current_user.id)
-    except Exception:
-        # Requête \"vide\" inoffensive si tout échoue
-        return Professional.query.filter(False)
-
-
-def get_or_create_professional_for_current_user(db, Professional, User, current_user, defaults=None):
-    """
-    Récupère le Professional du current_user; si absent, le crée proprement
-    sans supposer de schéma précis.
-    """
-    defaults = defaults or {}
-    q = _query_professional_for_user(db, Professional, User, current_user)
-    professional = q.first()
-
-    if professional:
-        return professional
-
-    # Création non-destructive alignée avec ton schéma actuel
-    professional = Professional()
-
-    # Priorité: lier par le nom d'utilisateur (schéma actuel)
-    if hasattr(Professional, "name") and getattr(current_user, "username", None):
-        try:
-            professional.name = current_user.username
-        except Exception:
-            pass
-
-    # Compat: si jamais user_id/relation existent dans un futur schéma
-    if hasattr(Professional, "user_id"):
-        try:
-            setattr(professional, "user_id", current_user.id)
-        except Exception:
-            pass
-    if hasattr(Professional, "user"):
-        try:
-            setattr(professional, "user", current_user)
-        except Exception:
-            pass
-
-    # Pré-remplissages doux (uniquement si les champs existent)
-    base_defaults = {
-        "description": "Profil en cours de complétion.",
-        "availability": "disponible",
-        "consultation_types": "cabinet",
-        "status": "en_attente",
-    }
-    base_defaults.update(defaults or {})
-    for key, val in base_defaults.items():
-        if hasattr(Professional, key) and getattr(professional, key, None) in (None, ""):
-            try:
-                setattr(professional, key, val)
-            except Exception:
-                pass
-
-    # Optionnel: si le modèle a `phone` et que l'utilisateur en a un
-    if hasattr(Professional, "phone") and getattr(current_user, "phone", None) and not getattr(professional, "phone", None):
-        try:
-            professional.phone = current_user.phone
-        except Exception:
-            pass
-
-    db.session.add(professional)
-    try:
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-    return professional
-
 
 # ========== PIL (images) ==========
 try:
@@ -129,6 +29,7 @@ except Exception:
 
 # ========== Notifications sûres ==========
 from notifications import send_email as _notif_send_email
+
 def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None = None) -> bool:
     try:
         if not to_addr:
@@ -152,12 +53,12 @@ UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
 
-DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
-SUPPORTED_LANGS = {"fr", "ar", "en"}
+DEFAULT_LANG_ENV = os.getenv("DEFAULT_LANG", "fr")
+SUPPORTED_LANGS_SET = {"fr", "ar", "en"}
 LANG_COOKIE = "lang"
 
 # ========== App ==========
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", template_folder="templates")
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
@@ -168,9 +69,9 @@ app.config["REMEMBER_COOKIE_NAME"] = "tighri_remember"
 app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=60)
 app.config["REMEMBER_COOKIE_SECURE"] = True
 app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
-app.config['PREFERRED_URL_SCHEME'] = 'https'
-app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
-app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
+app.config["PREFERRED_URL_SCHEME"] = "https"
+app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
+app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
 
 # Créer dossiers d’upload si besoin
 try:
@@ -198,7 +99,6 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-# On utilise le db des models (source de vérité)
 from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
 if not uri:
@@ -223,15 +123,14 @@ def _load_user(user_id: str):
         return db.session.get(User, int(user_id))
     except Exception:
         return None
+
 @app.after_request
 def _vary_on_cookie_for_lang(resp):
-    # N'applique qu'aux pages HTML (laisse les images/CSS/JS tranquilles)
+    # N'applique qu'aux pages HTML
     ct = resp.headers.get("Content-Type", "")
     if "text/html" in ct:
-        # Indique aux caches/CDN que le contenu varie selon les cookies (ici: lang)
         existing_vary = resp.headers.get("Vary")
         resp.headers["Vary"] = "Cookie" if not existing_vary else f"{existing_vary}, Cookie"
-        # Empêche la mise en cache partagée (CDN/Proxy). Le navigateur peut garder un court cache privé si tu veux.
         resp.headers["Cache-Control"] = "private, no-store, no-cache, max-age=0, must-revalidate"
     return resp
 
@@ -247,20 +146,16 @@ google = oauth.register(
     client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
 )
 
-# ========== Langue (compatible base.html) ==========
-# ==== I18N propre et minimal ====
-from flask import g, request, redirect, url_for, make_response
-
-DEFAULT_LANG = "fr"
-SUPPORTED_LANGS = {"fr", "en", "ar"}
-LANG_COOKIE = "lang"
+# ========== I18N intégré (remplace i18n_ext) ==========
+DEFAULT_LANG = DEFAULT_LANG_ENV
+SUPPORTED_LANGS = SUPPORTED_LANGS_SET
 LANG_MAX_AGE = 60 * 60 * 24 * 180  # 180 jours
 
 def _normalize_lang(code):
     if not code:
         return DEFAULT_LANG
     v = str(code).strip().lower()
-    if "-" in v:  # ex: en-US -> en
+    if "-" in v:
         v = v.split("-", 1)[0]
     return v if v in SUPPORTED_LANGS else DEFAULT_LANG
 
@@ -274,7 +169,6 @@ def _load_locale():
     )
     g.current_locale = _normalize_lang(lang)
 
-# Petit dictionnaire (ajoute des clés si tu en utilises d'autres)
 TRANSLATIONS = {
     "fr": {
         "nav": {
@@ -357,7 +251,6 @@ def inject_i18n():
         "text_dir": _text_dir(lang),
     }
 
-# Route de changement de langue — compatible avec lang ET lang_code
 @app.route("/set-language/<lang>")
 @app.route("/set-language/<lang_code>")
 def set_language(lang=None, lang_code=None):
@@ -366,21 +259,86 @@ def set_language(lang=None, lang_code=None):
     resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, samesite="Lax")
     return resp
 
-# Variante via query string: /set-language?lang=fr
 @app.route("/set-language")
 def set_language_qs():
     code = _normalize_lang(request.args.get("lang"))
     resp = make_response(redirect(request.referrer or url_for("index")))
     resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, samesite="Lax")
     return resp
-# ==== /I18N ====
 
+# ========== Helpers “Professional” robustes ==========
+def _query_professional_for_user(db, Professional, User, current_user):
+    """
+    Retourne une requête SQLAlchemy pour trouver le Professional du current_user
+    sans casser selon le schéma.
+    """
+    if hasattr(Professional, "name") and getattr(current_user, "username", None):
+        return Professional.query.filter_by(name=current_user.username)
+    if hasattr(Professional, "user_id"):
+        return Professional.query.filter_by(user_id=current_user.id)
+    if hasattr(Professional, "user"):
+        return Professional.query.filter_by(user=current_user)
+    try:
+        return db.session.query(Professional).join(User, User.id == Professional.id).filter(User.id == current_user.id)
+    except Exception:
+        return Professional.query.filter(False)
 
+def get_or_create_professional_for_current_user(db, Professional, User, current_user, defaults=None):
+    defaults = defaults or {}
+    q = _query_professional_for_user(db, Professional, User, current_user)
+    professional = q.first()
+    if professional:
+        return professional
 
+    professional = Professional()
+    if hasattr(Professional, "name") and getattr(current_user, "username", None):
+        try:
+            professional.name = current_user.username
+        except Exception:
+            pass
+    if hasattr(Professional, "user_id"):
+        try:
+            setattr(professional, "user_id", current_user.id)
+        except Exception:
+            pass
+    if hasattr(Professional, "user"):
+        try:
+            setattr(professional, "user", current_user)
+        except Exception:
+            pass
+
+    base_defaults = {
+        "description": "Profil en cours de complétion.",
+        "availability": "disponible",
+        "consultation_types": "cabinet",
+        "status": "en_attente",
+    }
+    base_defaults.update(defaults or {})
+    for key, val in base_defaults.items():
+        if hasattr(Professional, key) and getattr(professional, key, None) in (None, ""):
+            try:
+                setattr(professional, key, val)
+            except Exception:
+                pass
+
+    if hasattr(Professional, "phone") and getattr(current_user, "phone", None) and not getattr(professional, "phone", None):
+        try:
+            professional.phone = current_user.phone
+        except Exception:
+            pass
+
+    db.session.add(professional)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return professional
 
 # ========== Helpers images ==========
 AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
 PLACEHOLDER_AVATAR = os.path.join(app.root_path, "static", "avatar_default.webp")
+PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
+AVATAR_DEFAULT_REL = "img/avatar-default.png"
 
 def _ext_ok(filename: str) -> bool:
     if not filename:
@@ -396,7 +354,6 @@ def _process_and_save_profile_image(file_storage) -> str:
     if not _PIL_OK:
         raise RuntimeError("Le traitement d'image nécessite Pillow (PIL).")
 
-    # validation
     try:
         img = Image.open(io.BytesIO(raw))
         img.verify()
@@ -426,9 +383,6 @@ def _avatar_file_for(pid: int) -> Optional[str]:
         if os.path.isfile(path):
             return path
     return None
-
-PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
-AVATAR_DEFAULT_REL = "img/avatar-default.png"
 
 def _avatar_fallback_response():
     static_avatar = Path(app.static_folder or (BASE_DIR / "static")) / AVATAR_DEFAULT_REL
@@ -1056,19 +1010,14 @@ def delete_unavailable_slot(slot_id: int):
     db.session.delete(slot); db.session.commit()
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
-# --- imports (laisse-les si tu les as déjà) ---
-from flask import request, render_template, redirect, url_for, flash
-from flask_login import login_required, current_user
 
 # --- ROUTE: édition du profil pro ---
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
-    # Récupère ou crée le profil de façon robuste, quel que soit le schéma (user_id ou relation user)
     professional = get_or_create_professional_for_current_user(
         db, Professional, User, current_user,
         defaults={
-            # Pré-remplissages doux si les champs existent dans le modèle
             "name": getattr(current_user, "username", None) or getattr(current_user, "email", None) or "Profil",
             "location": None,
             "specialty": None,
@@ -1133,9 +1082,7 @@ def professional_edit_profile():
         flash("Profil mis à jour.", "success")
         return redirect(url_for("professional_dashboard"))
 
-    # GET -> affiche le formulaire
     return render_template("professional_edit_profile.html", professional=professional)
-
 
 # Alias “voir mes RDV”
 @app.route("/professional/appointments", endpoint="professional_appointments")
@@ -1333,7 +1280,6 @@ def server_error(e):
 with app.app_context():
     db.create_all()
     try:
-        # colonnes additionnelles si manquantes
         for sql in [
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;",
@@ -1377,13 +1323,5 @@ with app.app_context():
         )
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
-# --- Filet de sécurité: alias si l'endpoint attendu par le template n'existe pas
-if 'professional_edit_profile' not in app.view_functions:
-    @app.route('/professional/profile', methods=['GET', 'POST'], endpoint='professional_edit_profile')
-    @login_required
-    def _professional_edit_profile_alias():
-        # Si on ne sait pas quel handler utiliser, on renvoie vers le dashboard
-        flash("Redirection vers votre espace professionnel.", "info")
-        return redirect(url_for('professional_dashboard'))
 
 # Pas de __main__ : Gunicorn lance app:app
