@@ -1,4 +1,4 @@
-# app.py — version propre et complète (sans i18n_ext) pour Tighri
+# app.py — Tighri (version propre & autonome)
 
 from __future__ import annotations
 import os, io, uuid, secrets, hashlib, requests
@@ -20,28 +20,34 @@ from flask_login import (
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
 
-# ========== Constantes ==========
-// Base paths & brand
+# ===========================
+# Base paths & brand
+# ===========================
 BASE_DIR = Path(__file__).resolve().parent
 BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
 
+# ===========================
 # Uploads
+# ===========================
 UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
 UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
 
+# ===========================
 # Langues
-DEFAULT_LANG = "fr"
+# ===========================
+DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
 SUPPORTED_LANGS = {"fr", "en", "ar"}
-LANG_COOKIE = "lang"
+LANG_COOKIE = os.getenv("LANG_COOKIE", "lang")
 LANG_MAX_AGE = 60 * 60 * 24 * 180  # 180 jours
+PRIMARY_COOKIE_DOMAIN = os.getenv("PRIMARY_COOKIE_DOMAIN", "")  # ex: .tighri.ma
+PRIMARY_HOST = os.getenv("PRIMARY_HOST", "")  # ex: www.tighri.ma
+ENFORCE_PRIMARY_HOST = os.getenv("PRIMARY_HOST_ENFORCE", "0") == "1"
 
-# Domaine canonique & cookie
-PRIMARY_HOST = os.getenv("PRIMARY_HOST")                 # ex: "www.tighri.ma"
-COOKIE_DOMAIN = os.getenv("PRIMARY_COOKIE_DOMAIN")       # ex: ".tighri.ma" (avec le point)
-
-# ========== App ==========
+# ===========================
+# Flask app
+# ===========================
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
@@ -57,46 +63,12 @@ app.config["PREFERRED_URL_SCHEME"] = "https"
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
 
-# Domaine canonique pour stabiliser les cookies entre .ma/.www
-@app.before_request
-def _canonical_domain_redirect():
-    if not PRIMARY_HOST:
-        return
-    if request.method in ("GET", "HEAD"):
-        host = request.host.split(":")[0]
-        if host != PRIMARY_HOST:
-            url = request.url.replace(f"//{request.host}", f"//{PRIMARY_HOST}")
-            return redirect(url, code=301)
-
-# Créer dossiers d’upload si besoin
+# Crée les dossiers d’upload si besoin
 try:
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 except Exception as e:
     app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
-
-# ========== PIL (images) ==========
-try:
-    from PIL import Image, ImageOps
-    _PIL_OK = True
-except Exception:
-    _PIL_OK = False
-
-# ========== Notifications sûres ==========
-from notifications import send_email as _notif_send_email
-def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None = None) -> bool:
-    try:
-        if not to_addr:
-            current_app.logger.warning("[EMAIL] destinataire manquant")
-            return False
-        ok = _notif_send_email(to_addr, subject, body_text, html)
-        (current_app.logger.info if ok else current_app.logger.error)(
-            "[EMAIL] %s -> %s : %s", "envoyé" if ok else "échec", to_addr, subject
-        )
-        return ok
-    except Exception as e:
-        current_app.logger.exception("safe_send_email exception: %s", e)
-        return False
 
 # ========== DB & modèles ==========
 def _normalize_pg_uri(uri: str) -> str:
@@ -104,12 +76,10 @@ def _normalize_pg_uri(uri: str) -> str:
         return uri
     if uri.startswith("postgres://"):
         uri = "postgresql://" + uri[len("postgres://"):]
-    # forcer driver psycopg3
     if uri.startswith("postgresql+psycopg2://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
     elif uri.startswith("postgresql://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
-    # sslmode=require si absent
     parsed = urlparse(uri)
     q = parse_qs(parsed.query)
     if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
@@ -127,8 +97,22 @@ app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 db.init_app(app)
 
 # ========== Admin (Blueprint) ==========
-from admin_server import admin_bp, ProfessionalOrder, _build_notif
-app.register_blueprint(admin_bp, url_prefix="/admin")
+try:
+    from admin_server import admin_bp, ProfessionalOrder, _build_notif
+    app.register_blueprint(admin_bp, url_prefix="/admin")
+except Exception as e:
+    app.logger.warning("admin_server non chargé (%s) — admin désactivé.", e)
+    ProfessionalOrder = None
+
+    def _build_notif(kind, appointment, role="patient"):
+        # fallback simple
+        if kind == "pending":
+            if role == "patient":
+                return (f"{BRAND_NAME} — Réservation enregistrée",
+                        "Votre demande de rendez-vous a bien été enregistrée.")
+            else:
+                return (f"{BRAND_NAME} — Nouveau rendez-vous en attente",
+                        "Un nouveau rendez-vous est en attente de confirmation.")
 
 # ========== Login Manager ==========
 login_manager = LoginManager()
@@ -142,40 +126,50 @@ def _load_user(user_id: str):
     except Exception:
         return None
 
-# ========== I18N — bloc unique (sans i18n_ext) ==========
+# ===========================
+# I18N minimal intégré
+# ===========================
 def _normalize_lang(code):
     if not code:
         return DEFAULT_LANG
     v = str(code).strip().lower()
-    if "-" in v:  # en-US -> en
+    if "-" in v:
         v = v.split("-", 1)[0]
     return v if v in SUPPORTED_LANGS else DEFAULT_LANG
 
 @app.before_request
-def _load_locale():
-    # ordre: ?lang= -> cookie -> Accept-Language
+def _enforce_primary_host_and_load_locale():
+    # (Optionnel) forcer l’hôte canonique si demandé
+    if ENFORCE_PRIMARY_HOST and PRIMARY_HOST:
+        host = request.host.split(":")[0]
+        if host != PRIMARY_HOST:
+            target = request.url.replace("//" + host, "//" + PRIMARY_HOST, 1)
+            return redirect(target, code=301)
+
+    # ordre: cookie -> ?lang= -> entête Accept-Language
     lang = (
-        request.args.get("lang")
-        or request.cookies.get(LANG_COOKIE)
+        request.cookies.get(LANG_COOKIE)
+        or request.args.get("lang")
         or (request.accept_languages.best_match(SUPPORTED_LANGS) if request.accept_languages else None)
     )
     g.current_locale = _normalize_lang(lang)
 
+# Dictionnaire court pour les libellés (ajoute des clés selon tes besoins)
 TRANSLATIONS = {
     "fr": {
-        "nav": {"home":"Accueil","professionals":"Professionnels","anthecc":"ANTHECC","about":"À propos","contact":"Contact","status":"Statut"},
-        "auth":{"login":"Connexion","register":"Inscription","logout":"Déconnexion"},
-        "common":{"menu":"Menu"},
+        "nav": {"home": "Accueil", "professionals": "Professionnels", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact", "status": "Statut"},
+        "auth": {"login": "Connexion", "register": "Inscription", "logout": "Déconnexion"},
+        "common": {"menu": "Menu"},
     },
     "en": {
-        "nav": {"home":"Home","professionals":"Professionals","anthecc":"ANTHECC","about":"About","contact":"Contact","status":"Status"},
-        "auth":{"login":"Login","register":"Sign up","logout":"Logout"},
-        "common":{"menu":"Menu"},
+        "nav": {"home": "Home", "professionals": "Professionals", "anthecc": "ANTHECC", "about": "About", "contact": "Contact", "status": "Status"},
+        "auth": {"login": "Login", "register": "Sign up", "logout": "Logout"},
+        "common": {"menu": "Menu"},
     },
     "ar": {
-        "nav": {"home":"الرئيسية","professionals":"المهنيون","anthecc":"ANTHECC","about":"حول","contact":"اتصل","status":"الحالة"},
-        "auth":{"login":"تسجيل الدخول","register":"إنشاء حساب","logout":"تسجيل الخروج"},
-        "common":{"menu":"القائمة"},
+        "nav": {"home": "الرئيسية", "professionals": "المهنيون", "anthecc": "ANTHECC", "about": "حول", "contact": "اتصل", "status": "الحالة"},
+        "auth": {"login": "تسجيل الدخول", "register": "إنشاء حساب", "logout": "تسجيل الخروج"},
+        "common": {"menu": "القائمة"},
     },
 }
 
@@ -218,48 +212,90 @@ def inject_i18n():
         "text_dir": _text_dir(lang),
     }
 
-# Routes pour changer la langue (une seule version, propre)
+def _cookie_args(max_age=LANG_MAX_AGE):
+    params = dict(max_age=max_age, httponly=False, samesite="Lax", path="/")
+    # On ne met domain= que si explicitement fourni, pour éviter les conflits multi-domaine
+    if PRIMARY_COOKIE_DOMAIN:
+        params["domain"] = PRIMARY_COOKIE_DOMAIN
+    # Render sert en HTTPS → Secure
+    params["secure"] = True
+    return params
+
+# Routes de changement de langue (compatibles)
 @app.route("/set-language/<lang>")
-def set_language(lang):
-    code = _normalize_lang(lang)
-    resp = make_response(redirect(request.referrer or url_for("index")))
-    resp.set_cookie(
-        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, samesite="Lax",
-        secure=True, domain=(COOKIE_DOMAIN or None), path="/"
-    )
+@app.route("/set-language/<lang_code>")
+def set_language(lang=None, lang_code=None):
+    code = _normalize_lang(lang or lang_code)
+    # on nettoie ?lang= dans l’URL de retour
+    ref = request.referrer or url_for("index")
+    if ref and "?lang=" in ref:
+        try:
+            p = urlparse(ref)
+            q = parse_qs(p.query)
+            q.pop("lang", None)
+            ref = urlunparse(p._replace(query=urlencode({k: v[0] for k, v in q.items()})))
+        except Exception:
+            pass
+    resp = make_response(redirect(ref))
+    resp.set_cookie(LANG_COOKIE, code, **_cookie_args())
     return resp
 
 @app.route("/set-language")
 def set_language_qs():
     code = _normalize_lang(request.args.get("lang"))
-    resp = make_response(redirect(request.referrer or url_for("index")))
-    resp.set_cookie(
-        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, samesite="Lax",
-        secure=True, domain=(COOKIE_DOMAIN or None), path="/"
-    )
+    ref = request.referrer or url_for("index")
+    resp = make_response(redirect(ref))
+    resp.set_cookie(LANG_COOKIE, code, **_cookie_args())
     return resp
 
-# After-request : annonce la langue servie (et force caches privés)
+# Page debug locale
+@app.route("/__debug/lang")
+def _debug_lang():
+    return jsonify({
+        "g.current_locale": getattr(g, "current_locale", None),
+        "cookie_lang": request.cookies.get(LANG_COOKIE),
+        "host": request.host,
+        "PRIMARY_COOKIE_DOMAIN": PRIMARY_COOKIE_DOMAIN,
+        "SUPPORTED_LANGS": sorted(SUPPORTED_LANGS),
+    })
+
 @app.after_request
 def _vary_on_cookie_for_lang(resp):
+    # N'applique qu’aux pages HTML (laisser images/CSS/JS tranquilles)
     ct = resp.headers.get("Content-Type", "")
     if "text/html" in ct:
         existing_vary = resp.headers.get("Vary")
         resp.headers["Vary"] = "Cookie" if not existing_vary else f"{existing_vary}, Cookie"
+        # Empêche la mise en cache partagée (CDN/Proxy). Le navigateur garde un cache privé court.
         resp.headers["Cache-Control"] = "private, no-store, no-cache, max-age=0, must-revalidate"
-        resp.headers["Content-Language"] = getattr(g, "current_locale", "fr")
-        resp.headers["X-Served-Language"] = getattr(g, "current_locale", "fr")  # debug
     return resp
 
-# Route de debug i18n
-@app.route("/__debug/lang")
-def __debug_lang():
-    return jsonify({
-        "cookie_lang": request.cookies.get(LANG_COOKIE),
-        "g.current_locale": getattr(g, "current_locale", None),
-        "accept_language": request.headers.get("Accept-Language"),
-        "host": request.host
-    })
+# ========== PIL (images) ==========
+try:
+    from PIL import Image, ImageOps
+    _PIL_OK = True
+except Exception:
+    _PIL_OK = False
+
+# ========== Notifications sûres ==========
+try:
+    from notifications import send_email as _notif_send_email
+except Exception:
+    _notif_send_email = None
+
+def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None = None) -> bool:
+    try:
+        if not to_addr or not _notif_send_email:
+            current_app.logger.warning("[EMAIL] envoi indisponible (destinataire ou module)")
+            return False
+        ok = _notif_send_email(to_addr, subject, body_text, html)
+        (current_app.logger.info if ok else current_app.logger.error)(
+            "[EMAIL] %s -> %s : %s", "envoyé" if ok else "échec", to_addr, subject
+        )
+        return ok
+    except Exception as e:
+        current_app.logger.exception("safe_send_email exception: %s", e)
+        return False
 
 # ========== OAuth Google ==========
 oauth = OAuth(app)
@@ -272,59 +308,6 @@ google = oauth.register(
     api_base_url="https://www.googleapis.com/oauth2/v3/",
     client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
 )
-
-# ========== Helpers pro (query/create robustes) ==========
-def _query_professional_for_user(db, Professional, User, current_user):
-    if hasattr(Professional, "name") and getattr(current_user, "username", None):
-        return Professional.query.filter_by(name=current_user.username)
-    if hasattr(Professional, "user_id"):
-        return Professional.query.filter_by(user_id=current_user.id)
-    if hasattr(Professional, "user"):
-        return Professional.query.filter_by(user=current_user)
-    try:
-        return db.session.query(Professional).join(User, User.id == Professional.id).filter(User.id == current_user.id)
-    except Exception:
-        return Professional.query.filter(False)
-
-def get_or_create_professional_for_current_user(db, Professional, User, current_user, defaults=None):
-    defaults = defaults or {}
-    q = _query_professional_for_user(db, Professional, User, current_user)
-    professional = q.first()
-    if professional:
-        return professional
-
-    professional = Professional()
-    if hasattr(Professional, "name") and getattr(current_user, "username", None):
-        try: professional.name = current_user.username
-        except Exception: pass
-    if hasattr(Professional, "user_id"):
-        try: setattr(professional, "user_id", current_user.id)
-        except Exception: pass
-    if hasattr(Professional, "user"):
-        try: setattr(professional, "user", current_user)
-        except Exception: pass
-
-    base_defaults = {
-        "description": "Profil en cours de complétion.",
-        "availability": "disponible",
-        "consultation_types": "cabinet",
-        "status": "en_attente",
-    }
-    base_defaults.update(defaults or {})
-    for key, val in base_defaults.items():
-        if hasattr(Professional, key) and getattr(professional, key, None) in (None, ""):
-            try: setattr(professional, key, val)
-            except Exception: pass
-
-    if hasattr(Professional, "phone") and getattr(current_user, "phone", None) and not getattr(professional, "phone", None):
-        try: professional.phone = current_user.phone
-        except Exception: pass
-
-    db.session.add(professional)
-    try: db.session.commit()
-    except Exception:
-        db.session.rollback()
-    return professional
 
 # ========== Helpers images ==========
 AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
@@ -343,8 +326,11 @@ def _process_and_save_profile_image(file_storage) -> str:
     raw = file_storage.read()
     if not _PIL_OK:
         raise RuntimeError("Le traitement d'image nécessite Pillow (PIL).")
+
+    # validation
     try:
-        img = Image.open(io.BytesIO(raw)); img.verify()
+        img = Image.open(io.BytesIO(raw))
+        img.verify()
     except Exception:
         raise ValueError("Fichier image invalide ou corrompu")
 
@@ -352,6 +338,7 @@ def _process_and_save_profile_image(file_storage) -> str:
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
 
+    # strip EXIF + crop carré 512
     img_no_exif = Image.new(img.mode, img.size)
     img_no_exif.putdata(list(img.getdata()))
     img_square = ImageOps.fit(img_no_exif, (512, 512), Image.Resampling.LANCZOS)
@@ -402,30 +389,34 @@ def robots():
 # ========== Pages publiques ==========
 @app.route("/", endpoint="index")
 def index():
+    # Tri admin si table d’ordre dispo, sinon fallback
     try:
-        base = (
-            db.session.query(Professional)
-            .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
-            .filter(Professional.status == 'valide')
-            .order_by(
-                db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc(),
-                Professional.is_featured.desc(),
-                db.func.coalesce(Professional.featured_rank, 999999).asc(),
-                Professional.created_at.desc(),
-                Professional.id.desc()
+        if ProfessionalOrder is not None:
+            base = (
+                db.session.query(Professional)
+                .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
+                .filter(Professional.status == 'valide')
+                .order_by(
+                    db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc(),
+                    Professional.is_featured.desc(),
+                    db.func.coalesce(Professional.featured_rank, 999999).asc(),
+                    Professional.created_at.desc(),
+                    Professional.id.desc()
+                )
             )
-        )
+        else:
+            raise RuntimeError("No ProfessionalOrder")
         top_professionals = base.limit(9).all()
         top_ids = [p.id for p in top_professionals]
         more_professionals = base.filter(~Professional.id.in_(top_ids)).all() if top_ids else base.offset(9).all()
     except Exception as e:
-        app.logger.warning("Classement admin indisponible (%s), fallback 'featured puis récents'.", e)
+        app.logger.info("Classement admin indisponible (%s) → fallback 'featured puis récents'.", e)
         fb = (
             Professional.query
             .filter_by(status='valide')
             .order_by(
                 Professional.is_featured.desc(),
-                db.func.coalesce(Professional.featured_rank, 999999).asc(),
+                db.func.coalesce(getattr(Professional, "featured_rank", 999999), 999999).asc(),
                 Professional.created_at.desc(),
                 Professional.id.desc()
             )
@@ -495,8 +486,9 @@ def professional_detail(professional_id: int):
 @app.route("/media/profile/<int:professional_id>", endpoint="profile_photo")
 def profile_photo(professional_id: int):
     pro = Professional.query.get_or_404(professional_id)
-    raw_url = (pro.image_url or "").strip()
+    raw_url = (getattr(pro, "image_url", "") or "").strip()
 
+    # Fichiers uploadés localement (/media/profiles/NAME)
     if raw_url.startswith("/media/profiles/"):
         fname = raw_url.split("/media/profiles/")[-1]
         safe_name = os.path.basename(fname)
@@ -508,6 +500,7 @@ def profile_photo(professional_id: int):
         return _avatar_fallback_response()
 
     if not raw_url:
+        # avatars pack statique (ex: static/avatars/ID.webp)
         file_path = _avatar_file_for(professional_id)
         if file_path and os.path.isfile(file_path):
             return send_from_directory(AVATAR_DIR, os.path.basename(file_path), max_age=60*60*24*7)
@@ -515,6 +508,7 @@ def profile_photo(professional_id: int):
             return send_from_directory(os.path.join(app.root_path, "static"), "avatar_default.webp", max_age=86400)
         return _avatar_fallback_response()
 
+    # Proxy https
     if raw_url.startswith("http://"):
         raw_url = "https://" + raw_url[len("http://"):]
     parsed = urlparse(raw_url)
@@ -537,7 +531,7 @@ def profile_photo(professional_id: int):
     return resp
 
 # Alias rétro-compatibles
-@app.route("/avatar", endpoint="avatar")
+@app.route("/avatar")
 def avatar_alias_qs():
     pid = request.args.get("professional_id", type=int)
     if not pid:
@@ -744,11 +738,11 @@ def auth_google_callback():
 
         if user:
             changed = False
-            if not user.oauth_sub and sub:
+            if not getattr(user, "oauth_sub", None) and sub:
                 user.oauth_provider = "google"; user.oauth_sub = sub; changed = True
-            if picture and not user.picture_url:
+            if picture and not getattr(user, "picture_url", None):
                 user.picture_url = picture; changed = True
-            if name and not user.full_name:
+            if name and not getattr(user, "full_name", None):
                 user.full_name = name; changed = True
             if changed:
                 db.session.commit()
@@ -866,7 +860,7 @@ def forgot_password():
 def reset_password(token: str):
     user = consume_token_to_user(token)
     if not user:
-        flash("Lien invalide ou expiré. Refaite une demande.", "danger")
+        flash("Lien invalide ou expiré. Refaire une demande.", "danger")
         return redirect(url_for("forgot_password"))
 
     if request.method == "POST":
@@ -903,7 +897,6 @@ def professional_dashboard():
     return render_template("professional_dashboard.html",
                            professional=professional, appointments=appointments)
 
-# Dispos hebdo
 @app.route("/professional/availability", methods=["GET","POST"], endpoint="professional_availability")
 @login_required
 def professional_availability():
@@ -945,7 +938,6 @@ def professional_availability():
                            availabilities=availability_dict,
                            windows_by_day=windows_by_day)
 
-# Indisponibilités ponctuelles
 @app.route("/professional/unavailable-slots", methods=["GET","POST"], endpoint="professional_unavailable_slots")
 @login_required
 def professional_unavailable_slots():
@@ -997,7 +989,67 @@ def delete_unavailable_slot(slot_id: int):
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
 
-# Édition du profil pro
+# --- Helpers robustes pour récupérer/créer le profil pro ---
+def _query_professional_for_user(db, Professional, User, current_user):
+    if hasattr(Professional, "name") and getattr(current_user, "username", None):
+        return Professional.query.filter_by(name=current_user.username)
+    if hasattr(Professional, "user_id"):
+        return Professional.query.filter_by(user_id=current_user.id)
+    if hasattr(Professional, "user"):
+        return Professional.query.filter_by(user=current_user)
+    try:
+        return db.session.query(Professional).join(User, User.id == Professional.id).filter(User.id == current_user.id)
+    except Exception:
+        return Professional.query.filter(False)
+
+def get_or_create_professional_for_current_user(db, Professional, User, current_user, defaults=None):
+    defaults = defaults or {}
+    q = _query_professional_for_user(db, Professional, User, current_user)
+    professional = q.first()
+    if professional:
+        return professional
+    professional = Professional()
+    if hasattr(Professional, "name") and getattr(current_user, "username", None):
+        try:
+            professional.name = current_user.username
+        except Exception:
+            pass
+    if hasattr(Professional, "user_id"):
+        try:
+            setattr(professional, "user_id", current_user.id)
+        except Exception:
+            pass
+    if hasattr(Professional, "user"):
+        try:
+            setattr(professional, "user", current_user)
+        except Exception:
+            pass
+    base_defaults = {
+        "description": "Profil en cours de complétion.",
+        "availability": "disponible",
+        "consultation_types": "cabinet",
+        "status": "en_attente",
+    }
+    base_defaults.update(defaults or {})
+    for key, val in base_defaults.items():
+        if hasattr(Professional, key) and getattr(professional, key, None) in (None, ""):
+            try:
+                setattr(professional, key, val)
+            except Exception:
+                pass
+    if hasattr(Professional, "phone") and getattr(current_user, "phone", None) and not getattr(professional, "phone", None):
+        try:
+            professional.phone = current_user.phone
+        except Exception:
+            pass
+    db.session.add(professional)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return professional
+
+# --- ROUTE: édition du profil pro ---
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
@@ -1012,7 +1064,6 @@ def professional_edit_profile():
 
     if request.method == "POST":
         f = request.form
-
         professional.name = f.get("name", "").strip() or None
         professional.specialty = f.get("specialty", "").strip() or None
         professional.description = f.get("description", "").strip() or None
@@ -1021,12 +1072,16 @@ def professional_edit_profile():
         professional.phone = f.get("phone", "").strip() or None
 
         def to_float(v):
-            try: return float(v) if v not in (None, "",) else None
-            except ValueError: return None
+            try:
+                return float(v) if v not in (None, "",) else None
+            except ValueError:
+                return None
 
         def to_int(v):
-            try: return int(v) if v not in (None, "",) else None
-            except ValueError: return None
+            try:
+                return int(v) if v not in (None, "",) else None
+            except ValueError:
+                return None
 
         professional.latitude  = to_float(f.get("latitude"))
         professional.longitude = to_float(f.get("longitude"))
@@ -1054,7 +1109,7 @@ def professional_edit_profile():
             (professional.youtube_url or ""),
         )
         if new_links != old_links:
-            professional.social_links_approved = False
+            professional.social_links_approved = False  # revalidation admin
 
         db.session.commit()
         flash("Profil mis à jour.", "success")
@@ -1091,7 +1146,7 @@ def _overlap(start1: dtime, end1: dtime, start2: dtime, end2: dtime) -> bool:
 @login_required
 def book_appointment(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
-    if professional.status != "valide":
+    if getattr(professional, "status", "") != "valide":
         flash("Ce professionnel n'est pas encore validé par l'administration.")
         return redirect(url_for("professionals"))
 
@@ -1152,6 +1207,7 @@ def book_appointment(professional_id: int):
         )
         db.session.add(appointment); db.session.commit()
 
+        # mails
         try:
             subject, text = _build_notif("pending", appointment, role="patient")
             safe_send_email(current_user.email, subject, text)
@@ -1184,7 +1240,7 @@ def book_appointment(professional_id: int):
 @app.route("/api/professional/<int:professional_id>/available-slots", endpoint="api_available_slots")
 def api_available_slots(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
-    if professional.status != "valide":
+    if getattr(professional, "status", "") != "valide":
         return jsonify({"error": "Professionnel non validé"}), 400
 
     requested_date = request.args.get("date", date.today().isoformat())
@@ -1281,7 +1337,7 @@ with app.app_context():
             db.session.execute(text(sql))
         db.session.commit()
     except Exception as e:
-        app.logger.warning(f"Mini-migration colonnes: {e}")
+        app.logger.warning("Mini-migration colonnes: %s", e)
 
     # seed admin
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
@@ -1300,13 +1356,5 @@ with app.app_context():
         )
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
-
-# Filet de sécurité (si le template attend un endpoint qui n'existe pas)
-if 'professional_edit_profile' not in app.view_functions:
-    @app.route('/professional/profile', methods=['GET', 'POST'], endpoint='professional_edit_profile')
-    @login_required
-    def _professional_edit_profile_alias():
-        flash("Redirection vers votre espace professionnel.", "info")
-        return redirect(url_for('professional_dashboard'))
 
 # Pas de __main__ : Gunicorn lance app:app
