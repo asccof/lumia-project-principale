@@ -21,11 +21,22 @@ from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
 # --- Helpers robustes pour récupérer/créer le profil pro sans casser le modèle ---
 
+# --- Helpers robustes pour récupérer/créer le profil pro sans casser le modèle ---
+
 def _query_professional_for_user(db, Professional, User, current_user):
     """
     Retourne une requête SQLAlchemy pour trouver le Professional du current_user,
-    quelle que soit la forme du modèle (avec user_id ou avec relation user).
+    en s'adaptant au schéma actuel.
+    Ordre de préférence:
+      1) name == current_user.username (schéma actuel)
+      2) colonne user_id (si jamais elle apparaît un jour)
+      3) relation user (si jamais elle apparaît un jour)
+      4) fallback très conservateur (jointure par id) -> évité si possible
     """
+    # cas 0 : schéma actuel — on associe par le nom d'utilisateur
+    if hasattr(Professional, "name") and getattr(current_user, "username", None):
+        return Professional.query.filter_by(name=current_user.username)
+
     # cas 1 : colonne user_id présente
     if hasattr(Professional, "user_id"):
         return Professional.query.filter_by(user_id=current_user.id)
@@ -34,20 +45,18 @@ def _query_professional_for_user(db, Professional, User, current_user):
     if hasattr(Professional, "user"):
         return Professional.query.filter_by(user=current_user)
 
-    # cas 3 : aucun des deux connus -> fallback par jointure sur users si possible
-    # On essaie de trouver une clé étrangère plausible (owner_id, account_id, etc.)
-    # mais on reste non-invasif : jointure sur users.id == Professional.id (1-1 vieux schéma)
+    # cas 3 : dernier recours (à éviter) — jointure id=id
     try:
         return db.session.query(Professional).join(User, User.id == Professional.id).filter(User.id == current_user.id)
     except Exception:
-        # Dernier filet : renvoyer une requête impossible qui ne lève pas d’erreur
+        # Requête \"vide\" inoffensive si tout échoue
         return Professional.query.filter(False)
 
 
 def get_or_create_professional_for_current_user(db, Professional, User, current_user, defaults=None):
     """
     Récupère le Professional du current_user; si absent, le crée proprement
-    sans supposer de schéma précis. 'defaults' peut contenir des champs à préremplir.
+    sans supposer de schéma précis.
     """
     defaults = defaults or {}
     q = _query_professional_for_user(db, Professional, User, current_user)
@@ -56,35 +65,57 @@ def get_or_create_professional_for_current_user(db, Professional, User, current_
     if professional:
         return professional
 
-    # Création sans casser : on renseigne au mieux selon les attributs disponibles
+    # Création non-destructive alignée avec ton schéma actuel
     professional = Professional()
 
-    # Essaie d’affecter user_id si présent
-    if hasattr(Professional, "user_id"):
-        setattr(professional, "user_id", current_user.id)
+    # Priorité: lier par le nom d'utilisateur (schéma actuel)
+    if hasattr(Professional, "name") and getattr(current_user, "username", None):
+        try:
+            professional.name = current_user.username
+        except Exception:
+            pass
 
-    # Essaie d’affecter la relation user si présente
+    # Compat: si jamais user_id/relation existent dans un futur schéma
+    if hasattr(Professional, "user_id"):
+        try:
+            setattr(professional, "user_id", current_user.id)
+        except Exception:
+            pass
     if hasattr(Professional, "user"):
         try:
             setattr(professional, "user", current_user)
         except Exception:
             pass
 
-    # Pré-remplissages utiles (optionnels) si ces champs existent
-    for key, val in defaults.items():
-        if hasattr(Professional, key):
+    # Pré-remplissages doux (uniquement si les champs existent)
+    base_defaults = {
+        "description": "Profil en cours de complétion.",
+        "availability": "disponible",
+        "consultation_types": "cabinet",
+        "status": "en_attente",
+    }
+    base_defaults.update(defaults or {})
+    for key, val in base_defaults.items():
+        if hasattr(Professional, key) and getattr(professional, key, None) in (None, ""):
             try:
                 setattr(professional, key, val)
             except Exception:
                 pass
+
+    # Optionnel: si le modèle a `phone` et que l'utilisateur en a un
+    if hasattr(Professional, "phone") and getattr(current_user, "phone", None) and not getattr(professional, "phone", None):
+        try:
+            professional.phone = current_user.phone
+        except Exception:
+            pass
 
     db.session.add(professional)
     try:
         db.session.commit()
     except Exception:
         db.session.rollback()
-        # On reste non bloquant : on renvoie l’objet non commit si besoin
     return professional
+
 
 # ========== PIL (images) ==========
 try:
