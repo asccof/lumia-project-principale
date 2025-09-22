@@ -19,6 +19,9 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
+from i18n_ext import init_i18n
+init_i18n(app)
+
 # --- Helpers robustes pour récupérer/créer le profil pro sans casser le modèle ---
 
 # --- Helpers robustes pour récupérer/créer le profil pro sans casser le modèle ---
