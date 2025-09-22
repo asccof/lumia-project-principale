@@ -245,16 +245,15 @@ google = oauth.register(
 )
 
 # ========== Langue (compatible base.html) ==========
-# ========= LANG SWITCH - BLOC COMPLET (drop-in) =========
-# NB: nécessite uniquement Flask (déjà importé) ; aucun autre fichier à modifier.
+# ==== I18N propre et minimal ====
+from flask import g, request, redirect, url_for, make_response
 
-# Conf globales
-DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
-SUPPORTED_LANGS = {"fr", "ar", "en"}
+DEFAULT_LANG = "fr"
+SUPPORTED_LANGS = {"fr", "en", "ar"}
 LANG_COOKIE = "lang"
 LANG_MAX_AGE = 60 * 60 * 24 * 180  # 180 jours
 
-def _normalize_lang(code: str | None) -> str:
+def _normalize_lang(code):
     if not code:
         return DEFAULT_LANG
     v = str(code).strip().lower()
@@ -264,7 +263,7 @@ def _normalize_lang(code: str | None) -> str:
 
 @app.before_request
 def _load_locale():
-    # ordre: cookie -> ?lang= -> entête navigateur
+    # ordre: cookie -> ?lang= -> négociation HTTP
     lang = (
         request.cookies.get(LANG_COOKIE)
         or request.args.get("lang")
@@ -272,26 +271,107 @@ def _load_locale():
     )
     g.current_locale = _normalize_lang(lang)
 
-@app.context_processor
-def inject_lang():
+# Petit dictionnaire (ajoute des clés si tu en utilises d'autres)
+TRANSLATIONS = {
+    "fr": {
+        "nav": {
+            "home": "Accueil",
+            "professionals": "Professionnels",
+            "anthecc": "ANTHECC",
+            "about": "À propos",
+            "contact": "Contact",
+            "status": "Statut",
+        },
+        "auth": {"login": "Connexion", "register": "Inscription", "logout": "Déconnexion"},
+        "common": {"menu": "Menu"},
+    },
+    "en": {
+        "nav": {
+            "home": "Home",
+            "professionals": "Professionals",
+            "anthecc": "ANTHECC",
+            "about": "About",
+            "contact": "Contact",
+            "status": "Status",
+        },
+        "auth": {"login": "Login", "register": "Sign up", "logout": "Logout"},
+        "common": {"menu": "Menu"},
+    },
+    "ar": {
+        "nav": {
+            "home": "الرئيسية",
+            "professionals": "المهنيون",
+            "anthecc": "ANTHECC",
+            "about": "حول",
+            "contact": "اتصل",
+            "status": "الحالة",
+        },
+        "auth": {"login": "تسجيل الدخول", "register": "إنشاء حساب", "logout": "تسجيل الخروج"},
+        "common": {"menu": "القائمة"},
+    },
+}
+
+def _get_in(d, parts):
+    cur = d
+    for p in parts:
+        if not isinstance(cur, dict) or p not in cur:
+            return None
+        cur = cur[p]
+    return cur
+
+def t(key, default=None, **kwargs):
+    """
+    Utilisation dans Jinja : {{ t('nav.home') }}
+    Fallback: langue courante -> FR -> dernier segment de la clé -> default
+    """
     lang = getattr(g, "current_locale", DEFAULT_LANG)
-    label_map = {"fr": "Français", "ar": "العربية", "en": "English"}
-    dir_map = {"ar": "rtl", "fr": "ltr", "en": "ltr"}
+    parts = str(key).split(".")
+    val = _get_in(TRANSLATIONS.get(lang, {}), parts)
+    if val is None:
+        val = _get_in(TRANSLATIONS.get("fr", {}), parts)
+    if val is None:
+        val = default if default is not None else parts[-1]
+    if kwargs:
+        try:
+            val = val.format(**kwargs)
+        except Exception:
+            pass
+    return val
+
+def _lang_label(lang):
+    return {"fr": "Français", "en": "English", "ar": "العربية"}.get(lang, "Français")
+
+def _text_dir(lang):
+    return "rtl" if lang == "ar" else "ltr"
+
+@app.context_processor
+def inject_i18n():
+    lang = getattr(g, "current_locale", DEFAULT_LANG)
     return {
+        "t": t,
         "current_lang": lang,
-        "current_lang_label": label_map.get(lang, "Français"),
-        "text_dir": dir_map.get(lang, "ltr"),
-        # tu pourras ajouter ici un helper t('clé') si tu ajoutes un système de traductions plus tard
+        "current_lang_label": _lang_label(lang),
+        "text_dir": _text_dir(lang),
     }
 
-@app.route('/set-language/<lang>', methods=['GET'], endpoint='set_language')
-def set_language(lang: str):
-    lang = _normalize_lang(lang)
-    resp = make_response(redirect(request.referrer or url_for('index')))
-    # cookie sur HTTPS, scope domaine courant (.ma ou .com séparément)
-    resp.set_cookie(LANG_COOKIE, lang, max_age=LANG_MAX_AGE, samesite="Lax", secure=True)
+# Route de changement de langue — compatible avec lang ET lang_code
+@app.route("/set-language/<lang>")
+@app.route("/set-language/<lang_code>")
+def set_language(lang=None, lang_code=None):
+    code = _normalize_lang(lang or lang_code)
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, samesite="Lax")
     return resp
-# ========= FIN LANG SWITCH =========
+
+# Variante via query string: /set-language?lang=fr
+@app.route("/set-language")
+def set_language_qs():
+    code = _normalize_lang(request.args.get("lang"))
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, samesite="Lax")
+    return resp
+# ==== /I18N ====
+
 
 
 
