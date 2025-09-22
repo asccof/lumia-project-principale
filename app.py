@@ -1,7 +1,7 @@
-# app.py — Tighri (cohérent + fix i18n multi-domaine + aucun appel externe)
+voici app.py
+# app.py — version unifiée et propre pour Tighri
 
 from __future__ import annotations
-
 import os, io, uuid, secrets, hashlib, requests
 from datetime import datetime, date, timedelta, time as dtime
 from pathlib import Path
@@ -20,234 +20,81 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
+# --- Helpers robustes pour récupérer/créer le profil pro sans casser le modèle ---
 
-# =========================
-#   CONSTANTES / DOSSIERS
-# =========================
-BASE_DIR = Path(__file__).resolve().parent
-BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
+def _query_professional_for_user(db, Professional, User, current_user):
+    """
+    Retourne une requête SQLAlchemy pour trouver le Professional du current_user,
+    quelle que soit la forme du modèle (avec user_id ou avec relation user).
+    """
+    # cas 1 : colonne user_id présente
+    if hasattr(Professional, "user_id"):
+        return Professional.query.filter_by(user_id=current_user.id)
 
-UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
-UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
-ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
-MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
+    # cas 2 : relation 'user' présente (définie via db.relationship)
+    if hasattr(Professional, "user"):
+        return Professional.query.filter_by(user=current_user)
 
-# =========================
-#   FLASK APP
-# =========================
-app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = True
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
-app.config["REMEMBER_COOKIE_NAME"] = "tighri_remember"
-app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=60)
-app.config["REMEMBER_COOKIE_SECURE"] = True
-app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
-app.config["PREFERRED_URL_SCHEME"] = "https"
-app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
-app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
-
-# Crée les dossiers d’upload si besoin
-try:
-    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
-    UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-except Exception as e:
-    app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
-
-# =========================
-#   DB / MODELS
-# =========================
-def _normalize_pg_uri(uri: str) -> str:
-    if not uri:
-        return uri
-    if uri.startswith("postgres://"):
-        uri = "postgresql://" + uri[len("postgres://"):]
-    # forcer psycopg3
-    if uri.startswith("postgresql+psycopg2://"):
-        uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
-    elif uri.startswith("postgresql://"):
-        uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
-    # sslmode=require si absent
-    parsed = urlparse(uri)
-    q = parse_qs(parsed.query)
-    if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
-        q["sslmode"] = ["require"]
-        uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
-    return uri
-
-from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
-uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
-if not uri:
-    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
-app.config["SQLALCHEMY_DATABASE_URI"] = _normalize_pg_uri(uri)
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
-db.init_app(app)
-
-# =========================
-#   ADMIN BLUEPRINT
-# =========================
-from admin_server import admin_bp, ProfessionalOrder, _build_notif
-app.register_blueprint(admin_bp, url_prefix="/admin")
-
-# =========================
-#   LOGIN MANAGER
-# =========================
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = "login"
-
-@login_manager.user_loader
-def _load_user(user_id: str):
+    # cas 3 : aucun des deux connus -> fallback par jointure sur users si possible
+    # On essaie de trouver une clé étrangère plausible (owner_id, account_id, etc.)
+    # mais on reste non-invasif : jointure sur users.id == Professional.id (1-1 vieux schéma)
     try:
-        return db.session.get(User, int(user_id))
+        return db.session.query(Professional).join(User, User.id == Professional.id).filter(User.id == current_user.id)
     except Exception:
-        return None
+        # Dernier filet : renvoyer une requête impossible qui ne lève pas d’erreur
+        return Professional.query.filter(False)
 
-# =========================
-#   I18N / LANG
-#   (cookie valable sur .tighri.ma / .tighri.com, Vary: Cookie, no-cache HTML)
-# =========================
-DEFAULT_LANG = "fr"
-SUPPORTED_LANGS = {"fr", "en", "ar"}
-LANG_COOKIE = "lang"
-LANG_MAX_AGE = 60 * 60 * 24 * 180  # 180 jours
 
-def _normalize_lang(code: str | None):
-    if not code:
-        return DEFAULT_LANG
-    v = str(code).strip().lower()
-    if "-" in v:  # en-US -> en
-        v = v.split("-", 1)[0]
-    return v if v in SUPPORTED_LANGS else DEFAULT_LANG
+def get_or_create_professional_for_current_user(db, Professional, User, current_user, defaults=None):
+    """
+    Récupère le Professional du current_user; si absent, le crée proprement
+    sans supposer de schéma précis. 'defaults' peut contenir des champs à préremplir.
+    """
+    defaults = defaults or {}
+    q = _query_professional_for_user(db, Professional, User, current_user)
+    professional = q.first()
 
-def _cookie_domain_for(host: str | None):
-    if not host:
-        return None
-    host = host.split(":")[0]
-    if host in ("localhost",) or host.replace(".", "").isdigit():
-        return None
-    parts = host.split(".")
-    if len(parts) >= 2:
-        return "." + ".".join(parts[-2:])   # .tighri.ma / .tighri.com
-    return None
+    if professional:
+        return professional
 
-@app.before_request
-def _load_locale():
-    lang = (
-        request.cookies.get(LANG_COOKIE)
-        or request.args.get("lang")
-        or (request.accept_languages.best_match(SUPPORTED_LANGS) if request.accept_languages else None)
-    )
-    g.current_locale = _normalize_lang(lang)
+    # Création sans casser : on renseigne au mieux selon les attributs disponibles
+    professional = Professional()
 
-@app.after_request
-def _vary_on_cookie_for_lang(resp):
-    ct = resp.headers.get("Content-Type", "")
-    if "text/html" in ct:
-        existing_vary = resp.headers.get("Vary")
-        resp.headers["Vary"] = "Cookie" if not existing_vary else f"{existing_vary}, Cookie"
-        # Empêche les caches partagés de mélanger les langues
-        resp.headers["Cache-Control"] = "private, no-store, no-cache, must-revalidate, max-age=0"
-        resp.headers["Pragma"] = "no-cache"
-        resp.headers["Expires"] = "0"
-    return resp
+    # Essaie d’affecter user_id si présent
+    if hasattr(Professional, "user_id"):
+        setattr(professional, "user_id", current_user.id)
 
-# Mini-dico (tu peux étendre)
-TRANSLATIONS = {
-    "fr": {
-        "nav": {"home": "Accueil", "professionals": "Professionnels", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact"},
-        "auth": {"login": "Connexion", "register": "Inscription", "logout": "Déconnexion"},
-        "common": {"menu": "menu"},
-        "home": {"title": "Tighri", "tagline": "La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés"},
-        "search": {"cta": "Rechercher", "mode": "Mode", "city": "Ville", "specialty": "Spécialité", "q": "Nom, mot-clé..."},
-        "cards": {"patient": "Espace Patient", "pro": "Espace Professionnel"},
-    },
-    "en": {
-        "nav": {"home": "Home", "professionals": "Professionals", "anthecc": "ANTHECC", "about": "About", "contact": "Contact"},
-        "auth": {"login": "Login", "register": "Sign up", "logout": "Logout"},
-        "common": {"menu": "menu"},
-        "home": {"title": "Tighri", "tagline": "Moroccan platform to book certified psychologists, therapists and coaches"},
-        "search": {"cta": "Search", "mode": "Mode", "city": "City", "specialty": "Specialty", "q": "Name, keyword..."},
-        "cards": {"patient": "Patient Space", "pro": "Professional Space"},
-    },
-    "ar": {
-        "nav": {"home": "الرئيسية", "professionals": "المهنيون", "anthecc": "ANTHECC", "about": "حول", "contact": "اتصل"},
-        "auth": {"login": "تسجيل الدخول", "register": "إنشاء حساب", "logout": "تسجيل الخروج"},
-        "common": {"menu": "القائمة"},
-        "home": {"title": "تيغري", "tagline": "منصة مغربية لحجز مواعيد مع أخصائيين ومعالجين ومدربين معتمدين"},
-        "search": {"cta": "ابحث", "mode": "النمط", "city": "المدينة", "specialty": "التخصص", "q": "اسم، كلمة..."},
-        "cards": {"patient": "فضاء المريض", "pro": "فضاء المهني"},
-    },
-}
-
-def _get_in(d, parts):
-    cur = d
-    for p in parts:
-        if not isinstance(cur, dict) or p not in cur:
-            return None
-        cur = cur[p]
-    return cur
-
-def t(key, default=None, **kwargs):
-    lang = getattr(g, "current_locale", DEFAULT_LANG)
-    parts = str(key).split(".")
-    val = _get_in(TRANSLATIONS.get(lang, {}), parts)
-    if val is None:
-        val = _get_in(TRANSLATIONS.get("fr", {}), parts)
-    if val is None:
-        val = default if default is not None else parts[-1]
-    if kwargs:
+    # Essaie d’affecter la relation user si présente
+    if hasattr(Professional, "user"):
         try:
-            val = val.format(**kwargs)
+            setattr(professional, "user", current_user)
         except Exception:
             pass
-    return val
 
-def _lang_label(lang):
-    return {"fr": "Français", "en": "English", "ar": "العربية"}.get(lang, "Français")
+    # Pré-remplissages utiles (optionnels) si ces champs existent
+    for key, val in defaults.items():
+        if hasattr(Professional, key):
+            try:
+                setattr(professional, key, val)
+            except Exception:
+                pass
 
-def _text_dir(lang):
-    return "rtl" if lang == "ar" else "ltr"
+    db.session.add(professional)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        # On reste non bloquant : on renvoie l’objet non commit si besoin
+    return professional
 
-@app.context_processor
-def inject_i18n():
-    lang = getattr(g, "current_locale", DEFAULT_LANG)
-    return {
-        "t": t,
-        "current_lang": lang,
-        "current_lang_label": _lang_label(lang),
-        "text_dir": _text_dir,            # on expose la fonction
-        "text_dir_value": _text_dir(lang) # bonus : la valeur directe si un template en a besoin
-    }
+# ========== PIL (images) ==========
+try:
+    from PIL import Image, ImageOps
+    _PIL_OK = True
+except Exception:
+    _PIL_OK = False
 
-# Routes pour changer de langue (cookie domaine = .tighri.ma / .tighri.com)
-@app.route("/set-language/<code>")
-def set_language_path(code):
-    code = _normalize_lang(code)
-    resp = make_response(redirect(request.referrer or url_for("index")))
-    resp.set_cookie(
-        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax",
-        domain=_cookie_domain_for(request.host), path="/",
-    )
-    return resp
-
-@app.route("/set-language")
-def set_language_qs():
-    code = _normalize_lang(request.args.get("lang"))
-    resp = make_response(redirect(request.referrer or url_for("index")))
-    resp.set_cookie(
-        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax",
-        domain=_cookie_domain_for(request.host), path="/",
-    )
-    return resp
-
-# =========================
-#   EMAILS (safe wrapper)
-# =========================
+# ========== Notifications sûres ==========
 from notifications import send_email as _notif_send_email
 def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None = None) -> bool:
     try:
@@ -263,19 +110,136 @@ def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None
         current_app.logger.exception("safe_send_email exception: %s", e)
         return False
 
-# =========================
-#   PIL (images)
-# =========================
-try:
-    from PIL import Image, ImageOps
-    _PIL_OK = True
-except Exception:
-    _PIL_OK = False
+# ========== Constantes ==========
+BASE_DIR = Path(__file__).resolve().parent
+BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
 
+UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
+UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
+ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
+MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
+
+DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
+SUPPORTED_LANGS = {"fr", "ar", "en"}
+LANG_COOKIE = "lang"
+
+# ========== App ==========
+app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+app.config["REMEMBER_COOKIE_NAME"] = "tighri_remember"
+app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=60)
+app.config["REMEMBER_COOKIE_SECURE"] = True
+app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
+app.config['PREFERRED_URL_SCHEME'] = 'https'
+app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
+app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
+
+# Créer dossiers d’upload si besoin
+try:
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
+
+# ========== DB & modèles ==========
+def _normalize_pg_uri(uri: str) -> str:
+    if not uri:
+        return uri
+    if uri.startswith("postgres://"):
+        uri = "postgresql://" + uri[len("postgres://"):]
+    # forcer driver psycopg3
+    if uri.startswith("postgresql+psycopg2://"):
+        uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
+    elif uri.startswith("postgresql://"):
+        uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
+    # sslmode=require si absent
+    parsed = urlparse(uri)
+    q = parse_qs(parsed.query)
+    if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
+        q["sslmode"] = ["require"]
+        uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
+    return uri
+
+# On utilise le db des models (source de vérité)
+from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
+uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
+if not uri:
+    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
+app.config["SQLALCHEMY_DATABASE_URI"] = _normalize_pg_uri(uri)
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
+db.init_app(app)
+
+# ========== Admin (Blueprint) ==========
+from admin_server import admin_bp, ProfessionalOrder, _build_notif
+app.register_blueprint(admin_bp, url_prefix="/admin")
+
+# ========== Login Manager ==========
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+@login_manager.user_loader
+def _load_user(user_id: str):
+    try:
+        return db.session.get(User, int(user_id))
+    except Exception:
+        return None
+
+# ========== OAuth Google ==========
+oauth = OAuth(app)
+google = oauth.register(
+    name="google",
+    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+    access_token_url="https://oauth2.googleapis.com/token",
+    authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
+    api_base_url="https://www.googleapis.com/oauth2/v3/",
+    client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
+)
+
+# ========== Langue (compatible base.html) ==========
+# ===== Langue (compat avec base.html) =====
+DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
+SUPPORTED_LANGS = {"fr", "ar", "en"}
+LANG_COOKIE = "lang"
+
+def _normalize_lang(code: str | None) -> str:
+    if not code:
+        return DEFAULT_LANG
+    code = code.lower().strip()
+    return code if code in SUPPORTED_LANGS else DEFAULT_LANG
+
+@app.before_request
+def _load_locale():
+    lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
+    g.current_locale = lang
+    g.current_locale_label = {"fr": "Français", "ar": "العربية", "en": "English"}.get(lang, "Français")
+
+# ⚠️ Même endpoint pour 2 routes → url_for('set_language', ...) marchera
+@app.route('/set-language/<lang>', methods=['GET'], endpoint='set_language')
+@app.route('/set-language', methods=['GET'], endpoint='set_language')
+def set_language(lang: str | None = None):
+    # accepte lang via segment, ?lang=, ou ?lang_code= (compat base.html)
+    lang = _normalize_lang(lang or request.args.get('lang') or request.args.get('lang_code'))
+    resp = make_response(redirect(request.referrer or url_for('index')))
+    resp.set_cookie(LANG_COOKIE, lang, max_age=60*60*24*180, samesite="Lax", secure=True)
+    return resp
+
+@app.context_processor
+def inject_lang():
+    lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
+    return {"current_lang": lang, "SUPPORTED_LANGS": SUPPORTED_LANGS}
+
+
+# ========== Helpers images ==========
 AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
 PLACEHOLDER_AVATAR = os.path.join(app.root_path, "static", "avatar_default.webp")
-PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
-AVATAR_DEFAULT_REL = "img/avatar-default.png"
 
 def _ext_ok(filename: str) -> bool:
     if not filename:
@@ -291,6 +255,7 @@ def _process_and_save_profile_image(file_storage) -> str:
     if not _PIL_OK:
         raise RuntimeError("Le traitement d'image nécessite Pillow (PIL).")
 
+    # validation
     try:
         img = Image.open(io.BytesIO(raw))
         img.verify()
@@ -300,6 +265,8 @@ def _process_and_save_profile_image(file_storage) -> str:
     img = Image.open(io.BytesIO(raw))
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
+
+    # strip EXIF + crop carré 512
     img_no_exif = Image.new(img.mode, img.size)
     img_no_exif.putdata(list(img.getdata()))
     img_square = ImageOps.fit(img_no_exif, (512, 512), Image.Resampling.LANCZOS)
@@ -319,6 +286,9 @@ def _avatar_file_for(pid: int) -> Optional[str]:
             return path
     return None
 
+PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
+AVATAR_DEFAULT_REL = "img/avatar-default.png"
+
 def _avatar_fallback_response():
     static_avatar = Path(app.static_folder or (BASE_DIR / "static")) / AVATAR_DEFAULT_REL
     if static_avatar.exists():
@@ -327,9 +297,7 @@ def _avatar_fallback_response():
         return resp
     return redirect(PHOTO_PLACEHOLDER)
 
-# =========================
-#   ROUTES TECH
-# =========================
+# ========== Routes techniques ==========
 @app.route("/favicon.ico")
 def favicon():
     fav_path = Path(app.static_folder or (BASE_DIR / "static")) / "favicon.ico"
@@ -346,9 +314,7 @@ def robots():
         return send_from_directory(app.static_folder, "robots.txt", mimetype="text/plain")
     return ("User-agent: *\nDisallow:\n", 200, {"Content-Type": "text/plain"})
 
-# =========================
-#   PAGES PUBLIQUES
-# =========================
+# ========== Pages publiques ==========
 @app.route("/", endpoint="index")
 def index():
     # Tri admin si table d’ordre dispo, sinon fallback
@@ -402,6 +368,7 @@ def about():
 def contact():
     return render_template("contact.html")
 
+# Listing / recherche
 @app.route("/professionals", endpoint="professionals")
 def professionals():
     q = (request.args.get("q") or "").strip()
@@ -434,19 +401,19 @@ def professionals():
     pros = qry.order_by(Professional.is_featured.desc(), Professional.created_at.desc()).all()
     return render_template("professionals.html", professionals=pros, specialty=specialty, search_query=q)
 
+# Fiche pro
 @app.route("/professional/<int:professional_id>", endpoint="professional_detail")
 def professional_detail(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
     return render_template("professional_detail.html", professional=professional)
 
-# =========================
-#   MÉDIAS / PHOTOS
-# =========================
+# ========== Photos / médias ==========
 @app.route("/media/profile/<int:professional_id>", endpoint="profile_photo")
 def profile_photo(professional_id: int):
     pro = Professional.query.get_or_404(professional_id)
     raw_url = (pro.image_url or "").strip()
 
+    # Fichiers uploadés localement (/media/profiles/NAME)
     if raw_url.startswith("/media/profiles/"):
         fname = raw_url.split("/media/profiles/")[-1]
         safe_name = os.path.basename(fname)
@@ -458,6 +425,7 @@ def profile_photo(professional_id: int):
         return _avatar_fallback_response()
 
     if not raw_url:
+        # avatars pack statique (ex: static/avatars/ID.webp)
         file_path = _avatar_file_for(professional_id)
         if file_path and os.path.isfile(file_path):
             return send_from_directory(AVATAR_DIR, os.path.basename(file_path), max_age=60*60*24*7)
@@ -465,6 +433,7 @@ def profile_photo(professional_id: int):
             return send_from_directory(os.path.join(app.root_path, "static"), "avatar_default.webp", max_age=86400)
         return _avatar_fallback_response()
 
+    # Proxy https
     if raw_url.startswith("http://"):
         raw_url = "https://" + raw_url[len("http://"):]
     parsed = urlparse(raw_url)
@@ -486,7 +455,8 @@ def profile_photo(professional_id: int):
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
 
-@app.route("/avatar")
+# Alias rétro-compatibles
+@app.route("/avatar", endpoint="avatar")
 def avatar_alias_qs():
     pid = request.args.get("professional_id", type=int)
     if not pid:
@@ -497,6 +467,7 @@ def avatar_alias_qs():
 def avatar_alias_path(professional_id: int):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
+# Upload photo pro
 @app.route("/professional/profile/photo", methods=["GET", "POST"], endpoint="professional_upload_photo")
 @login_required
 def professional_upload_photo():
@@ -531,9 +502,7 @@ def professional_upload_photo():
 
     return render_template("upload_photo.html")
 
-# =========================
-#   AUTH LOCAL
-# =========================
+# ========== Auth local ==========
 @app.route("/register", methods=["GET","POST"], endpoint="register")
 def register():
     if request.method == "POST":
@@ -670,20 +639,7 @@ def logout():
     logout_user()
     return redirect(url_for("index"))
 
-# =========================
-#   OAUTH GOOGLE
-# =========================
-oauth = OAuth(app)
-google = oauth.register(
-    name="google",
-    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
-    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
-    access_token_url="https://oauth2.googleapis.com/token",
-    authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
-    api_base_url="https://www.googleapis.com/oauth2/v3/",
-    client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
-)
-
+# ========== OAuth Google ==========
 @app.route("/auth/google")
 def auth_google():
     redirect_uri = os.environ.get("OAUTH_REDIRECT_URI", url_for("auth_google_callback", _external=True, _scheme="https"))
@@ -738,9 +694,7 @@ def auth_google_callback():
         flash("Connexion Google impossible. Réessayez.", "danger")
         return redirect(url_for("login"))
 
-# =========================
-#   RESET PASSWORD
-# =========================
+# ========== Mot de passe : reset ==========
 def _hash_token(tok: str) -> str:
     return hashlib.sha256(tok.encode("utf-8")).hexdigest()
 
@@ -852,9 +806,7 @@ def reset_password(token: str):
         return redirect(url_for("login"))
     return render_template("reset_password.html")
 
-# =========================
-#   ESPACE PRO / RDV
-# =========================
+# ========== Espace pro / RDV ==========
 @app.route("/professional_dashboard", endpoint="professional_dashboard")
 @login_required
 def professional_dashboard():
@@ -870,6 +822,7 @@ def professional_dashboard():
     return render_template("professional_dashboard.html",
                            professional=professional, appointments=appointments)
 
+# Dispos hebdo
 @app.route("/professional/availability", methods=["GET","POST"], endpoint="professional_availability")
 @login_required
 def professional_availability():
@@ -911,6 +864,7 @@ def professional_availability():
                            availabilities=availability_dict,
                            windows_by_day=windows_by_day)
 
+# Indisponibilités ponctuelles
 @app.route("/professional/unavailable-slots", methods=["GET","POST"], endpoint="professional_unavailable_slots")
 @login_required
 def professional_unavailable_slots():
@@ -961,25 +915,33 @@ def delete_unavailable_slot(slot_id: int):
     db.session.delete(slot); db.session.commit()
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
+# --- imports (laisse-les si tu les as déjà) ---
+from flask import request, render_template, redirect, url_for, flash
+from flask_login import login_required, current_user
 
-# Edition profil pro (conservatif)
+# --- ROUTE: édition du profil pro ---
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
-    professional = Professional.query.filter_by(name=current_user.username).first()
-    if not professional:
-        professional = Professional(name=current_user.username, description="Profil en cours de complétion.", status="en_attente")
-        db.session.add(professional); db.session.commit()
+    # Récupère ou crée le profil du user connecté
+    professional = Professional.query.filter_by(user_id=current_user.id).first()
+    if professional is None:
+        professional = Professional(user_id=current_user.id)
+        db.session.add(professional)
+        # pas de commit ici; on committra en bas
 
     if request.method == "POST":
         f = request.form
-        professional.name = f.get("name", "").strip() or professional.name
-        professional.specialty = f.get("specialty", "").strip() or professional.specialty
-        professional.description = f.get("description", "").strip() or professional.description
-        professional.location = f.get("location", "").strip() or professional.location
-        professional.address = f.get("address", "").strip() or professional.address
-        professional.phone = f.get("phone", "").strip() or professional.phone
 
+        # Textes simples
+        professional.name = f.get("name", "").strip() or None
+        professional.specialty = f.get("specialty", "").strip() or None
+        professional.description = f.get("description", "").strip() or None
+        professional.location = f.get("location", "").strip() or None
+        professional.address = f.get("address", "").strip() or None
+        professional.phone = f.get("phone", "").strip() or None
+
+        # Nombres (tolère vide)
         def to_float(v):
             try:
                 return float(v) if v not in (None, "",) else None
@@ -998,9 +960,11 @@ def professional_edit_profile():
         professional.consultation_duration_minutes = to_int(f.get("consultation_duration_minutes")) or 45
         professional.buffer_between_appointments_minutes = to_int(f.get("buffer_between_appointments_minutes")) or 15
 
-        types = f.getlist("consultation_types")
-        professional.consultation_types = ",".join(sorted({t for t in types if t}))
+        # Types de consultation (checkbox -> liste -> csv)
+        types = f.getlist("consultation_types")  # ex: ["cabinet","en_ligne"]
+        professional.consultation_types = ",".join(sorted(set(t for t in types if t)))
 
+        # Liens sociaux (et ré-approbation auto si modifiés)
         old_links = (
             (professional.facebook_url or ""),
             (professional.instagram_url or ""),
@@ -1018,15 +982,16 @@ def professional_edit_profile():
             (professional.youtube_url or ""),
         )
         if new_links != old_links:
-            professional.social_links_approved = False
+            professional.social_links_approved = False  # force revalidation admin
 
         db.session.commit()
         flash("Profil mis à jour.", "success")
         return redirect(url_for("professional_dashboard"))
 
+    # GET -> affiche le formulaire
     return render_template("professional_edit_profile.html", professional=professional)
 
-# Alias rendez-vous
+# Alias “voir mes RDV”
 @app.route("/professional/appointments", endpoint="professional_appointments")
 @login_required
 def professional_appointments():
@@ -1116,6 +1081,7 @@ def book_appointment(professional_id: int):
         )
         db.session.add(appointment); db.session.commit()
 
+        # mails
         try:
             subject, text = _build_notif("pending", appointment, role="patient")
             safe_send_email(current_user.email, subject, text)
@@ -1144,6 +1110,7 @@ def book_appointment(professional_id: int):
                            availabilities=availabilities,
                            unavailable_dates=unavailable_dates)
 
+# API slots
 @app.route("/api/professional/<int:professional_id>/available-slots", endpoint="api_available_slots")
 def api_available_slots(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
@@ -1196,9 +1163,7 @@ def api_available_slots(professional_id: int):
         "available_slots": _slots()
     })
 
-# =========================
-#   STATUT / ERREURS
-# =========================
+# ========== Statut site ==========
 @app.route("/site-status", endpoint="site_status")
 def site_status():
     status = app.config.get("SITE_STATUS", {})
@@ -1209,6 +1174,7 @@ def site_status():
     }
     return render_template("site_status.html", status=status, stats=stats)
 
+# ========== Erreurs ==========
 @app.errorhandler(404)
 def not_found(e):
     return render_template("errors/404.html"), 404
@@ -1217,12 +1183,11 @@ def not_found(e):
 def server_error(e):
     return render_template("errors/500.html"), 500
 
-# =========================
-#   BOOT (migrations légères + admin seed)
-# =========================
+# ========== Boot (migrations légères + admin seed) ==========
 with app.app_context():
     db.create_all()
     try:
+        # colonnes additionnelles si manquantes
         for sql in [
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;",
@@ -1249,6 +1214,7 @@ with app.app_context():
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
 
+    # seed admin
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -1265,5 +1231,13 @@ with app.app_context():
         )
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
+# --- Filet de sécurité: alias si l'endpoint attendu par le template n'existe pas
+if 'professional_edit_profile' not in app.view_functions:
+    @app.route('/professional/profile', methods=['GET', 'POST'], endpoint='professional_edit_profile')
+    @login_required
+    def _professional_edit_profile_alias():
+        # Si on ne sait pas quel handler utiliser, on renvoie vers le dashboard
+        flash("Redirection vers votre espace professionnel.", "info")
+        return redirect(url_for('professional_dashboard'))
 
-# Pas de __main__: Gunicorn lance app:app
+# Pas de __main__ : Gunicorn lance app:app
