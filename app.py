@@ -245,101 +245,236 @@ google = oauth.register(
 )
 
 # ========== Langue (compatible base.html) ==========
-# ===== Langue (compat avec base.html) =====
-DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
-SUPPORTED_LANGS = {"fr", "ar", "en"}
-LANG_COOKIE = "lang"
-
-def _normalize_lang(code: str | None) -> str:
-    if not code:
-        return DEFAULT_LANG
-    code = code.lower().strip()
-    return code if code in SUPPORTED_LANGS else DEFAULT_LANG
-
-@app.before_request
-def _load_locale():
-    lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
-    g.current_locale = lang
-    g.current_locale_label = {"fr": "Français", "ar": "العربية", "en": "English"}.get(lang, "Français")
-
-# ⚠️ Même endpoint pour 2 routes → url_for('set_language', ...) marchera
-@app.route('/set-language/<lang>', methods=['GET'], endpoint='set_language')
-@app.route('/set-language', methods=['GET'], endpoint='set_language')
-def set_language(lang: str | None = None):
-    def _cookie_domain_for_host(host: str) -> str | None:
-        """Retourne un domaine 'apex' pour le cookie si le host matche tighri.ma|tighri.com."""
-        host = (host or "").split(":")[0].lower()
-        for base in ("tighri.ma", "tighri.com"):
-            if host == base or host.endswith("." + base):
-                return "." + base  # couvre www. et autres sous-domaines du même TLD
-        return None  # cookie scoping par défaut (host-only)
-
-    def _same_registrable_domain(a: str, b: str) -> bool:
-        """Vérifie si les deux hosts appartiennent au même 'apex' (tighri.ma vs tighri.com)."""
-        def base(h: str) -> str:
-            h = (h or "").split(":")[0].lower()
-            for dom in ("tighri.ma", "tighri.com"):
-                if h == dom or h.endswith("." + dom):
-                    return dom
-            return h
-        return base(a) == base(b)
-
-    # 1) Normaliser la langue demandée
-    sel = _normalize_lang(lang or request.args.get('lang') or request.args.get('lang_code'))
-
-    # 2) Construire la réponse de redirection — on privilégie le referrer s'il est "même domaine"
-    ref = request.referrer
-    target = ref if (ref and _same_registrable_domain(urlparse(ref).hostname or "", request.host)) else url_for('index')
-    resp = make_response(redirect(target))
-
-    # 3) Poser le cookie sur l'apex du domaine courant (couvre www. et sous-domaines)
-    cookie_domain = _cookie_domain_for_host(request.host)
-    resp.set_cookie(
-        LANG_COOKIE,
-        sel,
-        max_age=60*60*24*180,
-        samesite="Lax",
-        secure=True,
-        domain=cookie_domain,  # .tighri.ma ou .tighri.com si applicable
-        path="/",
-    )
-    return resp
-
-# ===== Mini-i18n ultra simple (ajoute-le sous la section langue) =====
-
-# Dictionnaire de traductions (ajoute/édite les clés au besoin)
+# --- MICRO I18N (drop-in) ----------------------------------------------------
+# Dictionnaires minimalistes pour base + index
 TRANSLATIONS = {
-    "site.title": {
-        "fr": "Tighri — Prenez rendez-vous avec un professionnel",
-        "ar": "تيغري — احجز موعدًا مع محترف",
-        "en": "Tighri — Book an appointment with a professional",
+    "fr": {
+        # Nav
+        "nav.home": "Accueil",
+        "nav.professionals": "Professionnels",
+        "nav.anthecc": "ANTHECC",
+        "nav.about": "À propos",
+        "nav.contact": "Contact",
+        "nav.status": "Statut",
+
+        # Auth
+        "auth.login": "Connexion",
+        "auth.register": "Inscription",
+        "auth.logout": "Déconnexion",
+        "auth.profile": "Profil",
+        "auth.orders": "Commandes",
+
+        # Index / Hero
+        "home.tagline": "La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés",
+
+        # Search
+        "search.q.placeholder": "Nom, mot-clé...",
+        "search.city.placeholder": "Ville",
+        "search.specialty.placeholder": "Spécialité",
+        "search.mode.label": "Mode",
+        "search.mode.cabinet": "Cabinet",
+        "search.mode.visio": "Visio",
+        "search.mode.domicile": "Domicile",
+        "search.submit": "Rechercher",
+
+        # Sections (2 blocs)
+        "sections.patient.title": "Espace Patient",
+        "sections.patient.desc": "Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.",
+        "sections.patient.cta": "Je suis patient",
+        "sections.pro.title": "Espace Professionnel",
+        "sections.pro.desc": "Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.",
+        "sections.pro.cta": "Je suis professionnel",
+
+        # Grids
+        "featured.title": "Professionnels en vedette",
+        "card.view_profile": "Voir le profil",
+        "other.title": "Autres professionnels",
+        "other.view": "Voir",
+
+        # About
+        "about.title": "À propos de Tighri",
+        "about.p1": "Tighri est la première plateforme marocaine dédiée à la santé mentale et au bien-être. Nous connectons patients et professionnels pour faciliter l'accès à des soins psychologiques de qualité.",
+        "about.p2": "Notre mission est de démocratiser l'accès aux services de santé mentale au Maroc, dans un environnement de confiance et de sécurité.",
+
+        # Services
+        "services.title": "Nos Services",
+        "services.cabinet.title": "Consultations en Cabinet",
+        "services.cabinet.desc": "Rencontrez des professionnels en face à face.",
+        "services.home.title": "Consultations à Domicile",
+        "services.home.desc": "Certains professionnels se déplacent chez vous.",
+        "services.video.title": "Consultations en Vidéo",
+        "services.video.desc": "Consultez en ligne en toute sécurité.",
+        "services.schedule.title": "Gestion de Planning",
+        "services.schedule.desc": "Réservez vos créneaux, rappel 24h avant.",
+        "services.verified.title": "Profils Vérifiés",
+        "services.verified.desc": "Diplômes et identités vérifiés par Tighri.",
+        "services.support.title": "Support 24/7",
+        "services.support.desc": "Nous vous accompagnons à chaque étape.",
+
+        # Contact
+        "contact.title": "Nous contacter",
+        "contact.lead": "Bienvenue au Centre d'écoute et de conseil Tighri. Besoin d'aide ou de conseils gratuits ? Contactez-nous.",
+        "contact.email": "Email",
+        "contact.phone": "Téléphone",
+        "contact.whatsapp": "WhatsApp",
+        "contact.btn.email": "✉️ Contacter par e-mail",
+        "contact.btn.phone": "📞 Appeler le {phone}",
+        "contact.btn.whatsapp": "💬 WhatsApp direct",
     },
-    "nav.home": {"fr": "Accueil", "ar": "الرئيسية", "en": "Home"},
-    "nav.about": {"fr": "À propos", "ar": "نبذة عنا", "en": "About"},
-    "nav.contact": {"fr": "Contact", "ar": "اتصل بنا", "en": "Contact"},
-    "nav.professionals": {"fr": "Professionnels", "ar": "المهنيون", "en": "Professionals"},
-    "cta.book": {"fr": "Prendre rendez-vous", "ar": "احجز موعدًا", "en": "Book appointment"},
-    # ... ajoute ici les autres clés visibles dans tes templates ...
+    "en": {
+        "nav.home": "Home",
+        "nav.professionals": "Professionals",
+        "nav.anthecc": "ANTHECC",
+        "nav.about": "About",
+        "nav.contact": "Contact",
+        "nav.status": "Status",
+
+        "auth.login": "Log in",
+        "auth.register": "Sign up",
+        "auth.logout": "Log out",
+        "auth.profile": "Profile",
+        "auth.orders": "Orders",
+
+        "home.tagline": "Morocco’s platform to book appointments with certified psychologists, therapists, and coaches",
+
+        "search.q.placeholder": "Name, keyword...",
+        "search.city.placeholder": "City",
+        "search.specialty.placeholder": "Specialty",
+        "search.mode.label": "Mode",
+        "search.mode.cabinet": "In office",
+        "search.mode.visio": "Video",
+        "search.mode.domicile": "Home visit",
+        "search.submit": "Search",
+
+        "sections.patient.title": "Patient Space",
+        "sections.patient.desc": "Browse profiles and book appointments in office, at home, or by video with certified professionals.",
+        "sections.patient.cta": "I’m a patient",
+        "sections.pro.title": "Professional Space",
+        "sections.pro.desc": "Join Tighri to offer your services and manage your appointments with ease.",
+        "sections.pro.cta": "I’m a professional",
+
+        "featured.title": "Featured professionals",
+        "card.view_profile": "View profile",
+        "other.title": "Other professionals",
+        "other.view": "View",
+
+        "about.title": "About Tighri",
+        "about.p1": "Tighri is Morocco’s first platform dedicated to mental health and well-being, connecting patients and professionals to ease access to quality care.",
+        "about.p2": "Our mission is to democratize access to mental health services in Morocco in a trusted and safe environment.",
+
+        "services.title": "Our Services",
+        "services.cabinet.title": "In-office Consultations",
+        "services.cabinet.desc": "Meet professionals face to face.",
+        "services.home.title": "Home Consultations",
+        "services.home.desc": "Some professionals can come to you.",
+        "services.video.title": "Video Consultations",
+        "services.video.desc": "Consult online securely.",
+        "services.schedule.title": "Scheduling",
+        "services.schedule.desc": "Book slots and get a reminder 24h before.",
+        "services.verified.title": "Verified Profiles",
+        "services.verified.desc": "Degrees and identities verified by Tighri.",
+        "services.support.title": "24/7 Support",
+        "services.support.desc": "We support you at every step.",
+
+        "contact.title": "Contact us",
+        "contact.lead": "Welcome to Tighri’s listening and counseling center. Need help or free advice? Get in touch.",
+        "contact.email": "Email",
+        "contact.phone": "Phone",
+        "contact.whatsapp": "WhatsApp",
+        "contact.btn.email": "✉️ Contact by email",
+        "contact.btn.phone": "📞 Call {phone}",
+        "contact.btn.whatsapp": "💬 WhatsApp",
+    },
+    "ar": {
+        "nav.home": "الرئيسية",
+        "nav.professionals": "الاختصاصيون",
+        "nav.anthecc": "ANTHECC",
+        "nav.about": "من نحن",
+        "nav.contact": "اتصل بنا",
+        "nav.status": "حالة الموقع",
+
+        "auth.login": "تسجيل الدخول",
+        "auth.register": "إنشاء حساب",
+        "auth.logout": "تسجيل الخروج",
+        "auth.profile": "الملف الشخصي",
+        "auth.orders": "الطلبات",
+
+        "home.tagline": "المنصة المغربية لحجز مواعيد مع علماء النفس والمعالجين والمدربين المعتمدين",
+
+        "search.q.placeholder": "الاسم أو كلمة مفتاحية...",
+        "search.city.placeholder": "المدينة",
+        "search.specialty.placeholder": "التخصص",
+        "search.mode.label": "الوضع",
+        "search.mode.cabinet": "عيادة",
+        "search.mode.visio": "مرئي (عن بُعد)",
+        "search.mode.domicile": "منزل",
+        "search.submit": "بحث",
+
+        "sections.patient.title": "فضاء المرضى",
+        "sections.patient.desc": "اطّلع على الملفات واحجز موعداً في العيادة أو المنزل أو عبر الفيديو مع مختصين معتمدين.",
+        "sections.patient.cta": "أنا مريض/مراجِع",
+        "sections.pro.title": "فضاء المهنيين",
+        "sections.pro.desc": "انضم إلى تيغري لعرض خدماتك وإدارة مواعيدك بسهولة.",
+        "sections.pro.cta": "أنا مهني",
+
+        "featured.title": "مختصون مميزون",
+        "card.view_profile": "عرض الملف",
+        "other.title": "مختصون آخرون",
+        "other.view": "عرض",
+
+        "about.title": "حول تيغري",
+        "about.p1": "تيغري هي أول منصة مغربية مخصصة للصحة النفسية والرفاه. نربط بين المرضى والمهنيين لتسهيل الوصول إلى رعاية نفسية ذات جودة.",
+        "about.p2": "مهمتنا هي ديمقراطية الوصول إلى خدمات الصحة النفسية في المغرب في بيئة من الثقة والأمان.",
+
+        "services.title": "خدماتنا",
+        "services.cabinet.title": "استشارات في العيادة",
+        "services.cabinet.desc": "قابلوا المختصين وجهاً لوجه.",
+        "services.home.title": "استشارات منزلية",
+        "services.home.desc": "بعض المختصين يزورونكم في المنزل.",
+        "services.video.title": "استشارات عبر الفيديو",
+        "services.video.desc": "استشر عبر الإنترنت بأمان كامل.",
+        "services.schedule.title": "إدارة المواعيد",
+        "services.schedule.desc": "احجز مواعيدك وتلقَّ تذكيراً قبل 24 ساعة.",
+        "services.verified.title": "ملفات موثّقة",
+        "services.verified.desc": "الديبلومات والهويات موثقة من طرف تيغري.",
+        "services.support.title": "دعم 24/7",
+        "services.support.desc": "نرافقكم في كل خطوة.",
+
+        "contact.title": "اتصل بنا",
+        "contact.lead": "مرحباً بكم في مركز الاستماع والإرشاد تيغري. تحتاج مساعدة أو استشارة مجانية؟ تواصل معنا.",
+        "contact.email": "البريد الإلكتروني",
+        "contact.phone": "الهاتف",
+        "contact.whatsapp": "واتساب",
+        "contact.btn.email": "✉️ مراسلة عبر البريد",
+        "contact.btn.phone": "📞 اتصال {phone}",
+        "contact.btn.whatsapp": "💬 واتساب مباشر",
+    },
 }
 
-def _translate(key: str, lang: str) -> str:
-    d = TRANSLATIONS.get(key)
-    if not d:
-        return key  # clé non trouvée -> affiche la clé (utile pour repérer)
-    # essaie langue courante, sinon fallback par défaut, sinon n'importe quelle dispo
-    return d.get(lang) or d.get(DEFAULT_LANG) or next(iter(d.values()), key)
+def t(key: str, **kwargs) -> str:
+    """Petit helper de traduction en Jinja: {{ t('clé') }}"""
+    lang = getattr(g, "current_locale", None) or DEFAULT_LANG
+    bundle = TRANSLATIONS.get(lang, TRANSLATIONS["fr"])
+    s = bundle.get(key, TRANSLATIONS["fr"].get(key, key))
+    try:
+        return s.format(**kwargs) if kwargs else s
+    except Exception:
+        return s
 
+# Remplace l'ancien injecteur par celui-ci
 @app.context_processor
-def inject_i18n():
-    # conserve ce que tu injectes déjà, mais ajoute `t`
+def inject_lang():
     lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
-    def t(key: str) -> str:
-        return _translate(key, lang)
+    label_map = {"fr": "Français", "ar": "العربية", "en": "English"}
+    dir_map = {"ar": "rtl", "fr": "ltr", "en": "ltr"}
     return {
         "current_lang": lang,
+        "current_lang_label": label_map.get(lang, "Français"),
+        "text_dir": dir_map.get(lang, "ltr"),
         "SUPPORTED_LANGS": SUPPORTED_LANGS,
         "t": t,
     }
+# --- FIN MICRO I18N ----------------------------------------------------------
 
 # Important pour CDN/Cloudflare: on indique que le HTML varie selon Cookie
 @app.after_request
