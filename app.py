@@ -19,6 +19,72 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
+# --- Helpers robustes pour récupérer/créer le profil pro sans casser le modèle ---
+
+def _query_professional_for_user(db, Professional, User, current_user):
+    """
+    Retourne une requête SQLAlchemy pour trouver le Professional du current_user,
+    quelle que soit la forme du modèle (avec user_id ou avec relation user).
+    """
+    # cas 1 : colonne user_id présente
+    if hasattr(Professional, "user_id"):
+        return Professional.query.filter_by(user_id=current_user.id)
+
+    # cas 2 : relation 'user' présente (définie via db.relationship)
+    if hasattr(Professional, "user"):
+        return Professional.query.filter_by(user=current_user)
+
+    # cas 3 : aucun des deux connus -> fallback par jointure sur users si possible
+    # On essaie de trouver une clé étrangère plausible (owner_id, account_id, etc.)
+    # mais on reste non-invasif : jointure sur users.id == Professional.id (1-1 vieux schéma)
+    try:
+        return db.session.query(Professional).join(User, User.id == Professional.id).filter(User.id == current_user.id)
+    except Exception:
+        # Dernier filet : renvoyer une requête impossible qui ne lève pas d’erreur
+        return Professional.query.filter(False)
+
+
+def get_or_create_professional_for_current_user(db, Professional, User, current_user, defaults=None):
+    """
+    Récupère le Professional du current_user; si absent, le crée proprement
+    sans supposer de schéma précis. 'defaults' peut contenir des champs à préremplir.
+    """
+    defaults = defaults or {}
+    q = _query_professional_for_user(db, Professional, User, current_user)
+    professional = q.first()
+
+    if professional:
+        return professional
+
+    # Création sans casser : on renseigne au mieux selon les attributs disponibles
+    professional = Professional()
+
+    # Essaie d’affecter user_id si présent
+    if hasattr(Professional, "user_id"):
+        setattr(professional, "user_id", current_user.id)
+
+    # Essaie d’affecter la relation user si présente
+    if hasattr(Professional, "user"):
+        try:
+            setattr(professional, "user", current_user)
+        except Exception:
+            pass
+
+    # Pré-remplissages utiles (optionnels) si ces champs existent
+    for key, val in defaults.items():
+        if hasattr(Professional, key):
+            try:
+                setattr(professional, key, val)
+            except Exception:
+                pass
+
+    db.session.add(professional)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        # On reste non bloquant : on renvoie l’objet non commit si besoin
+    return professional
 
 # ========== PIL (images) ==========
 try:
