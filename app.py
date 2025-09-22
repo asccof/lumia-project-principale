@@ -305,6 +305,51 @@ def set_language(lang: str | None = None):
     )
     return resp
 
+# ===== Mini-i18n ultra simple (ajoute-le sous la section langue) =====
+
+# Dictionnaire de traductions (ajoute/édite les clés au besoin)
+TRANSLATIONS = {
+    "site.title": {
+        "fr": "Tighri — Prenez rendez-vous avec un professionnel",
+        "ar": "تيغري — احجز موعدًا مع محترف",
+        "en": "Tighri — Book an appointment with a professional",
+    },
+    "nav.home": {"fr": "Accueil", "ar": "الرئيسية", "en": "Home"},
+    "nav.about": {"fr": "À propos", "ar": "نبذة عنا", "en": "About"},
+    "nav.contact": {"fr": "Contact", "ar": "اتصل بنا", "en": "Contact"},
+    "nav.professionals": {"fr": "Professionnels", "ar": "المهنيون", "en": "Professionals"},
+    "cta.book": {"fr": "Prendre rendez-vous", "ar": "احجز موعدًا", "en": "Book appointment"},
+    # ... ajoute ici les autres clés visibles dans tes templates ...
+}
+
+def _translate(key: str, lang: str) -> str:
+    d = TRANSLATIONS.get(key)
+    if not d:
+        return key  # clé non trouvée -> affiche la clé (utile pour repérer)
+    # essaie langue courante, sinon fallback par défaut, sinon n'importe quelle dispo
+    return d.get(lang) or d.get(DEFAULT_LANG) or next(iter(d.values()), key)
+
+@app.context_processor
+def inject_i18n():
+    # conserve ce que tu injectes déjà, mais ajoute `t`
+    lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
+    def t(key: str) -> str:
+        return _translate(key, lang)
+    return {
+        "current_lang": lang,
+        "SUPPORTED_LANGS": SUPPORTED_LANGS,
+        "t": t,
+    }
+
+# Important pour CDN/Cloudflare: on indique que le HTML varie selon Cookie
+@app.after_request
+def _vary_on_cookie_for_lang(resp):
+    ct = resp.headers.get("Content-Type", "")
+    if "text/html" in ct:
+        existing_vary = resp.headers.get("Vary")
+        resp.headers["Vary"] = "Cookie" if not existing_vary else f"{existing_vary}, Cookie"
+        resp.headers["Cache-Control"] = "private, no-store, no-cache, max-age=0, must-revalidate"
+    return resp
 
 @app.context_processor
 def inject_lang():
