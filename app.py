@@ -1,4 +1,3 @@
-
 # app.py — version unifiée et propre pour Tighri
 
 from __future__ import annotations
@@ -167,6 +166,9 @@ def _normalize_pg_uri(uri: str) -> str:
 
 # On utilise le db des models (source de vérité)
 from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
+# ✅ AJOUT: import du modèle galerie
+from models import ProfessionalPhoto
+
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
 if not uri:
     raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
@@ -296,6 +298,17 @@ def _avatar_fallback_response():
         resp.headers["Cache-Control"] = "public, max-age=86400"
         return resp
     return redirect(PHOTO_PLACEHOLDER)
+
+# ✅ AJOUT : servir directement un fichier de /media/profiles pour les vignettes galerie
+@app.route("/media/profiles/<path:filename>", methods=["GET"])
+def media_profiles_file(filename: str):
+    safe_name = os.path.basename(filename)
+    fpath = UPLOAD_FOLDER / safe_name
+    if fpath.exists():
+        resp = send_from_directory(str(UPLOAD_FOLDER), safe_name, as_attachment=False, conditional=True)
+        resp.headers["Cache-Control"] = "public, max-age=31536000"
+        return resp
+    return _avatar_fallback_response()
 
 # ========== Routes techniques ==========
 @app.route("/favicon.ico")
@@ -467,7 +480,7 @@ def avatar_alias_qs():
 def avatar_alias_path(professional_id: int):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
-# Upload photo pro
+# Upload photo pro (ancienne route – conservée)
 @app.route("/professional/profile/photo", methods=["GET", "POST"], endpoint="professional_upload_photo")
 @login_required
 def professional_upload_photo():
@@ -501,6 +514,140 @@ def professional_upload_photo():
             flash("Erreur interne lors du traitement de l'image.", "danger")
 
     return render_template("upload_photo.html")
+
+# ✅ AJOUTS : Galerie (côté professionnel)
+@app.route("/professional/photos/upload", methods=["POST"], endpoint="professional_photos_upload")
+@login_required
+def professional_photos_upload():
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé", "danger")
+        return redirect(url_for("index"))
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "warning")
+        return redirect(url_for("professional_dashboard"))
+
+    files = request.files.getlist("photos")
+    files = [f for f in files if getattr(f, "filename", "")]
+
+    # Limite stricte = 3
+    existing = len(pro.photos)
+    remaining = max(0, 3 - existing)
+    if not files or remaining <= 0:
+        flash("Limite de 3 photos atteinte.", "warning")
+        return redirect(url_for("professional_edit_profile"))
+
+    saved_photos = []
+    try:
+        for f in files[:remaining]:
+            fname = _process_and_save_profile_image(f)
+            rel = f"/media/profiles/{fname}"
+            # crée l’entrée
+            p = ProfessionalPhoto(professional_id=pro.id, filename=fname, is_primary=False)
+            db.session.add(p)
+            saved_photos.append((p, rel))
+
+        db.session.flush()  # obtient les IDs
+
+        # S'il n'y a pas de principale, on en met une
+        has_primary = any(p.is_primary for p in pro.photos)
+        if not has_primary and saved_photos:
+            # première sauvegardée -> principale
+            p0, rel0 = saved_photos[0]
+            p0.is_primary = True
+            pro.image_url = rel0  # rétro-compatibilité
+
+        db.session.commit()
+        flash("Photos ajoutées.", "success")
+    except RuntimeError:
+        db.session.rollback()
+        current_app.logger.exception("PIL manquant pour traitement image.")
+        flash("Le traitement d'image nécessite Pillow.", "danger")
+    except ValueError as e:
+        db.session.rollback()
+        flash(str(e), "danger")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Erreur interne lors de l'upload multiple")
+        flash("Erreur interne lors de l'upload des photos.", "danger")
+
+    return redirect(url_for("professional_edit_profile"))
+
+@app.route("/professional/photos/<int:photo_id>/set-primary", methods=["POST"], endpoint="professional_photo_set_primary")
+@login_required
+def professional_photo_set_primary(photo_id: int):
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé", "danger")
+        return redirect(url_for("index"))
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "warning")
+        return redirect(url_for("professional_dashboard"))
+
+    photo = ProfessionalPhoto.query.get_or_404(photo_id)
+    if photo.professional_id != pro.id:
+        flash("Accès non autorisé", "danger")
+        return redirect(url_for("professional_edit_profile"))
+
+    try:
+        # unset toutes
+        ProfessionalPhoto.query.filter_by(professional_id=pro.id, is_primary=True).update({"is_primary": False})
+        photo.is_primary = True
+        pro.image_url = f"/media/profiles/{photo.filename}"  # compat profile_photo
+        db.session.commit()
+        flash("Photo principale mise à jour.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Erreur lors de la mise à jour.", "danger")
+
+    return redirect(url_for("professional_edit_profile"))
+
+@app.route("/professional/photos/<int:photo_id>/delete", methods=["POST"], endpoint="professional_photo_delete")
+@login_required
+def professional_photo_delete(photo_id: int):
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé", "danger")
+        return redirect(url_for("index"))
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "warning")
+        return redirect(url_for("professional_dashboard"))
+
+    photo = ProfessionalPhoto.query.get_or_404(photo_id)
+    if photo.professional_id != pro.id:
+        flash("Accès non autorisé", "danger")
+        return redirect(url_for("professional_edit_profile"))
+
+    was_primary = bool(photo.is_primary)
+    fname = photo.filename
+    try:
+        db.session.delete(photo)
+        db.session.flush()
+
+        # supprimer le fichier disque
+        try:
+            fpath = UPLOAD_FOLDER / os.path.basename(fname)
+            if fpath.exists():
+                fpath.unlink(missing_ok=True)
+        except Exception:
+            current_app.logger.warning("Suppression fichier échouée (non bloquant).")
+
+        # Si c'était la principale -> en choisir une autre ou vider image_url
+        if was_primary:
+            new_primary = ProfessionalPhoto.query.filter_by(professional_id=pro.id).order_by(ProfessionalPhoto.created_at.desc()).first()
+            if new_primary:
+                new_primary.is_primary = True
+                pro.image_url = f"/media/profiles/{new_primary.filename}"
+            else:
+                pro.image_url = None
+
+        db.session.commit()
+        flash("Photo supprimée.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Erreur lors de la suppression.", "danger")
+
+    return redirect(url_for("professional_edit_profile"))
 
 # ========== Auth local ==========
 @app.route("/register", methods=["GET","POST"], endpoint="register")
@@ -915,11 +1062,11 @@ def delete_unavailable_slot(slot_id: int):
     db.session.delete(slot); db.session.commit()
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
+
 # --- imports (laisse-les si tu les as déjà) ---
 from flask import request, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user
 
-# --- ROUTE: édition du profil pro ---
 # --- ROUTE: édition du profil pro ---
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
@@ -992,8 +1139,6 @@ def professional_edit_profile():
 
     # GET -> affiche le formulaire
     return render_template("professional_edit_profile.html", professional=professional)
-
-
 
 # Alias “voir mes RDV”
 @app.route("/professional/appointments", endpoint="professional_appointments")
@@ -1212,6 +1357,19 @@ with app.app_context():
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;",
+            # ✅ AJOUT : table galerie (si absente)
+            """
+            CREATE TABLE IF NOT EXISTS professional_photos (
+                id SERIAL PRIMARY KEY,
+                professional_id INTEGER NOT NULL REFERENCES professionals(id) ON DELETE CASCADE,
+                filename TEXT NOT NULL,
+                is_primary BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            """,
+            "CREATE INDEX IF NOT EXISTS ix_professional_photos_created_at ON professional_photos(created_at);",
+            "CREATE INDEX IF NOT EXISTS ix_professional_photos_prof ON professional_photos(professional_id);",
+            "CREATE INDEX IF NOT EXISTS ix_professional_photos_primary ON professional_photos(is_primary);",
         ]:
             db.session.execute(text(sql))
         db.session.commit()
@@ -1235,6 +1393,7 @@ with app.app_context():
         )
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
+
 # --- Filet de sécurité: alias si l'endpoint attendu par le template n'existe pas
 if 'professional_edit_profile' not in app.view_functions:
     @app.route('/professional/profile', methods=['GET', 'POST'], endpoint='professional_edit_profile')
@@ -1243,5 +1402,94 @@ if 'professional_edit_profile' not in app.view_functions:
         # Si on ne sait pas quel handler utiliser, on renvoie vers le dashboard
         flash("Redirection vers votre espace professionnel.", "info")
         return redirect(url_for('professional_dashboard'))
+
+# ✅ AJOUTS : endpoints simples côté admin (actions sur galerie)
+# On ne modifie pas le blueprint admin existant ; ces routes offrent des actions directes.
+@app.route("/admin/professionals/<int:professional_id>/photos/upload", methods=["POST"], endpoint="admin_photos_upload")
+@login_required
+def admin_photos_upload(professional_id: int):
+    if not getattr(current_user, "is_admin", False):
+        abort(403)
+    pro = Professional.query.get_or_404(professional_id)
+    files = request.files.getlist("photos")
+    files = [f for f in files if getattr(f, "filename", "")]
+    existing = len(pro.photos)
+    remaining = max(0, 3 - existing)
+    if not files or remaining <= 0:
+        flash("Limite de 3 photos atteinte.", "warning")
+        return redirect(request.referrer or url_for("index"))
+    try:
+        saved = []
+        for f in files[:remaining]:
+            fname = _process_and_save_profile_image(f)
+            db.session.add(ProfessionalPhoto(professional_id=pro.id, filename=fname, is_primary=False))
+            saved.append(fname)
+        db.session.flush()
+        if not any(p.is_primary for p in pro.photos):
+            # s'il n'y a aucune principale, fixer la dernière ajoutée
+            last = ProfessionalPhoto.query.filter_by(professional_id=pro.id).order_by(ProfessionalPhoto.created_at.desc()).first()
+            if last:
+                last.is_primary = True
+                pro.image_url = f"/media/profiles/{last.filename}"
+        db.session.commit()
+        flash("Photos ajoutées (admin).", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Erreur lors de l'upload (admin).", "danger")
+    return redirect(request.referrer or url_for("index"))
+
+@app.route("/admin/professionals/<int:professional_id>/photos/<int:photo_id>/set-primary", methods=["POST"], endpoint="admin_photo_set_primary")
+@login_required
+def admin_photo_set_primary(professional_id: int, photo_id: int):
+    if not getattr(current_user, "is_admin", False):
+        abort(403)
+    pro = Professional.query.get_or_404(professional_id)
+    photo = ProfessionalPhoto.query.get_or_404(photo_id)
+    if photo.professional_id != pro.id:
+        abort(403)
+    try:
+        ProfessionalPhoto.query.filter_by(professional_id=pro.id, is_primary=True).update({"is_primary": False})
+        photo.is_primary = True
+        pro.image_url = f"/media/profiles/{photo.filename}"
+        db.session.commit()
+        flash("Photo principale mise à jour (admin).", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Erreur (admin).", "danger")
+    return redirect(request.referrer or url_for("index"))
+
+@app.route("/admin/professionals/<int:professional_id>/photos/<int:photo_id>/delete", methods=["POST"], endpoint="admin_photo_delete")
+@login_required
+def admin_photo_delete(professional_id: int, photo_id: int):
+    if not getattr(current_user, "is_admin", False):
+        abort(403)
+    pro = Professional.query.get_or_404(professional_id)
+    photo = ProfessionalPhoto.query.get_or_404(photo_id)
+    if photo.professional_id != pro.id:
+        abort(403)
+    was_primary = bool(photo.is_primary)
+    fname = photo.filename
+    try:
+        db.session.delete(photo)
+        db.session.flush()
+        try:
+            fpath = UPLOAD_FOLDER / os.path.basename(fname)
+            if fpath.exists():
+                fpath.unlink(missing_ok=True)
+        except Exception:
+            pass
+        if was_primary:
+            new_primary = ProfessionalPhoto.query.filter_by(professional_id=pro.id).order_by(ProfessionalPhoto.created_at.desc()).first()
+            if new_primary:
+                new_primary.is_primary = True
+                pro.image_url = f"/media/profiles/{new_primary.filename}"
+            else:
+                pro.image_url = None
+        db.session.commit()
+        flash("Photo supprimée (admin).", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Erreur (admin).", "danger")
+    return redirect(request.referrer or url_for("index"))
 
 # Pas de __main__ : Gunicorn lance app:app
