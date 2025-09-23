@@ -141,6 +141,15 @@ class Professional(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # ✅ AJOUT: relation non intrusive vers la galerie
+    photos = db.relationship(
+        "ProfessionalPhoto",
+        backref="professional",
+        lazy="select",
+        cascade="all, delete-orphan",
+        order_by="desc(ProfessionalPhoto.created_at)",
+    )
+
     __table_args__ = (
         db.Index('ix_professionals_name', 'name'),
         db.Index('ix_professionals_specialty', 'specialty'),
@@ -223,3 +232,22 @@ class UnavailableSlot(db.Model):
     end_time = db.Column(db.String(5), nullable=False)
     reason = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+# ======================
+# ✅ AJOUT : Galerie de photos (max 3 par pro)
+# ======================
+class ProfessionalPhoto(db.Model):
+    __tablename__ = "professional_photos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id', ondelete='CASCADE'), nullable=False, index=True)
+    filename = db.Column(db.Text, nullable=False)  # ex: "uuid.jpg" (stocké sous /media/profiles/)
+    is_primary = db.Column(db.Boolean, default=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index('ix_professional_photos_created_at', 'created_at'),
+    )
+
+    def __repr__(self):
+        return f"<ProfessionalPhoto id={self.id} pro={self.professional_id} primary={self.is_primary} file={self.filename}>"
