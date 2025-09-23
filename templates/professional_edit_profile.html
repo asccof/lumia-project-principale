@@ -140,5 +140,51 @@
     <button class="btn btn-primary mt-3">Enregistrer</button>
     <a href="{{ url_for('professional_dashboard') }}" class="btn btn-outline-secondary mt-3">Annuler</a>
   </form>
+
+  <!-- ============================= -->
+  <!-- ✅ AJOUT : GALERIE (max 3)   -->
+  <!-- ============================= -->
+  <hr class="my-4">
+  <h2 class="h5 mb-3">Galerie de photos (max 3)</h2>
+
+  <!-- Upload multiple (ne touche pas au formulaire principal) -->
+  <form method="post" action="{{ url_for('professional_photos_upload') }}" enctype="multipart/form-data" class="mb-3">
+    {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+    <div class="input-group">
+      <input class="form-control" type="file" name="photos" accept=".jpg,.jpeg,.png,.gif" multiple>
+      <button class="btn btn-outline-primary" type="submit">Téléverser</button>
+    </div>
+    <div class="form-text">Vous pouvez envoyer 1 à 3 images. Les nouvelles images seront recadrées en carré 512×512.</div>
+  </form>
+
+  {% set photos = professional.photos or [] %}
+  {% if photos %}
+    <div class="row g-3">
+      {% for p in photos %}
+        <div class="col-6 col-md-4">
+          <div class="card h-100">
+            <img src="{{ url_for('media_profiles_file', filename=p.filename) }}" class="card-img-top" alt="photo">
+            <div class="card-body py-2">
+              {% if p.is_primary %}
+                <span class="badge bg-success">Principale</span>
+              {% else %}
+                <form method="post" action="{{ url_for('professional_photo_set_primary', photo_id=p.id) }}" class="d-inline">
+                  {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                  <button class="btn btn-sm btn-outline-success">Définir comme principale</button>
+                </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('professional_photo_delete', photo_id=p.id) }}" class="d-inline float-end"
+                    onsubmit="return confirm('Supprimer cette photo ?');">
+                {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                <button class="btn btn-sm btn-outline-danger">Supprimer</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="text-muted">Aucune photo pour l’instant.</div>
+  {% endif %}
 </div>
 {% endblock %}
