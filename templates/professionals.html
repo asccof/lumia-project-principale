@@ -199,7 +199,17 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="empty">
+     <div class="col-md-4">
+  <label class="form-label">Ville (Maroc)</label>
+  <select name="city" class="form-select" onchange="this.form.submit()">
+    <option value="">— Toutes les villes —</option>
+    {% for c in CITIES %}
+      <option value="{{ c.name }}" {% if request.args.get('city') == c.name %}selected{% endif %}>{{ c.name }}</option>
+    {% endfor %}
+  </select>
+</div>
+ 
+    <div class="empty">
         <h3>Aucun professionnel trouvé</h3>
         <p>Essayez d’élargir vos critères ou consultez toutes les spécialités.</p>
       </div>
