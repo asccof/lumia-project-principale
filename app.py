@@ -1,4 +1,4 @@
-# app.py — version unifiée et propre pour Tighri
+# app.py — version unifiée et propre pour Tighri (Option B: 3 URL d’images)
 
 from __future__ import annotations
 import os, io, uuid, secrets, hashlib, requests
@@ -6,6 +6,7 @@ from datetime import datetime, date, timedelta, time as dtime
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 from typing import Optional
+from functools import lru_cache
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
@@ -19,72 +20,6 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
-# --- Helpers robustes pour récupérer/créer le profil pro sans casser le modèle ---
-
-def _query_professional_for_user(db, Professional, User, current_user):
-    """
-    Retourne une requête SQLAlchemy pour trouver le Professional du current_user,
-    quelle que soit la forme du modèle (avec user_id ou avec relation user).
-    """
-    # cas 1 : colonne user_id présente
-    if hasattr(Professional, "user_id"):
-        return Professional.query.filter_by(user_id=current_user.id)
-
-    # cas 2 : relation 'user' présente (définie via db.relationship)
-    if hasattr(Professional, "user"):
-        return Professional.query.filter_by(user=current_user)
-
-    # cas 3 : aucun des deux connus -> fallback par jointure sur users si possible
-    # On essaie de trouver une clé étrangère plausible (owner_id, account_id, etc.)
-    # mais on reste non-invasif : jointure sur users.id == Professional.id (1-1 vieux schéma)
-    try:
-        return db.session.query(Professional).join(User, User.id == Professional.id).filter(User.id == current_user.id)
-    except Exception:
-        # Dernier filet : renvoyer une requête impossible qui ne lève pas d’erreur
-        return Professional.query.filter(False)
-
-
-def get_or_create_professional_for_current_user(db, Professional, User, current_user, defaults=None):
-    """
-    Récupère le Professional du current_user; si absent, le crée proprement
-    sans supposer de schéma précis. 'defaults' peut contenir des champs à préremplir.
-    """
-    defaults = defaults or {}
-    q = _query_professional_for_user(db, Professional, User, current_user)
-    professional = q.first()
-
-    if professional:
-        return professional
-
-    # Création sans casser : on renseigne au mieux selon les attributs disponibles
-    professional = Professional()
-
-    # Essaie d’affecter user_id si présent
-    if hasattr(Professional, "user_id"):
-        setattr(professional, "user_id", current_user.id)
-
-    # Essaie d’affecter la relation user si présente
-    if hasattr(Professional, "user"):
-        try:
-            setattr(professional, "user", current_user)
-        except Exception:
-            pass
-
-    # Pré-remplissages utiles (optionnels) si ces champs existent
-    for key, val in defaults.items():
-        if hasattr(Professional, key):
-            try:
-                setattr(professional, key, val)
-            except Exception:
-                pass
-
-    db.session.add(professional)
-    try:
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-        # On reste non bloquant : on renvoie l’objet non commit si besoin
-    return professional
 
 # ========== PIL (images) ==========
 try:
@@ -151,12 +86,10 @@ def _normalize_pg_uri(uri: str) -> str:
         return uri
     if uri.startswith("postgres://"):
         uri = "postgresql://" + uri[len("postgres://"):]
-    # forcer driver psycopg3
     if uri.startswith("postgresql+psycopg2://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
     elif uri.startswith("postgresql://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
-    # sslmode=require si absent
     parsed = urlparse(uri)
     q = parse_qs(parsed.query)
     if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
@@ -165,9 +98,11 @@ def _normalize_pg_uri(uri: str) -> str:
     return uri
 
 # On utilise le db des models (source de vérité)
-from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
-# ✅ AJOUT: import du modèle galerie
-from models import ProfessionalPhoto
+from models import (
+    db, User, Professional, Appointment,
+    ProfessionalAvailability, UnavailableSlot,
+    City, Specialty,
+)
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
 if not uri:
@@ -205,12 +140,7 @@ google = oauth.register(
     client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
 )
 
-# ========== Langue (compatible base.html) ==========
-# ===== Langue (compat avec base.html) =====
-DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
-SUPPORTED_LANGS = {"fr", "ar", "en"}
-LANG_COOKIE = "lang"
-
+# ========== Langue ==========
 def _normalize_lang(code: str | None) -> str:
     if not code:
         return DEFAULT_LANG
@@ -223,53 +153,28 @@ def _load_locale():
     g.current_locale = lang
     g.current_locale_label = {"fr": "Français", "ar": "العربية", "en": "English"}.get(lang, "Français")
 
-# ⚠️ Même endpoint pour 2 routes → url_for('set_language', ...) marchera
 @app.route('/set-language/<lang>', methods=['GET'], endpoint='set_language')
 @app.route('/set-language', methods=['GET'], endpoint='set_language')
 def set_language(lang: str | None = None):
-    # accepte lang via segment, ?lang=, ou ?lang_code= (compat base.html)
     lang = _normalize_lang(lang or request.args.get('lang') or request.args.get('lang_code'))
     resp = make_response(redirect(request.referrer or url_for('index')))
     resp.set_cookie(LANG_COOKIE, lang, max_age=60*60*24*180, samesite="Lax", secure=True)
     return resp
 
-@app.context_processor
-def inject_lang():
-    lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
-    return {"current_lang": lang, "SUPPORTED_LANGS": SUPPORTED_LANGS}
-
-@app.context_processor
-def inject_cities():
-    try:
-        from models import City
-        cities = City.query.order_by(City.name.asc()).all()
-    except Exception:
-        cities = []
-    return {"CITIES": cities}
-# --- Listes dynamiques (villes & spécialités) disponibles dans tous les templates ---
-# CONTRAT FIXE : on n'altère pas les routes; simple injection de variables globales.
-from functools import lru_cache
-
+# Listes dynamiques injectées partout
 @lru_cache(maxsize=1)
 def _load_refdata_snapshot():
     try:
-        # on lit les noms (triés) pour alimenter les datalist
         cities = [c.name for c in db.session.query(City).order_by(City.name.asc()).all()]
         specialties = [s.name for s in db.session.query(Specialty).order_by(Specialty.name.asc()).all()]
     except Exception:
-        # en cas de base vide ou indispo, on renvoie des listes vides
         cities, specialties = [], []
-    # on retourne des tuples (hashables) pour lru_cache
     return tuple(cities), tuple(specialties)
 
 @app.context_processor
 def inject_refdata_lists():
     cities, specialties = _load_refdata_snapshot()
-    return {
-        # listes simples pour <datalist>
-        "ALL_CITIES": list(cities),
-        "ALL_SPECIALTIES": list(specialties),
-    }
+    return {"ALL_CITIES": list(cities), "ALL_SPECIALTIES": list(specialties)}
 
 # ========== Helpers images ==========
 AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
@@ -288,23 +193,17 @@ def _process_and_save_profile_image(file_storage) -> str:
     raw = file_storage.read()
     if not _PIL_OK:
         raise RuntimeError("Le traitement d'image nécessite Pillow (PIL).")
-
-    # validation
     try:
         img = Image.open(io.BytesIO(raw))
         img.verify()
     except Exception:
         raise ValueError("Fichier image invalide ou corrompu")
-
     img = Image.open(io.BytesIO(raw))
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
-
-    # strip EXIF + crop carré 512
     img_no_exif = Image.new(img.mode, img.size)
     img_no_exif.putdata(list(img.getdata()))
     img_square = ImageOps.fit(img_no_exif, (512, 512), Image.Resampling.LANCZOS)
-
     out_name = f"{uuid.uuid4().hex}.jpg"
     out_path = UPLOAD_FOLDER / out_name
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -331,7 +230,6 @@ def _avatar_fallback_response():
         return resp
     return redirect(PHOTO_PLACEHOLDER)
 
-# ✅ AJOUT : servir directement un fichier de /media/profiles pour les vignettes galerie
 @app.route("/media/profiles/<path:filename>", methods=["GET"])
 def media_profiles_file(filename: str):
     safe_name = os.path.basename(filename)
@@ -402,8 +300,7 @@ def index():
 
 @app.route("/anthecc", endpoint="anthecc")
 def anthecc():
-    tpl = BASE_DIR / "templates" / "anthecc.html"
-    return render_template("anthecc.html") if tpl.exists() else ("ANTHECC", 200)
+    return render_template("anthecc.html")
 
 @app.route("/about", endpoint="about")
 def about():
@@ -421,6 +318,14 @@ def professionals():
     specialty = (request.args.get("specialty") or "").strip()
     mode = (request.args.get("mode") or "").strip().lower()
 
+    # Nouveaux filtres par ID (si selects dynamiques)
+    city_id = request.args.get("city_id", type=int)
+    specialty_id = request.args.get("specialty_id", type=int)
+
+    # normaliser le terme du mode
+    if mode == "visio":
+        mode = "en_ligne"
+
     qry = Professional.query.filter_by(status='valide')
 
     if q:
@@ -432,13 +337,15 @@ def professionals():
         if conds:
             qry = qry.filter(or_(*conds))
 
-    if city and hasattr(Professional, "location"):
+    if city_id and hasattr(Professional, "city_id"):
+        qry = qry.filter(Professional.city_id == city_id)
+    elif city and hasattr(Professional, "location"):
         qry = qry.filter(Professional.location.ilike(f"%{city}%"))
 
-    if specialty:
-        like = f"%{specialty}%"
-        if hasattr(Professional, "specialty"):
-            qry = qry.filter(Professional.specialty.ilike(like))
+    if specialty_id and hasattr(Professional, "primary_specialty_id"):
+        qry = qry.filter(Professional.primary_specialty_id == specialty_id)
+    elif specialty and hasattr(Professional, "specialty"):
+        qry = qry.filter(Professional.specialty.ilike(f"%{specialty}%"))
 
     if mode and hasattr(Professional, "consultation_types"):
         qry = qry.filter(Professional.consultation_types.ilike(f"%{mode}%"))
@@ -458,7 +365,6 @@ def profile_photo(professional_id: int):
     pro = Professional.query.get_or_404(professional_id)
     raw_url = (pro.image_url or "").strip()
 
-    # Fichiers uploadés localement (/media/profiles/NAME)
     if raw_url.startswith("/media/profiles/"):
         fname = raw_url.split("/media/profiles/")[-1]
         safe_name = os.path.basename(fname)
@@ -470,7 +376,6 @@ def profile_photo(professional_id: int):
         return _avatar_fallback_response()
 
     if not raw_url:
-        # avatars pack statique (ex: static/avatars/ID.webp)
         file_path = _avatar_file_for(professional_id)
         if file_path and os.path.isfile(file_path):
             return send_from_directory(AVATAR_DIR, os.path.basename(file_path), max_age=60*60*24*7)
@@ -478,17 +383,13 @@ def profile_photo(professional_id: int):
             return send_from_directory(os.path.join(app.root_path, "static"), "avatar_default.webp", max_age=86400)
         return _avatar_fallback_response()
 
-    # Proxy https
     if raw_url.startswith("http://"):
         raw_url = "https://" + raw_url[len("http://"):]
     parsed = urlparse(raw_url)
     if parsed.scheme not in ("http", "https"):
         return _avatar_fallback_response()
 
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
-        "Referer": "https://www.tighri.com",
-    }
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)", "Referer": "https://www.tighri.com"}
     try:
         r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
         r.raise_for_status()
@@ -500,7 +401,6 @@ def profile_photo(professional_id: int):
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
 
-# Alias rétro-compatibles
 @app.route("/avatar", endpoint="avatar")
 def avatar_alias_qs():
     pid = request.args.get("professional_id", type=int)
@@ -512,7 +412,7 @@ def avatar_alias_qs():
 def avatar_alias_path(professional_id: int):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
-# Upload photo pro (ancienne route – conservée)
+# Upload photo pro (ancienne route – conservée, pour image principale)
 @app.route("/professional/profile/photo", methods=["GET", "POST"], endpoint="professional_upload_photo")
 @login_required
 def professional_upload_photo():
@@ -546,145 +446,6 @@ def professional_upload_photo():
             flash("Erreur interne lors du traitement de l'image.", "danger")
 
     return render_template("upload_photo.html")
-
-# ✅ AJOUTS : Galerie (côté professionnel)
-@app.route("/professional/photos/upload", methods=["POST"], endpoint="professional_photos_upload")
-@login_required
-def professional_photos_upload():
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé", "danger")
-        return redirect(url_for("index"))
-    pro = Professional.query.filter_by(name=current_user.username).first()
-    if not pro:
-        flash("Profil professionnel non trouvé", "warning")
-        return redirect(url_for("professional_dashboard"))
-
-    files = request.files.getlist("photos")
-    files = [f for f in files if getattr(f, "filename", "")]
-
-    # Limite stricte = 3
-    existing = len(pro.photos)
-    remaining = max(0, 3 - existing)
-    if not files or remaining <= 0:
-        flash("Limite de 3 photos atteinte.", "warning")
-        return redirect(url_for("professional_edit_profile"))
-
-    saved_photos = []
-    try:
-        for f in files[:remaining]:
-            fname = _process_and_save_profile_image(f)
-            rel = f"/media/profiles/{fname}"
-            # crée l’entrée
-            p = ProfessionalPhoto(professional_id=pro.id, filename=fname, is_primary=False)
-            db.session.add(p)
-            saved_photos.append((p, rel))
-
-        db.session.flush()  # obtient les IDs
-
-        # S'il n'y a pas de principale, on en met une
-        has_primary = any(p.is_primary for p in pro.photos)
-        if not has_primary and saved_photos:
-            # première sauvegardée -> principale
-            p0, rel0 = saved_photos[0]
-            p0.is_primary = True
-            pro.image_url = rel0  # rétro-compatibilité
-
-        db.session.commit()
-        flash("Photos ajoutées.", "success")
-    except RuntimeError:
-        db.session.rollback()
-        current_app.logger.exception("PIL manquant pour traitement image.")
-        flash("Le traitement d'image nécessite Pillow.", "danger")
-    except ValueError as e:
-        db.session.rollback()
-        flash(str(e), "danger")
-    except Exception:
-        db.session.rollback()
-        current_app.logger.exception("Erreur interne lors de l'upload multiple")
-        flash("Erreur interne lors de l'upload des photos.", "danger")
-
-    return redirect(url_for("professional_edit_profile"))
-# Galerie (optionnel) – on n’écrase que si le champ existe dans le modèle
-if hasattr(professional, "image_url2"):
-    professional.image_url2 = (f.get("image_url2") or "").strip() or None
-if hasattr(professional, "image_url3"):
-    professional.image_url3 = (f.get("image_url3") or "").strip() or None
-
-@app.route("/professional/photos/<int:photo_id>/set-primary", methods=["POST"], endpoint="professional_photo_set_primary")
-@login_required
-def professional_photo_set_primary(photo_id: int):
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé", "danger")
-        return redirect(url_for("index"))
-    pro = Professional.query.filter_by(name=current_user.username).first()
-    if not pro:
-        flash("Profil professionnel non trouvé", "warning")
-        return redirect(url_for("professional_dashboard"))
-
-    photo = ProfessionalPhoto.query.get_or_404(photo_id)
-    if photo.professional_id != pro.id:
-        flash("Accès non autorisé", "danger")
-        return redirect(url_for("professional_edit_profile"))
-
-    try:
-        # unset toutes
-        ProfessionalPhoto.query.filter_by(professional_id=pro.id, is_primary=True).update({"is_primary": False})
-        photo.is_primary = True
-        pro.image_url = f"/media/profiles/{photo.filename}"  # compat profile_photo
-        db.session.commit()
-        flash("Photo principale mise à jour.", "success")
-    except Exception:
-        db.session.rollback()
-        flash("Erreur lors de la mise à jour.", "danger")
-
-    return redirect(url_for("professional_edit_profile"))
-
-@app.route("/professional/photos/<int:photo_id>/delete", methods=["POST"], endpoint="professional_photo_delete")
-@login_required
-def professional_photo_delete(photo_id: int):
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé", "danger")
-        return redirect(url_for("index"))
-    pro = Professional.query.filter_by(name=current_user.username).first()
-    if not pro:
-        flash("Profil professionnel non trouvé", "warning")
-        return redirect(url_for("professional_dashboard"))
-
-    photo = ProfessionalPhoto.query.get_or_404(photo_id)
-    if photo.professional_id != pro.id:
-        flash("Accès non autorisé", "danger")
-        return redirect(url_for("professional_edit_profile"))
-
-    was_primary = bool(photo.is_primary)
-    fname = photo.filename
-    try:
-        db.session.delete(photo)
-        db.session.flush()
-
-        # supprimer le fichier disque
-        try:
-            fpath = UPLOAD_FOLDER / os.path.basename(fname)
-            if fpath.exists():
-                fpath.unlink(missing_ok=True)
-        except Exception:
-            current_app.logger.warning("Suppression fichier échouée (non bloquant).")
-
-        # Si c'était la principale -> en choisir une autre ou vider image_url
-        if was_primary:
-            new_primary = ProfessionalPhoto.query.filter_by(professional_id=pro.id).order_by(ProfessionalPhoto.created_at.desc()).first()
-            if new_primary:
-                new_primary.is_primary = True
-                pro.image_url = f"/media/profiles/{new_primary.filename}"
-            else:
-                pro.image_url = None
-
-        db.session.commit()
-        flash("Photo supprimée.", "success")
-    except Exception:
-        db.session.rollback()
-        flash("Erreur lors de la suppression.", "danger")
-
-    return redirect(url_for("professional_edit_profile"))
 
 # ========== Auth local ==========
 @app.route("/register", methods=["GET","POST"], endpoint="register")
@@ -1100,15 +861,10 @@ def delete_unavailable_slot(slot_id: int):
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
 
-# --- imports (laisse-les si tu les as déjà) ---
-from flask import request, render_template, redirect, url_for, flash
-from flask_login import login_required, current_user
-
 # --- ROUTE: édition du profil pro ---
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
-    # Même lien que le reste de ton code : name == current_user.username
     professional = Professional.query.filter_by(name=current_user.username).first()
     if professional is None:
         flash("Profil professionnel non trouvé", "warning")
@@ -1116,12 +872,11 @@ def professional_edit_profile():
 
     if request.method == "POST":
         f = request.form
-        # Si un <select name="city"> est utilisé, il prime sur le champ texte "location"
+
         city_sel = (f.get("city") or "").strip()
         if city_sel:
             professional.location = city_sel
 
-        # Textes simples
         professional.name = (f.get("name") or "").strip() or professional.name
         professional.specialty = (f.get("specialty") or "").strip() or None
         professional.description = (f.get("description") or "").strip() or None
@@ -1129,7 +884,14 @@ def professional_edit_profile():
         professional.address = (f.get("address") or "").strip() or None
         professional.phone = (f.get("phone") or "").strip() or None
 
-        # Convertisseurs tolérants
+        # Option B : si le formulaire envoie des champs URL supplémentaires
+        if hasattr(Professional, "image_url"):
+            professional.image_url = (f.get("image_url") or "").strip() or professional.image_url
+        if hasattr(Professional, "image_url2"):
+            professional.image_url2 = (f.get("image_url2") or "").strip() or None
+        if hasattr(Professional, "image_url3"):
+            professional.image_url3 = (f.get("image_url3") or "").strip() or None
+
         def to_float(v):
             try:
                 v = (v or "").strip()
@@ -1146,15 +908,13 @@ def professional_edit_profile():
 
         professional.latitude  = to_float(f.get("latitude"))
         professional.longitude = to_float(f.get("longitude"))
-        professional.consultation_fee = to_float(f.get("consultation_fee"))  # modèle = Float
+        professional.consultation_fee = to_float(f.get("consultation_fee"))
         professional.consultation_duration_minutes = to_int(f.get("consultation_duration_minutes")) or 45
         professional.buffer_between_appointments_minutes = to_int(f.get("buffer_between_appointments_minutes")) or 15
 
-        # Types de consultation (checkbox -> csv)
-        types = f.getlist("consultation_types")  # ex: ["cabinet", "en_ligne"]
+        types = f.getlist("consultation_types")
         professional.consultation_types = ",".join(sorted(set(t for t in types if t)))
 
-        # Liens sociaux (révoque auto l'approbation si modifiés)
         old_links = (
             (professional.facebook_url or ""),
             (professional.instagram_url or ""),
@@ -1178,7 +938,6 @@ def professional_edit_profile():
         flash("Profil mis à jour.", "success")
         return redirect(url_for("professional_dashboard"))
 
-    # GET -> affiche le formulaire
     return render_template("professional_edit_profile.html", professional=professional)
 
 # Alias “voir mes RDV”
@@ -1271,7 +1030,6 @@ def book_appointment(professional_id: int):
         )
         db.session.add(appointment); db.session.commit()
 
-        # mails
         try:
             subject, text = _build_notif("pending", appointment, role="patient")
             safe_send_email(current_user.email, subject, text)
@@ -1377,7 +1135,6 @@ def server_error(e):
 with app.app_context():
     db.create_all()
     try:
-        # colonnes additionnelles si manquantes
         for sql in [
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;",
@@ -1390,6 +1147,9 @@ with app.app_context():
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 45;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 15;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
+
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR(30);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_sub VARCHAR(255);",
@@ -1398,30 +1158,14 @@ with app.app_context():
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;",
-           "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
-"ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
-
-            # ✅ AJOUT : table galerie (si absente)
-            """
-            CREATE TABLE IF NOT EXISTS professional_photos (
-                id SERIAL PRIMARY KEY,
-                professional_id INTEGER NOT NULL REFERENCES professionals(id) ON DELETE CASCADE,
-                filename TEXT NOT NULL,
-                is_primary BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            """,
-            "CREATE INDEX IF NOT EXISTS ix_professional_photos_created_at ON professional_photos(created_at);",
-            "CREATE INDEX IF NOT EXISTS ix_professional_photos_prof ON professional_photos(professional_id);",
-            "CREATE INDEX IF NOT EXISTS ix_professional_photos_primary ON professional_photos(is_primary);",
         ]:
             db.session.execute(text(sql))
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
-    # --- Seed non intrusif des villes marocaines (table cities) ---
+
+    # Seed villes (si table Cities utilisée)
     try:
-        from models import City
         _cities = [
             "Casablanca","Rabat","Fès","Marrakech","Tanger","Agadir","Meknès","Oujda",
             "Kénitra","Tétouan","Safi","Mohammedia","El Jadida","Béni Mellal","Nador",
@@ -1458,102 +1202,12 @@ with app.app_context():
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
 
-# --- Filet de sécurité: alias si l'endpoint attendu par le template n'existe pas
+# Filet de sécurité: alias si l'endpoint attendu par le template n'existe pas
 if 'professional_edit_profile' not in app.view_functions:
     @app.route('/professional/profile', methods=['GET', 'POST'], endpoint='professional_edit_profile')
     @login_required
     def _professional_edit_profile_alias():
-        # Si on ne sait pas quel handler utiliser, on renvoie vers le dashboard
         flash("Redirection vers votre espace professionnel.", "info")
         return redirect(url_for('professional_dashboard'))
-
-# ✅ AJOUTS : endpoints simples côté admin (actions sur galerie)
-# On ne modifie pas le blueprint admin existant ; ces routes offrent des actions directes.
-@app.route("/admin/professionals/<int:professional_id>/photos/upload", methods=["POST"], endpoint="admin_photos_upload")
-@login_required
-def admin_photos_upload(professional_id: int):
-    if not getattr(current_user, "is_admin", False):
-        abort(403)
-    pro = Professional.query.get_or_404(professional_id)
-    files = request.files.getlist("photos")
-    files = [f for f in files if getattr(f, "filename", "")]
-    existing = len(pro.photos)
-    remaining = max(0, 3 - existing)
-    if not files or remaining <= 0:
-        flash("Limite de 3 photos atteinte.", "warning")
-        return redirect(request.referrer or url_for("index"))
-    try:
-        saved = []
-        for f in files[:remaining]:
-            fname = _process_and_save_profile_image(f)
-            db.session.add(ProfessionalPhoto(professional_id=pro.id, filename=fname, is_primary=False))
-            saved.append(fname)
-        db.session.flush()
-        if not any(p.is_primary for p in pro.photos):
-            # s'il n'y a aucune principale, fixer la dernière ajoutée
-            last = ProfessionalPhoto.query.filter_by(professional_id=pro.id).order_by(ProfessionalPhoto.created_at.desc()).first()
-            if last:
-                last.is_primary = True
-                pro.image_url = f"/media/profiles/{last.filename}"
-        db.session.commit()
-        flash("Photos ajoutées (admin).", "success")
-    except Exception:
-        db.session.rollback()
-        flash("Erreur lors de l'upload (admin).", "danger")
-    return redirect(request.referrer or url_for("index"))
-
-@app.route("/admin/professionals/<int:professional_id>/photos/<int:photo_id>/set-primary", methods=["POST"], endpoint="admin_photo_set_primary")
-@login_required
-def admin_photo_set_primary(professional_id: int, photo_id: int):
-    if not getattr(current_user, "is_admin", False):
-        abort(403)
-    pro = Professional.query.get_or_404(professional_id)
-    photo = ProfessionalPhoto.query.get_or_404(photo_id)
-    if photo.professional_id != pro.id:
-        abort(403)
-    try:
-        ProfessionalPhoto.query.filter_by(professional_id=pro.id, is_primary=True).update({"is_primary": False})
-        photo.is_primary = True
-        pro.image_url = f"/media/profiles/{photo.filename}"
-        db.session.commit()
-        flash("Photo principale mise à jour (admin).", "success")
-    except Exception:
-        db.session.rollback()
-        flash("Erreur (admin).", "danger")
-    return redirect(request.referrer or url_for("index"))
-
-@app.route("/admin/professionals/<int:professional_id>/photos/<int:photo_id>/delete", methods=["POST"], endpoint="admin_photo_delete")
-@login_required
-def admin_photo_delete(professional_id: int, photo_id: int):
-    if not getattr(current_user, "is_admin", False):
-        abort(403)
-    pro = Professional.query.get_or_404(professional_id)
-    photo = ProfessionalPhoto.query.get_or_404(photo_id)
-    if photo.professional_id != pro.id:
-        abort(403)
-    was_primary = bool(photo.is_primary)
-    fname = photo.filename
-    try:
-        db.session.delete(photo)
-        db.session.flush()
-        try:
-            fpath = UPLOAD_FOLDER / os.path.basename(fname)
-            if fpath.exists():
-                fpath.unlink(missing_ok=True)
-        except Exception:
-            pass
-        if was_primary:
-            new_primary = ProfessionalPhoto.query.filter_by(professional_id=pro.id).order_by(ProfessionalPhoto.created_at.desc()).first()
-            if new_primary:
-                new_primary.is_primary = True
-                pro.image_url = f"/media/profiles/{new_primary.filename}"
-            else:
-                pro.image_url = None
-        db.session.commit()
-        flash("Photo supprimée (admin).", "success")
-    except Exception:
-        db.session.rollback()
-        flash("Erreur (admin).", "danger")
-    return redirect(request.referrer or url_for("index"))
 
 # Pas de __main__ : Gunicorn lance app:app
