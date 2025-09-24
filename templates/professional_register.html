@@ -46,19 +46,17 @@
       </div>
 
       <!-- Ville (normalisée si disponible) -->
-      <div class="col-md-6">
-        <label class="form-label">Ville</label>
-        {% if cities is defined and cities %}
-          <select name="city_id" class="form-select" required>
-            <option value="">Choisir une ville</option>
-            {% for c in cities %}
-              <option value="{{ c.id }}">{{ c.name }}</option>
-            {% endfor %}
-          </select>
-        {% else %}
-          <input name="city" class="form-control" placeholder="Casablanca">
-        {% endif %}
-      </div>
+     <!-- Ville (liste Maroc via CITIES) -->
+<div class="col-md-6">
+  <label class="form-label">Ville</label>
+  <select name="city" class="form-select" required>
+    <option value="">Choisir une ville</option>
+    {% for c in CITIES %}
+      <option value="{{ c.name }}" {% if request.form.get('city') == c.name %}selected{% endif %}>{{ c.name }}</option>
+    {% endfor %}
+  </select>
+</div>
+
 
       <div class="col-md-6">
         <label class="form-label">Années d’expérience</label>
