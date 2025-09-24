@@ -413,61 +413,71 @@ def avatar_alias_path(professional_id: int):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
 # Upload photo pro (ancienne route – conservée, pour image principale)
-@app.route("/professional/profile/photo", methods=["GET", "POST"], endpoint="professional_upload_photo")
+@app.route("/professional/photos/upload", methods=["POST"], endpoint="professional_photos_upload")
 @login_required
-def professional_upload_photo():
+def professional_photos_upload():
     if current_user.user_type != "professional":
-        flash("Accès non autorisé")
+        flash("Accès non autorisé", "danger")
         return redirect(url_for("index"))
-
     pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro:
-        flash("Profil professionnel non trouvé")
+        flash("Profil professionnel non trouvé", "warning")
         return redirect(url_for("professional_dashboard"))
 
-    if request.method == "POST":
-        file = request.files.get("photo")
-        if not file:
-            flash("Veuillez sélectionner une image.", "warning")
-            return redirect(url_for("professional_upload_photo"))
-        try:
-            saved_name = _process_and_save_profile_image(file)
-            # MAJ image principale
-            pro.image_url = f"/media/profiles/{saved_name}"
+    files = [f for f in request.files.getlist("photos") if getattr(f, "filename", "")]
+    try:
+        existing = len(getattr(pro, "photos", []))
+    except Exception:
+        existing = 0
+    remaining = max(0, 3 - existing)
+    if not files or remaining <= 0:
+        flash("Limite de 3 photos atteinte.", "warning")
+        return redirect(url_for("professional_upload_photo"))
 
-            # Si la table galerie existe, on en profite pour marquer cette photo principale
+    try:
+        first_saved = None
+        for f in files[:remaining]:
+            fname = _process_and_save_profile_image(f)
+            first_saved = first_saved or fname
             try:
-                ProfessionalPhoto  # noqa: F401 (vérifie que le modèle est importé)
-                # retirer l’éventuelle principale actuelle
+                ProfessionalPhoto  # noqa: F401
+                db.session.add(ProfessionalPhoto(
+                    professional_id=pro.id,
+                    filename=fname,
+                    is_primary=False
+                ))
+            except Exception:
+                pass
+
+        db.session.flush()
+
+        # pose une primaire si aucune
+        try:
+            had_primary = any(p.is_primary for p in pro.photos)
+        except Exception:
+            had_primary = False
+        if not had_primary and first_saved:
+            try:
                 ProfessionalPhoto.query.filter_by(
                     professional_id=pro.id, is_primary=True
                 ).update({"is_primary": False})
-                db.session.add(ProfessionalPhoto(
-                    professional_id=pro.id,
-                    filename=saved_name,
-                    is_primary=True
-                ))
+                last = ProfessionalPhoto.query.filter_by(
+                    professional_id=pro.id
+                ).order_by(ProfessionalPhoto.created_at.desc()).first()
+                if last:
+                    last.is_primary = True
+                    pro.image_url = f"/media/profiles/{last.filename}"
             except Exception:
-                # si le modèle n’existe pas ou autre, on ignore sans casser
-                pass
+                pro.image_url = f"/media/profiles/{first_saved}"
 
-            db.session.commit()
-            flash("Photo de profil mise à jour avec succès.", "success")
-            return redirect(url_for("professional_upload_photo"))
+        db.session.commit()
+        flash("Photos ajoutées.", "success")
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("Erreur interne lors de l'upload multiple")
+        flash("Erreur interne lors de l'upload des photos.", "danger")
 
-        except RuntimeError:
-            current_app.logger.exception("PIL manquant pour traitement image.")
-            flash("Le traitement d'image nécessite Pillow.", "danger")
-        except ValueError as e:
-            flash(str(e), "danger")
-        except Exception:
-            db.session.rollback()
-            current_app.logger.exception("Erreur interne lors du traitement de l'image")
-            flash("Erreur interne lors du traitement de l'image.", "danger")
-        return redirect(url_for("professional_upload_photo"))
-
-    # GET -> afficher la page avec le pro
-    return render_template("upload_photo.html", professional=pro)
+    return redirect(url_for("professional_upload_photo"))
 
 
 
