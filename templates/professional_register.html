@@ -30,10 +30,11 @@
         <input name="phone" required class="form-control" placeholder="06 12 34 56 78">
       </div>
 
-      <!-- Spécialité (normalisée si disponible) -->
+      <!-- Spécialité -->
       <div class="col-md-6">
         <label class="form-label">Spécialité</label>
         {% if specialties is defined and specialties %}
+          <!-- ta logique existante avec SELECT normalisé si la liste est fournie à la route -->
           <select name="specialty_id" class="form-select" required>
             <option value="">Choisir une spécialité</option>
             {% for s in specialties %}
@@ -41,22 +42,37 @@
             {% endfor %}
           </select>
         {% else %}
-          <input name="specialty" class="form-control" placeholder="Psychologue, Thérapeute, Coach…">
+          <!-- CONTRAT FIXE: on garde name="specialty" mais on propose une datalist dynamique -->
+          <input name="specialty" class="form-control" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
+          <datalist id="specialties_list">
+            {% for s in ALL_SPECIALTIES %}
+              <option value="{{ s }}"></option>
+            {% endfor %}
+          </datalist>
         {% endif %}
       </div>
 
-      <!-- Ville (normalisée si disponible) -->
-     <!-- Ville (liste Maroc via CITIES) -->
-<div class="col-md-6">
-  <label class="form-label">Ville</label>
-  <select name="city" class="form-select" required>
-    <option value="">Choisir une ville</option>
-    {% for c in CITIES %}
-      <option value="{{ c.name }}" {% if request.form.get('city') == c.name %}selected{% endif %}>{{ c.name }}</option>
-    {% endfor %}
-  </select>
-</div>
-
+      <!-- Ville -->
+      <div class="col-md-6">
+        <label class="form-label">Ville</label>
+        {% if cities is defined and cities %}
+          <!-- ta logique existante avec SELECT normalisé si la liste est fournie à la route -->
+          <select name="city_id" class="form-select" required>
+            <option value="">Choisir une ville</option>
+            {% for c in cities %}
+              <option value="{{ c.id }}">{{ c.name }}</option>
+            {% endfor %}
+          </select>
+        {% else %}
+          <!-- CONTRAT FIXE: on garde name="city" mais datalist dynamique -->
+          <input name="city" class="form-control" placeholder="Casablanca" list="cities_list">
+          <datalist id="cities_list">
+            {% for c in ALL_CITIES %}
+              <option value="{{ c }}"></option>
+            {% endfor %}
+          </datalist>
+        {% endif %}
+      </div>
 
       <div class="col-md-6">
         <label class="form-label">Années d’expérience</label>
@@ -67,7 +83,7 @@
         <input name="consultation_fee" type="number" step="0.01" class="form-control" placeholder="300">
       </div>
 
-      <!-- Types de consultation -->
+      <!-- Types de consultation (inchangé) -->
       <div class="col-12">
         <label class="form-label">Types de consultation</label>
         <div class="d-flex flex-wrap gap-3">
