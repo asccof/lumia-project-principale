@@ -18,15 +18,17 @@
   .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
   .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
   .search-bar button:hover{background:var(--primary-dark)}
+
+  /* Responsive grille de base */
   @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
   @media (max-width:640px){ .search-bar{grid-template-columns:1fr} }
 
-  /* Indicateur chevron pour inputs avec datalist (sans changer le backend) */
-  .has-datalist{
-    appearance:none;
-    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='12' viewBox='0 0 20 12'%3E%3Cpath d='M2 2l8 8 8-8' stroke='%238B5CF6' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-    background-repeat:no-repeat; background-position:right 12px center; background-size:16px 12px;
-    padding-right:2.2rem;
+  /* --- MODE MOBILE : barre repliable (contrat fixe: mêmes champs & action) --- */
+  .search-bar.collapsible { position:relative; }
+  @media (max-width:640px){
+    /* quand replié, on ne montre QUE le bouton submit */
+    .search-bar.collapsible.collapsed > *:not(.search-submit){ display:none; }
+    .search-bar.collapsible .search-submit{ display:block; }
   }
 
   .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
@@ -94,53 +96,46 @@
     <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
   </header>
 
-  <!-- SEARCH avec filtres -->
+  <!-- SEARCH avec filtres (contrat fixe : mêmes names + action) -->
   <div class="search-wrap">
-    <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
+    <form id="searchForm" class="search-bar collapsible collapsed" method="get" action="{{ url_for('professionals') }}">
       <!-- Champ libre -->
       <input type="text" name="q" placeholder="Nom, mot-clé..." aria-label="Recherche libre">
 
-      <!-- Ville (input + datalist dynamique, conserve name='city') -->
-      <input
-        type="text"
-        name="city"
-        placeholder="Ville"
-        aria-label="Ville"
-        class="has-datalist"
-        list="cities_list">
-      <datalist id="cities_list">
-        {% if ALL_CITIES is defined and ALL_CITIES %}
-          {% for c in ALL_CITIES %}<option value="{{ c }}"></option>{% endfor %}
-        {% else %}
-          <option value="Casablanca"><option value="Rabat"><option value="Marrakech"><option value="Fès"><option value="Tanger">
-        {% endif %}
-      </datalist>
+      <!-- Ville -->
+      {% if cities is defined and cities %}
+        <select name="city_id" aria-label="Ville">
+          <option value="">Ville</option>
+          {% for c in cities %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="city" placeholder="Ville" aria-label="Ville">
+      {% endif %}
 
-      <!-- Spécialité (input + datalist dynamique, conserve name='specialty') -->
-      <input
-        type="text"
-        name="specialty"
-        placeholder="Spécialité"
-        aria-label="Spécialité"
-        class="has-datalist"
-        list="specialties_list">
-      <datalist id="specialties_list">
-        {% if ALL_SPECIALTIES is defined and ALL_SPECIALTIES %}
-          {% for s in ALL_SPECIALTIES %}<option value="{{ s }}"></option>{% endfor %}
-        {% else %}
-          <option value="Psychologue clinicien"><option value="Psychothérapeute"><option value="Coach professionnel">
-        {% endif %}
-      </datalist>
+      <!-- Spécialité -->
+      {% if specialties is defined and specialties %}
+        <select name="specialty_id" aria-label="Spécialité">
+          <option value="">Spécialité</option>
+          {% for s in specialties %}
+            <option value="{{ s.id }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="specialty" placeholder="Spécialité" aria-label="Spécialité">
+      {% endif %}
 
-      <!-- Mode (valeurs conformes au backend) -->
+      <!-- Mode -->
       <select name="mode" aria-label="Mode de consultation">
         <option value="">Mode</option>
         <option value="cabinet">Cabinet</option>
-        <option value="en_ligne">En ligne</option>
+        <option value="visio">Visio</option>
         <option value="domicile">Domicile</option>
       </select>
 
-      <button type="submit">Rechercher</button>
+      <!-- Bouton submit (avec loupe) -->
+      <button id="searchBtn" class="search-submit" type="submit" aria-expanded="false">🔍 Rechercher</button>
     </form>
   </div>
 
@@ -187,12 +182,11 @@
     </div>
   </div>
 
-  {% set more = other_professionals if other_professionals is defined else (more_professionals if more_professionals is defined else []) %}
-  {% if more %}
+  {% if other_professionals is defined and other_professionals %}
   <section class="strip">
     <h3>Autres professionnels</h3>
     <div class="hscroll">
-      {% for professional in more %}
+      {% for professional in other_professionals %}
       <div class="card-mini">
         <div class="avatar-box">
           <img class="avatar-img js-zoom"
@@ -260,6 +254,7 @@
     <img id="lbImg" class="lightbox-img" alt="Agrandissement">
   </div>
   <script>
+    /* Lightbox */
     (function(){
       const backdrop = document.getElementById('lbBackdrop');
       const imgBig   = document.getElementById('lbImg');
@@ -274,6 +269,32 @@
       btnClose.addEventListener('click', close);
       backdrop.addEventListener('click', function(e){ if(e.target === backdrop) close(); });
       document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+    })();
+
+    /* Barre de recherche repliable (mobile uniquement, contrat fixe) */
+    (function(){
+      const form = document.getElementById('searchForm');
+      const btn  = document.getElementById('searchBtn');
+      if(!form || !btn) return;
+
+      const mq = window.matchMedia('(max-width: 640px)');
+      function applyState(){
+        if(mq.matches){ form.classList.add('collapsed'); btn.setAttribute('aria-expanded','false'); }
+        else{ form.classList.remove('collapsed'); btn.setAttribute('aria-expanded','true'); }
+      }
+      applyState();
+      mq.addEventListener ? mq.addEventListener('change', applyState) : window.addEventListener('resize', applyState);
+
+      btn.addEventListener('click', function(e){
+        const isMobile = window.matchMedia('(max-width: 640px)').matches;
+        if(isMobile && form.classList.contains('collapsed')){
+          e.preventDefault();                 // 1er clic → on déplie, pas de soumission
+          form.classList.remove('collapsed');
+          btn.setAttribute('aria-expanded','true');
+          const first = form.querySelector('input[name="q"], input, select');
+          if(first) first.focus();
+        }
+      });
     })();
   </script>
 {% endblock %}
