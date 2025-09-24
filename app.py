@@ -458,8 +458,8 @@ def professional_upload_photo():
         except Exception:
             current_app.logger.exception("Erreur interne lors du traitement de l'image")
             flash("Erreur interne lors du traitement de l'image.", "danger")
+return render_template("upload_photo.html", professional=pro)
 
-    return render_template("upload_photo.html")
 
 
 # ========== Auth local ==========
