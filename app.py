@@ -246,6 +246,30 @@ def inject_cities():
     except Exception:
         cities = []
     return {"CITIES": cities}
+# --- Listes dynamiques (villes & spécialités) disponibles dans tous les templates ---
+# CONTRAT FIXE : on n'altère pas les routes; simple injection de variables globales.
+from functools import lru_cache
+
+@lru_cache(maxsize=1)
+def _load_refdata_snapshot():
+    try:
+        # on lit les noms (triés) pour alimenter les datalist
+        cities = [c.name for c in db.session.query(City).order_by(City.name.asc()).all()]
+        specialties = [s.name for s in db.session.query(Specialty).order_by(Specialty.name.asc()).all()]
+    except Exception:
+        # en cas de base vide ou indispo, on renvoie des listes vides
+        cities, specialties = [], []
+    # on retourne des tuples (hashables) pour lru_cache
+    return tuple(cities), tuple(specialties)
+
+@app.context_processor
+def inject_refdata_lists():
+    cities, specialties = _load_refdata_snapshot()
+    return {
+        # listes simples pour <datalist>
+        "ALL_CITIES": list(cities),
+        "ALL_SPECIALTIES": list(specialties),
+    }
 
 # ========== Helpers images ==========
 AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
