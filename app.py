@@ -479,6 +479,121 @@ def professional_photos_upload():
 
     return redirect(url_for("professional_upload_photo"))
 
+# --- Affichage du formulaire (GET) ---
+@app.route("/professional/profile/photo", methods=["GET"], endpoint="professional_upload_photo")
+@login_required
+def professional_upload_photo():
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé", "danger")
+        return redirect(url_for("index"))
+
+    # Récupère le profil pro lié à l'utilisateur courant
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "warning")
+        return redirect(url_for("professional_dashboard"))
+
+    # IMPORTANT: passer bien 'professional' au template
+    return render_template("upload_photo.html", professional=pro)
+
+
+# --- Traitement de l'upload (POST) ---
+@app.route("/professional/profile/photo", methods=["POST"], endpoint="professional_photos_upload")
+@login_required
+def professional_photos_upload():
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé", "danger")
+        return redirect(url_for("index"))
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "warning")
+        return redirect(url_for("professional_dashboard"))
+
+    # Compatibilité : accepter soit 3 champs distincts (photo1/2/3),
+    # soit un unique input multiple name="photos"
+    files = []
+    # inputs séparés
+    for key in ("photo1", "photo2", "photo3"):
+        f = request.files.get(key)
+        if f and f.filename:
+            files.append((key, f))
+    # input multiple
+    for f in request.files.getlist("photos"):
+        if f and f.filename:
+            files.append(("photos", f))
+
+    if not files:
+        flash("Aucun fichier sélectionné.", "warning")
+        return redirect(url_for("professional_upload_photo"))
+
+    saved = 0
+
+    # Utiliser vos helpers existants s’ils existent (compatibilité maximale)
+    # Exemple: save_image(file, subdir) -> retourne l'URL enregistrée
+    def _save(fileobj, slot_name):
+        # 1) si vous avez un helper centralisé, utilisez-le :
+        if "save_image" in globals():
+            return save_image(fileobj, "profile")
+        if "save_photo" in globals():
+            return save_photo(fileobj, "profile")
+        # 2) sinon, fallback simple (à adapter si besoin) :
+        from werkzeug.utils import secure_filename
+        import os, uuid
+        fn = secure_filename(fileobj.filename)
+        ext = os.path.splitext(fn)[1].lower()
+        new_name = f"{uuid.uuid4().hex}{ext}"
+        target_dir = os.path.join("static", "uploads", "profile")
+        os.makedirs(target_dir, exist_ok=True)
+        path = os.path.join(target_dir, new_name)
+        fileobj.save(path)
+        return "/" + path.replace(os.sep, "/")
+
+    # Mapping "intelligent" vers 3 emplacements de galerie
+    # (on respecte vos attributs s’ils existent ; sinon on n’écrase rien)
+    # Adapte les noms d’attributs ci-dessous à ton modèle si nécessaire.
+    gallery_slots = [
+        "gallery_photo1_url", "gallery_photo2_url", "gallery_photo3_url"
+    ]
+    # Compat avec anciens noms éventuels :
+    fallbacks = [
+        ("photo1_url", "image_url"),   # slot 1
+        ("photo2_url", None),          # slot 2
+        ("photo3_url", None),          # slot 3
+    ]
+
+    # Remplir dans l’ordre : photo1, photo2, photo3
+    i = 0
+    for _, f in files:
+        if i >= 3:
+            break
+        url = _save(f, f"slot{i+1}")
+        # Ecrit dans le premier attribut existant pour ce slot
+        written = False
+        slot_attr = gallery_slots[i]
+        if hasattr(pro, slot_attr):
+            setattr(pro, slot_attr, url)
+            written = True
+        else:
+            fb1, fb2 = fallbacks[i]
+            if fb1 and hasattr(pro, fb1):
+                setattr(pro, fb1, url)
+                written = True
+            elif fb2 and hasattr(pro, fb2):
+                setattr(pro, fb2, url)
+                written = True
+
+        # En dernier recours : si 'image_url' est le seul champ (compat v1)
+        if not written and hasattr(pro, "image_url"):
+            setattr(pro, "image_url", url)
+            written = True
+
+        saved += 1
+        i += 1
+
+    db.session.commit()
+    flash(f"{saved} photo(s) enregistrée(s).", "success")
+    return redirect(url_for("professional_upload_photo"))
 
 
 # ========== Auth local ==========
