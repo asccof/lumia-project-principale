@@ -604,6 +604,11 @@ def professional_photos_upload():
         flash("Erreur interne lors de l'upload des photos.", "danger")
 
     return redirect(url_for("professional_edit_profile"))
+# Galerie (optionnel) – on n’écrase que si le champ existe dans le modèle
+if hasattr(professional, "image_url2"):
+    professional.image_url2 = (f.get("image_url2") or "").strip() or None
+if hasattr(professional, "image_url3"):
+    professional.image_url3 = (f.get("image_url3") or "").strip() or None
 
 @app.route("/professional/photos/<int:photo_id>/set-primary", methods=["POST"], endpoint="professional_photo_set_primary")
 @login_required
