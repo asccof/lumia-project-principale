@@ -238,6 +238,14 @@ def inject_lang():
     lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
     return {"current_lang": lang, "SUPPORTED_LANGS": SUPPORTED_LANGS}
 
+@app.context_processor
+def inject_cities():
+    try:
+        from models import City
+        cities = City.query.order_by(City.name.asc()).all()
+    except Exception:
+        cities = []
+    return {"CITIES": cities}
 
 # ========== Helpers images ==========
 AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
@@ -1375,6 +1383,26 @@ with app.app_context():
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
+    # --- Seed non intrusif des villes marocaines (table cities) ---
+    try:
+        from models import City
+        _cities = [
+            "Casablanca","Rabat","Fès","Marrakech","Tanger","Agadir","Meknès","Oujda",
+            "Kénitra","Tétouan","Safi","Mohammedia","El Jadida","Béni Mellal","Nador",
+            "Taza","Khouribga","Settat","Larache","Ksar El Kébir","Guelmim","Laâyoune",
+            "Dakhla","Errachidia","Ouarzazate","Taroudant","Essaouira","Berkane","Taourirt",
+            "Guercif","Sidi Kacem","Sidi Slimane","Tiflet","Skhirat","Temara","Salé",
+            "Inezgane","Aït Melloul","Fkih Ben Salah","Youssoufia","Azemmour","Berrechid",
+            "Médiouna","Bouznika","Bouskoura","Sidi Bennour","Chichaoua","El Kelaa des Sraghna",
+            "Ifrane","Midelt","Azrou","Khénifra","Ouezzane","Chefchaouen","Al Hoceima",
+            "Tinghir","Zagora","Smara","Boujdour"
+        ]
+        for name in _cities:
+            if not City.query.filter_by(name=name).first():
+                db.session.add(City(name=name))
+        db.session.commit()
+    except Exception as e:
+        app.logger.warning(f"Seed cities ignoré: {e}")
 
     # seed admin
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
