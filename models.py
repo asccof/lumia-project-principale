@@ -102,6 +102,9 @@ class Professional(db.Model):
     experience_years = db.Column(db.Integer)
     consultation_fee = db.Column(db.Float)  # MAD
     image_url = db.Column(db.Text)
+# Dans class Professional (à côté de image_url)
+image_url_2 = db.Column(db.Text)
+image_url_3 = db.Column(db.Text)
 
     # Dispo & types de consultation
     availability = db.Column(db.String(50), default='disponible')
