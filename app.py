@@ -413,70 +413,112 @@ def avatar_alias_path(professional_id: int):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
 # Upload photo pro (ancienne route – conservée, pour image principale)
-@app.route("/professional/photos/upload", methods=["POST"], endpoint="professional_photos_upload")
+# ------------------------------------------------------------
+# UPLOAD PHOTOS (PROFESSIONNEL) — GET (formulaire) + POST (upload)
+# ------------------------------------------------------------
+from flask import render_template, request, redirect, url_for, flash
+from flask_login import login_required, current_user
+
+# GET: affiche le formulaire
+@app.route("/professional/profile/photo", methods=["GET"], endpoint="professional_upload_photo")
 @login_required
-def professional_photos_upload():
-    if current_user.user_type != "professional":
+def professional_upload_photo():
+    if getattr(current_user, "user_type", None) != "professional":
         flash("Accès non autorisé", "danger")
         return redirect(url_for("index"))
+
+    # Récupération du profil pro lié à l'utilisateur courant
+    # (Adapter si ton lien user->pro se fait autrement)
     pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro:
         flash("Profil professionnel non trouvé", "warning")
         return redirect(url_for("professional_dashboard"))
 
-    files = [f for f in request.files.getlist("photos") if getattr(f, "filename", "")]
-    try:
-        existing = len(getattr(pro, "photos", []))
-    except Exception:
-        existing = 0
-    remaining = max(0, 3 - existing)
-    if not files or remaining <= 0:
-        flash("Limite de 3 photos atteinte.", "warning")
+    # IMPORTANT: passer l'objet 'professional' au template
+    return render_template("upload_photo.html", professional=pro)
+
+
+# POST: traite l'envoi des photos
+@app.route("/professional/profile/photo", methods=["POST"], endpoint="professional_photos_upload")
+@login_required
+def professional_photos_upload():
+    if getattr(current_user, "user_type", None) != "professional":
+        flash("Accès non autorisé", "danger")
+        return redirect(url_for("index"))
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "warning")
+        return redirect(url_for("professional_dashboard"))
+
+    # Collecte des fichiers:
+    # 1) trois champs distincts: photo1 / photo2 / photo3
+    # 2) OU un champ multiple: photos (optionnel)
+    files = []
+    for key in ("photo1", "photo2", "photo3"):
+        f = request.files.get(key)
+        if f and f.filename:
+            files.append((key, f))
+    for f in request.files.getlist("photos"):
+        if f and f.filename:
+            files.append(("photos", f))
+
+    if not files:
+        flash("Aucun fichier sélectionné.", "warning")
         return redirect(url_for("professional_upload_photo"))
 
-    try:
-        first_saved = None
-        for f in files[:remaining]:
-            fname = _process_and_save_profile_image(f)
-            first_saved = first_saved or fname
-            try:
-                ProfessionalPhoto  # noqa: F401
-                db.session.add(ProfessionalPhoto(
-                    professional_id=pro.id,
-                    filename=fname,
-                    is_primary=False
-                ))
-            except Exception:
-                pass
+    # Helper de sauvegarde (utilise tes helpers s’ils existent)
+    def _save(fileobj):
+        # Priorité à tes utilitaires existants si présents
+        if "save_image" in globals():
+            return save_image(fileobj, "profile")
+        if "save_photo" in globals():
+            return save_photo(fileobj, "profile")
 
-        db.session.flush()
+        # Fallback minimal local (ne modifie pas la DB)
+        from werkzeug.utils import secure_filename
+        import os, uuid
+        fn = secure_filename(fileobj.filename)
+        ext = os.path.splitext(fn)[1].lower()
+        new_name = f"{uuid.uuid4().hex}{ext}"
+        target_dir = os.path.join("static", "uploads", "profile")
+        os.makedirs(target_dir, exist_ok=True)
+        path = os.path.join(target_dir, new_name)
+        fileobj.save(path)
+        return "/" + path.replace(os.sep, "/")
 
-        # pose une primaire si aucune
-        try:
-            had_primary = any(p.is_primary for p in pro.photos)
-        except Exception:
-            had_primary = False
-        if not had_primary and first_saved:
-            try:
-                ProfessionalPhoto.query.filter_by(
-                    professional_id=pro.id, is_primary=True
-                ).update({"is_primary": False})
-                last = ProfessionalPhoto.query.filter_by(
-                    professional_id=pro.id
-                ).order_by(ProfessionalPhoto.created_at.desc()).first()
-                if last:
-                    last.is_primary = True
-                    pro.image_url = f"/media/profiles/{last.filename}"
-            except Exception:
-                pro.image_url = f"/media/profiles/{first_saved}"
+    # Ecriture "intelligente" dans jusqu’à 3 emplacements possibles
+    # On respecte tes attributs s’ils existent déjà: d’abord gallery_photoX_url
+    # sinon photoX_url, sinon image_url (fallback historique).
+    slots = [
+        ("gallery_photo1_url", "photo1_url", "image_url"),
+        ("gallery_photo2_url", "photo2_url", None),
+        ("gallery_photo3_url", "photo3_url", None),
+    ]
 
-        db.session.commit()
-        flash("Photos ajoutées.", "success")
-    except Exception:
-        db.session.rollback()
-        current_app.logger.exception("Erreur interne lors de l'upload multiple")
-        flash("Erreur interne lors de l'upload des photos.", "danger")
+    saved = 0
+    i = 0
+    for _, f in files:
+        if i >= 3:
+            break
+        url = _save(f)
+        a, b, c = slots[i]
+        written = False
+        for attr in (a, b, c):
+            if attr and hasattr(pro, attr):
+                setattr(pro, attr, url)
+                written = True
+                break
+        # En dernier recours absolu si rien n’existe, tente 'image_url'
+        if not written and hasattr(pro, "image_url"):
+            setattr(pro, "image_url", url)
+            written = True
+        if written:
+            saved += 1
+            i += 1
 
+    db.session.commit()
+    flash(f"{saved} photo(s) enregistrée(s).", "success")
     return redirect(url_for("professional_upload_photo"))
 
 # --- Affichage du formulaire (GET) ---
