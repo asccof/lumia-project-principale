@@ -426,29 +426,34 @@ def professional_upload_photo():
         return redirect(url_for("professional_dashboard"))
 
     if request.method == "POST":
-        # On accepte 3 champs: photo (principale), photo2, photo3
-        mapping = [
-            ("photo",  "image_url"),
-            ("photo2", "image_url2"),
-            ("photo3", "image_url3"),
-        ]
-
-        changed_any = False
+        file = request.files.get("photo")
+        if not file:
+            flash("Veuillez sélectionner une image.", "warning")
+            return redirect(url_for("professional_upload_photo"))
         try:
-            for field_name, attr in mapping:
-                file = request.files.get(field_name)
-                if file and getattr(file, "filename", ""):
-                    saved_name = _process_and_save_profile_image(file)
-                    setattr(pro, attr, f"/media/profiles/{saved_name}")
-                    changed_any = True
+            saved_name = _process_and_save_profile_image(file)
+            # MAJ image principale
+            pro.image_url = f"/media/profiles/{saved_name}"
 
-            if changed_any:
-                db.session.commit()
-                flash("Photo(s) mise(s) à jour avec succès.", "success")
-            else:
-                flash("Aucune image sélectionnée.", "warning")
+            # Si la table galerie existe, on en profite pour marquer cette photo principale
+            try:
+                ProfessionalPhoto  # noqa: F401 (vérifie que le modèle est importé)
+                # retirer l’éventuelle principale actuelle
+                ProfessionalPhoto.query.filter_by(
+                    professional_id=pro.id, is_primary=True
+                ).update({"is_primary": False})
+                db.session.add(ProfessionalPhoto(
+                    professional_id=pro.id,
+                    filename=saved_name,
+                    is_primary=True
+                ))
+            except Exception:
+                # si le modèle n’existe pas ou autre, on ignore sans casser
+                pass
 
-            return redirect(url_for("professional_edit_profile"))
+            db.session.commit()
+            flash("Photo de profil mise à jour avec succès.", "success")
+            return redirect(url_for("professional_upload_photo"))
 
         except RuntimeError:
             current_app.logger.exception("PIL manquant pour traitement image.")
@@ -456,9 +461,13 @@ def professional_upload_photo():
         except ValueError as e:
             flash(str(e), "danger")
         except Exception:
+            db.session.rollback()
             current_app.logger.exception("Erreur interne lors du traitement de l'image")
             flash("Erreur interne lors du traitement de l'image.", "danger")
-return render_template("upload_photo.html", professional=pro)
+        return redirect(url_for("professional_upload_photo"))
+
+    # GET -> afficher la page avec le pro
+    return render_template("upload_photo.html", professional=pro)
 
 
 
