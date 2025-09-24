@@ -1,63 +1,93 @@
 {% extends "base.html" %}
-{% block title %}Mettre à jour mes photos{% endblock %}
+{% block title %}Mes photos de profil{% endblock %}
 
 {% block content %}
 <div class="container py-4">
-  <h1 class="h5 mb-3">Mes photos (jusqu’à 3)</h1>
+  <h1 class="h5 mb-3">Photo principale & Galerie (max 3)</h1>
 
-  <form method="post" enctype="multipart/form-data">
-    {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-
-    <div class="row g-4">
-
-      <!-- Photo principale -->
-      <div class="col-md-4">
-        <label class="form-label">Photo 1 (principale)</label>
-        <div class="mb-2">
-          <img id="pv1" src="{{ professional.image_url or url_for('profile_photo', professional_id=professional.id) }}"
-               alt="Aperçu 1" style="width:100%;max-width:260px;height:260px;object-fit:cover;border-radius:12px;border:1px solid #eee">
-        </div>
-        <input class="form-control" type="file" name="photo" accept=".jpg,.jpeg,.png,.gif" onchange="previewFile(this,'pv1')">
-        <div class="form-text">Carré conseillé ~512×512</div>
+  <!-- ✅ Photo principale (route historique) -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h6">Photo principale</h2>
+      <div class="d-flex align-items-center gap-3 mb-3">
+        <img id="pv1"
+             src="{{ professional.image_url or url_for('profile_photo', professional_id=professional.id) }}"
+             alt="Photo principale"
+             style="width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid #eee"
+             onerror="this.src='https://placehold.co/240x240?text=Photo';">
+        <form method="post" enctype="multipart/form-data" action="{{ url_for('professional_upload_photo') }}">
+          {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input type="file" name="photo" accept="image/*" class="form-control mb-2" required>
+          <button class="btn btn-primary btn-sm">Mettre à jour la photo principale</button>
+        </form>
       </div>
-
-      <!-- Photo 2 -->
-      <div class="col-md-4">
-        <label class="form-label">Photo 2</label>
-        <div class="mb-2">
-          <img id="pv2" src="{{ professional.image_url2 or 'https://placehold.co/260x260?text=Photo+2' }}"
-               alt="Aperçu 2" style="width:100%;max-width:260px;height:260px;object-fit:cover;border-radius:12px;border:1px solid #eee">
-        </div>
-        <input class="form-control" type="file" name="photo2" accept=".jpg,.jpeg,.png,.gif" onchange="previewFile(this,'pv2')">
-      </div>
-
-      <!-- Photo 3 -->
-      <div class="col-md-4">
-        <label class="form-label">Photo 3</label>
-        <div class="mb-2">
-          <img id="pv3" src="{{ professional.image_url3 or 'https://placehold.co/260x260?text=Photo+3' }}"
-               alt="Aperçu 3" style="width:100%;max-width:260px;height:260px;object-fit:cover;border-radius:12px;border:1px solid #eee">
-        </div>
-        <input class="form-control" type="file" name="photo3" accept=".jpg,.jpeg,.png,.gif" onchange="previewFile(this,'pv3')">
-      </div>
-
+      <div class="text-muted small">Cette action met aussi à jour l’image affichée partout (liste, fiche, etc.).</div>
     </div>
+  </div>
 
-    <div class="mt-4 d-flex gap-2">
-      <button class="btn btn-primary" type="submit">Enregistrer</button>
-      <a class="btn btn-outline-secondary" href="{{ url_for('professional_edit_profile') }}">Retour au profil</a>
+  <!-- ✅ Galerie (3 photos max) -->
+  <div class="card">
+    <div class="card-body">
+      <h2 class="h6">Galerie (jusqu’à 3 photos)</h2>
+
+      <!-- Aperçus rapides (si ton modèle expose image_url2 / image_url3, sinon placeholders) -->
+      <div class="d-flex flex-wrap gap-3 mb-3">
+        <img id="pv2"
+             src="{{ professional.image_url2 or 'https://placehold.co/260x260?text=Photo+2' }}"
+             alt="Photo 2"
+             style="width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid #eee">
+        <img id="pv3"
+             src="{{ professional.image_url3 or 'https://placehold.co/260x260?text=Photo+3' }}"
+             alt="Photo 3"
+             style="width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid #eee">
+      </div>
+
+      <!-- Upload multi (route nouvelle) -->
+      <form method="post" enctype="multipart/form-data" action="{{ url_for('professional_photos_upload') }}">
+        {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <div class="row g-2 mb-2">
+          <div class="col-sm-4"><input type="file" name="photos" accept="image/*" class="form-control"></div>
+          <div class="col-sm-4"><input type="file" name="photos" accept="image/*" class="form-control"></div>
+          <div class="col-sm-4"><input type="file" name="photos" accept="image/*" class="form-control"></div>
+        </div>
+        <button class="btn btn-outline-primary btn-sm">Ajouter à la galerie</button>
+        <div class="form-text">Taille conseillée : carré 512×512. Limite totale galerie : 3 photos.</div>
+      </form>
+
+      <!-- Liste complète des photos galerie (si table professional_photos utilisée) -->
+      {% if professional.photos|length %}
+        <hr class="my-3">
+        <div class="row g-3">
+          {% for p in professional.photos %}
+            <div class="col-6 col-md-4 col-lg-3">
+              <div class="border p-2 rounded text-center">
+                <img src="{{ '/media/profiles/' ~ p.filename }}"
+                     alt="Galerie {{ loop.index }}"
+                     style="width:100%;height:160px;object-fit:cover;border-radius:8px;border:1px solid #eee"
+                     onerror="this.src='https://placehold.co/300x200?text=Photo';">
+                <div class="mt-2">
+                  {% if p.is_primary %}
+                    <span class="badge bg-success">Principale</span>
+                  {% else %}
+                    <form method="post" action="{{ url_for('professional_photo_set_primary', photo_id=p.id) }}" class="d-inline">
+                      {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                      <button class="btn btn-sm btn-outline-success">Définir principale</button>
+                    </form>
+                  {% endif %}
+                  <form method="post" action="{{ url_for('professional_photo_delete', photo_id=p.id) }}" class="d-inline ms-1"
+                        onsubmit="return confirm('Supprimer cette photo ?');">
+                    {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                    <button class="btn btn-sm btn-outline-danger">Supprimer</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
     </div>
-  </form>
+  </div>
+
+  <a href="{{ url_for('professional_dashboard') }}" class="btn btn-link mt-3">← Retour à mon espace</a>
 </div>
-
-<script>
-  function previewFile(input, imgId){
-    const file = input.files && input.files[0];
-    const img = document.getElementById(imgId);
-    if (!file || !img) return;
-    const reader = new FileReader();
-    reader.onload = e => { img.src = e.target.result; };
-    reader.readAsDataURL(file);
-  }
-</script>
 {% endblock %}
