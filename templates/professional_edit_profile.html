@@ -29,6 +29,28 @@
         <label class="form-label">Ville</label>
         <input name="location" class="form-control" value="{{ professional.location or '' }}" placeholder="Casablanca">
       </div>
+     <div class="col-md-6">
+  <label class="form-label">Ville (liste Maroc)</label>
+  <select id="city_select" class="form-select">
+    <option value="">— Sélectionnez une ville —</option>
+    {% for c in CITIES %}
+      <option value="{{ c.name }}" {% if professional.location == c.name %}selected{% endif %}>{{ c.name }}</option>
+    {% endfor %}
+  </select>
+  <div class="form-text">Changer ce sélecteur mettra à jour le champ "Ville" ci-dessous.</div>
+</div>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const sel = document.getElementById('city_select');
+    const txt = document.querySelector('input[name="location"]');
+    if (sel && txt) {
+      sel.addEventListener('change', function() {
+        if (this.value) { txt.value = this.value; }
+      });
+    }
+  });
+</script>
+
       <div class="col-md-6">
         <label class="form-label">Adresse précise</label>
         <input name="address" class="form-control" value="{{ professional.address or '' }}" placeholder="N°, rue, quartier…">
