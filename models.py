@@ -101,10 +101,12 @@ class Professional(db.Model):
     # Expérience / tarif
     experience_years = db.Column(db.Integer)
     consultation_fee = db.Column(db.Float)  # MAD
+
+    # Images
     image_url = db.Column(db.Text)
-# Dans class Professional (à côté de image_url)
-image_url_2 = db.Column(db.Text)
-image_url_3 = db.Column(db.Text)
+    # Option B (galerie 3 images)
+    image_url2 = db.Column(db.Text)
+    image_url3 = db.Column(db.Text)
 
     # Dispo & types de consultation
     availability = db.Column(db.String(50), default='disponible')
@@ -143,15 +145,6 @@ image_url_3 = db.Column(db.Text)
     approved_anthecc = db.Column(db.Boolean, default=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    # ✅ AJOUT: relation non intrusive vers la galerie
-    photos = db.relationship(
-        "ProfessionalPhoto",
-        backref="professional",
-        lazy="select",
-        cascade="all, delete-orphan",
-        order_by="desc(ProfessionalPhoto.created_at)",
-    )
 
     __table_args__ = (
         db.Index('ix_professionals_name', 'name'),
@@ -235,22 +228,3 @@ class UnavailableSlot(db.Model):
     end_time = db.Column(db.String(5), nullable=False)
     reason = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, server_default=db.func.now())
-
-# ======================
-# ✅ AJOUT : Galerie de photos (max 3 par pro)
-# ======================
-class ProfessionalPhoto(db.Model):
-    __tablename__ = "professional_photos"
-
-    id = db.Column(db.Integer, primary_key=True)
-    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id', ondelete='CASCADE'), nullable=False, index=True)
-    filename = db.Column(db.Text, nullable=False)  # ex: "uuid.jpg" (stocké sous /media/profiles/)
-    is_primary = db.Column(db.Boolean, default=False, index=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    __table_args__ = (
-        db.Index('ix_professional_photos_created_at', 'created_at'),
-    )
-
-    def __repr__(self):
-        return f"<ProfessionalPhoto id={self.id} pro={self.professional_id} primary={self.is_primary} file={self.filename}>"
