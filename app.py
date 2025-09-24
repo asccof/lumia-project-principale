@@ -426,16 +426,30 @@ def professional_upload_photo():
         return redirect(url_for("professional_dashboard"))
 
     if request.method == "POST":
-        file = request.files.get("photo")
-        if not file:
-            flash("Veuillez sélectionner une image.", "warning")
-            return redirect(url_for("professional_upload_photo"))
+        # On accepte 3 champs: photo (principale), photo2, photo3
+        mapping = [
+            ("photo",  "image_url"),
+            ("photo2", "image_url2"),
+            ("photo3", "image_url3"),
+        ]
+
+        changed_any = False
         try:
-            saved_name = _process_and_save_profile_image(file)
-            pro.image_url = f"/media/profiles/{saved_name}"
-            db.session.commit()
-            flash("Photo de profil mise à jour avec succès.", "success")
-            return redirect(url_for("professional_dashboard"))
+            for field_name, attr in mapping:
+                file = request.files.get(field_name)
+                if file and getattr(file, "filename", ""):
+                    saved_name = _process_and_save_profile_image(file)
+                    setattr(pro, attr, f"/media/profiles/{saved_name}")
+                    changed_any = True
+
+            if changed_any:
+                db.session.commit()
+                flash("Photo(s) mise(s) à jour avec succès.", "success")
+            else:
+                flash("Aucune image sélectionnée.", "warning")
+
+            return redirect(url_for("professional_edit_profile"))
+
         except RuntimeError:
             current_app.logger.exception("PIL manquant pour traitement image.")
             flash("Le traitement d'image nécessite Pillow.", "danger")
@@ -446,6 +460,7 @@ def professional_upload_photo():
             flash("Erreur interne lors du traitement de l'image.", "danger")
 
     return render_template("upload_photo.html")
+
 
 # ========== Auth local ==========
 @app.route("/register", methods=["GET","POST"], endpoint="register")
