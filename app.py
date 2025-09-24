@@ -1087,6 +1087,10 @@ def professional_edit_profile():
 
     if request.method == "POST":
         f = request.form
+        # Si un <select name="city"> est utilisé, il prime sur le champ texte "location"
+        city_sel = (f.get("city") or "").strip()
+        if city_sel:
+            professional.location = city_sel
 
         # Textes simples
         professional.name = (f.get("name") or "").strip() or professional.name
