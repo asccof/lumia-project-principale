@@ -118,12 +118,102 @@
             </div>
 
             <div class="row">
-              <div class="col-md-4">
-                <div class="mb-3">
-                  <label class="form-label">Ville</label>
-                  <input type="text" class="form-control" name="pro_location" value="{{ (P.location if P else '') or '' }}" placeholder="Casablanca">
-                </div>
-              </div>
+            <div class="col-md-4">
+  <div class="mb-3">
+    <label class="form-label">Ville</label>
+    <!-- CONTRAT FIXE : on garde name="pro_location" -->
+    <input
+      type="text"
+      class="form-control"
+      name="pro_location"
+      value="{{ (P.location if P else '') or '' }}"
+      placeholder="Casablanca"
+      list="morocco_cities"
+    >
+    <!-- Liste de villes marocaines (datalist = autocomplétion sans changer le backend) -->
+    <datalist id="morocco_cities">
+      <option value="Casablanca">
+      <option value="Rabat">
+      <option value="Fès">
+      <option value="Marrakech">
+      <option value="Tanger">
+      <option value="Agadir">
+      <option value="Meknès">
+      <option value="Oujda">
+      <option value="Kénitra">
+      <option value="Tétouan">
+      <option value="Salé">
+      <option value="Nador">
+      <option value="Safi">
+      <option value="Mohammédia">
+      <option value="Khouribga">
+      <option value="El Jadida">
+      <option value="Béni Mellal">
+      <option value="Taza">
+      <option value="Taroudant">
+      <option value="Settat">
+      <option value="Larache">
+      <option value="Ksar El Kebir">
+      <option value="Guelmim">
+      <option value="Berkane">
+      <option value="Ouarzazate">
+      <option value="Al Hoceïma">
+      <option value="Errachidia">
+      <option value="Essaouira">
+      <option value="Khénifra">
+      <option value="Taourirt">
+      <option value="Ouazzane">
+      <option value="Sidi Kacem">
+      <option value="Sidi Slimane">
+      <option value="Tiflet">
+      <option value="Tiznit">
+      <option value="Tan-Tan">
+      <option value="Dakhla">
+      <option value="Laâyoune">
+      <option value="Fquih Ben Salah">
+      <option value="Berrechid">
+      <option value="Midelt">
+      <option value="Guercif">
+      <option value="Sefrou">
+      <option value="Azrou">
+      <option value="Ifrane">
+      <option value="Youssoufia">
+      <option value="Chichaoua">
+      <option value="Sidi Ifni">
+      <option value="El Kelaa des Sraghna">
+      <option value="Kalaat M'Gouna">
+      <option value="Tinghir">
+      <option value="Zagora">
+      <option value="Chefchaouen">
+      <option value="Jérada">
+      <option value="Boujdour">
+      <option value="Smara">
+      <option value="Tata">
+      <option value="Assilah">
+      <option value="Martil">
+      <option value="Fnideq">
+      <option value="Skhirat">
+      <option value="Témara">
+      <option value="Bouznika">
+      <option value="Bouskoura">
+      <option value="Dar Bouazza">
+      <option value="Aït Melloul">
+      <option value="Drarga">
+      <option value="Sidi Bennour">
+      <option value="Oulad Teima">
+      <option value="Souk El Arbaa">
+      <option value="El Aioun Sidi Mellouk">
+      <option value="Biougra">
+      <option value="Imzouren">
+      <option value="Sidi Yahya El Gharb">
+      <option value="Mechra Bel Ksiri">
+      <option value="Azemmour">
+      <option value="Aïn Harrouda">
+      <option value="Benguerir">
+    </datalist>
+  </div>
+</div>
+
               <div class="col-md-8">
                 <div class="mb-3">
                   <label class="form-label">Adresse</label>
