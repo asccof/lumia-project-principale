@@ -151,4 +151,22 @@
     <a href="{{ url_for('professional_dashboard') }}" class="btn btn-outline-secondary mt-3">Annuler</a>
   </form>
 </div>
+<!-- Galerie (optionnel) : 2 URLs supplémentaires -->
+<div class="col-12">
+  <label class="form-label">Galerie (photos supplémentaires)</label>
+  <div class="row g-2">
+    <div class="col-md-6">
+      <input name="image_url2" class="form-control" type="url"
+             placeholder="https://... (Photo 2)"
+             value="{{ professional.image_url2 if professional.image_url2 is defined and professional.image_url2 else '' }}">
+    </div>
+    <div class="col-md-6">
+      <input name="image_url3" class="form-control" type="url"
+             placeholder="https://... (Photo 3)"
+             value="{{ professional.image_url3 if professional.image_url3 is defined and professional.image_url3 else '' }}">
+    </div>
+  </div>
+  <div class="form-text">Laissez vide si vous n’utilisez pas ces emplacements.</div>
+</div>
+
 {% endblock %}
