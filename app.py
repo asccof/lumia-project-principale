@@ -1393,6 +1393,9 @@ with app.app_context():
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;",
+           "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
+"ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
+
             # ✅ AJOUT : table galerie (si absente)
             """
             CREATE TABLE IF NOT EXISTS professional_photos (
