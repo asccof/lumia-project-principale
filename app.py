@@ -1,4 +1,4 @@
-# app.py — version unifiée et propre pour Tighri (Option B: 3 URL d’images)
+# app.py — Tighri (cohérent + fix i18n multi-domaine + badges)
 
 from __future__ import annotations
 import os, io, uuid, secrets, hashlib, requests
@@ -6,11 +6,10 @@ from datetime import datetime, date, timedelta, time as dtime
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 from typing import Optional
-from functools import lru_cache
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
-    send_from_directory, Response, current_app, make_response, g, abort
+    send_from_directory, Response, current_app, make_response, g
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -21,30 +20,9 @@ from flask_login import (
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
 
-# ========== PIL (images) ==========
-try:
-    from PIL import Image, ImageOps
-    _PIL_OK = True
-except Exception:
-    _PIL_OK = False
-
-# ========== Notifications sûres ==========
-from notifications import send_email as _notif_send_email
-def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None = None) -> bool:
-    try:
-        if not to_addr:
-            current_app.logger.warning("[EMAIL] destinataire manquant")
-            return False
-        ok = _notif_send_email(to_addr, subject, body_text, html)
-        (current_app.logger.info if ok else current_app.logger.error)(
-            "[EMAIL] %s -> %s : %s", "envoyé" if ok else "échec", to_addr, subject
-        )
-        return ok
-    except Exception as e:
-        current_app.logger.exception("safe_send_email exception: %s", e)
-        return False
-
-# ========== Constantes ==========
+# =========================
+#   CONSTANTES / DOSSIERS
+# =========================
 BASE_DIR = Path(__file__).resolve().parent
 BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
 
@@ -53,11 +31,9 @@ UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
 
-DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
-SUPPORTED_LANGS = {"fr", "ar", "en"}
-LANG_COOKIE = "lang"
-
-# ========== App ==========
+# =========================
+#   FLASK APP
+# =========================
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
@@ -69,18 +45,19 @@ app.config["REMEMBER_COOKIE_NAME"] = "tighri_remember"
 app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=60)
 app.config["REMEMBER_COOKIE_SECURE"] = True
 app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
-app.config['PREFERRED_URL_SCHEME'] = 'https'
-app.config['UPLOAD_FOLDER'] = str(UPLOAD_FOLDER)
-app.config.setdefault('MAX_CONTENT_LENGTH', MAX_CONTENT_LENGTH)
+app.config["PREFERRED_URL_SCHEME"] = "https"
+app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
+app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
 
-# Créer dossiers d’upload si besoin
 try:
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 except Exception as e:
     app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
 
-# ========== DB & modèles ==========
+# =========================
+#   DB / MODELS
+# =========================
 def _normalize_pg_uri(uri: str) -> str:
     if not uri:
         return uri
@@ -97,12 +74,7 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-from models import (
-    db, User, Professional, Appointment,
-    ProfessionalAvailability, UnavailableSlot,
-    City, Specialty,
-)
-
+from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
 if not uri:
     raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
@@ -111,11 +83,15 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 db.init_app(app)
 
-# ========== Admin (Blueprint) ==========
+# =========================
+#   ADMIN BLUEPRINT
+# =========================
 from admin_server import admin_bp, ProfessionalOrder, _build_notif
 app.register_blueprint(admin_bp, url_prefix="/admin")
 
-# ========== Login Manager ==========
+# =========================
+#   LOGIN MANAGER
+# =========================
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -127,57 +103,186 @@ def _load_user(user_id: str):
     except Exception:
         return None
 
-# ========== OAuth Google ==========
-oauth = OAuth(app)
-google = oauth.register(
-    name="google",
-    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
-    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
-    access_token_url="https://oauth2.googleapis.com/token",
-    authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
-    api_base_url="https://www.googleapis.com/oauth2/v3/",
-    client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
-)
+# =========================
+#   I18N / LANG
+# =========================
+DEFAULT_LANG = "fr"
+SUPPORTED_LANGS = {"fr", "en", "ar"}
+LANG_COOKIE = "lang"
+LANG_MAX_AGE = 60 * 60 * 24 * 180  # 180 jours
 
-# ========== Langue ==========
-def _normalize_lang(code: str | None) -> str:
+def _normalize_lang(code: str | None):
     if not code:
         return DEFAULT_LANG
-    code = code.lower().strip()
-    return code if code in SUPPORTED_LANGS else DEFAULT_LANG
+    v = str(code).strip().lower()
+    if "-" in v:
+        v = v.split("-", 1)[0]
+    return v if v in SUPPORTED_LANGS else DEFAULT_LANG
+
+def _cookie_domain_for(host: str | None):
+    if not host:
+        return None
+    host = host.split(":")[0]
+    if host in ("localhost",) or host.replace(".", "").isdigit():
+        return None
+    parts = host.split(".")
+    if len(parts) >= 2:
+        return "." + ".".join(parts[-2:])
+    return None
 
 @app.before_request
 def _load_locale():
-    lang = _normalize_lang(request.cookies.get(LANG_COOKIE))
-    g.current_locale = lang
-    g.current_locale_label = {"fr": "Français", "ar": "العربية", "en": "English"}.get(lang, "Français")
+    lang = (
+        request.cookies.get(LANG_COOKIE)
+        or request.args.get("lang")
+        or (request.accept_languages.best_match(SUPPORTED_LANGS) if request.accept_languages else None)
+    )
+    g.current_locale = _normalize_lang(lang)
 
-@app.route('/set-language/<lang>', methods=['GET'], endpoint='set_language')
-@app.route('/set-language', methods=['GET'], endpoint='set_language')
-def set_language(lang: str | None = None):
-    lang = _normalize_lang(lang or request.args.get('lang') or request.args.get('lang_code'))
-    resp = make_response(redirect(request.referrer or url_for('index')))
-    resp.set_cookie(LANG_COOKIE, lang, max_age=60*60*24*180, samesite="Lax", secure=True)
+@app.after_request
+def _vary_on_cookie_for_lang(resp):
+    ct = resp.headers.get("Content-Type", "")
+    if "text/html" in ct:
+        existing_vary = resp.headers.get("Vary")
+        resp.headers["Vary"] = "Cookie" if not existing_vary else f"{existing_vary}, Cookie"
+        resp.headers["Cache-Control"] = "private, no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
     return resp
 
-# Listes dynamiques injectées partout
-@lru_cache(maxsize=1)
-def _load_refdata_snapshot():
-    try:
-        cities = [c.name for c in db.session.query(City).order_by(City.name.asc()).all()]
-        specialties = [s.name for s in db.session.query(Specialty).order_by(Specialty.name.asc()).all()]
-    except Exception:
-        cities, specialties = [], []
-    return tuple(cities), tuple(specialties)
+TRANSLATIONS = {
+    "fr": {
+        "nav": {"home": "Accueil", "professionals": "Professionnels", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact"},
+        "auth": {"login": "Connexion", "register": "Inscription", "logout": "Déconnexion"},
+        "common": {"menu": "menu"},
+        "home": {"title": "Tighri", "tagline": "La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés"},
+        "search": {"cta": "Rechercher", "mode": "Mode", "city": "Ville", "specialty": "Spécialité", "q": "Nom, mot-clé..."},
+        "cards": {"patient": "Espace Patient", "pro": "Espace Professionnel"},
+        # --- badges ---
+        "badge": {
+            "tighri": "Certifié Tighri",
+            "anthecc": "Certifié ANTHECC",
+            "tighri_short": "Tighri",
+            "anthecc_short": "ANTHECC",
+        },
+    },
+    "en": {
+        "nav": {"home": "Home", "professionals": "Professionals", "anthecc": "ANTHECC", "about": "About", "contact": "Contact"},
+        "auth": {"login": "Login", "register": "Sign up", "logout": "Logout"},
+        "common": {"menu": "menu"},
+        "home": {"title": "Tighri", "tagline": "Moroccan platform to book certified psychologists, therapists and coaches"},
+        "search": {"cta": "Search", "mode": "Mode", "city": "City", "specialty": "Specialty", "q": "Name, keyword..."},
+        "cards": {"patient": "Patient Space", "pro": "Professional Space"},
+        # --- badges ---
+        "badge": {
+            "tighri": "Tighri Certified",
+            "anthecc": "ANTHECC Certified",
+            "tighri_short": "Tighri",
+            "anthecc_short": "ANTHECC",
+        },
+    },
+    "ar": {
+        "nav": {"home": "الرئيسية", "professionals": "المهنيون", "anthecc": "ANTHECC", "about": "حول", "contact": "اتصل"},
+        "auth": {"login": "تسجيل الدخول", "register": "إنشاء حساب", "logout": "تسجيل الخروج"},
+        "common": {"menu": "القائمة"},
+        "home": {"title": "تيغري", "tagline": "منصة مغربية لحجز مواعيد مع أخصائيين ومعالجين ومدربين معتمدين"},
+        "search": {"cta": "ابحث", "mode": "النمط", "city": "المدينة", "specialty": "التخصص", "q": "اسم، كلمة..."},
+        "cards": {"patient": "فضاء المريض", "pro": "فضاء المهني"},
+        # --- badges ---
+        "badge": {
+            "tighri": "معتمد من تيغري",
+            "anthecc": "معتمد من ANTHECC",
+            "tighri_short": "تيغري",
+            "anthecc_short": "ANTHECC",
+        },
+    },
+}
+
+def _get_in(d, parts):
+    cur = d
+    for p in parts:
+        if not isinstance(cur, dict) or p not in cur:
+            return None
+        cur = cur[p]
+    return cur
+
+def t(key, default=None, **kwargs):
+    lang = getattr(g, "current_locale", DEFAULT_LANG)
+    parts = str(key).split(".")
+    val = _get_in(TRANSLATIONS.get(lang, {}), parts)
+    if val is None:
+        val = _get_in(TRANSLATIONS.get("fr", {}), parts)
+    if val is None:
+        val = default if default is not None else parts[-1]
+    if kwargs:
+        try:
+            val = val.format(**kwargs)
+        except Exception:
+            pass
+    return val
+
+def _lang_label(lang):
+    return {"fr": "Français", "en": "English", "ar": "العربية"}.get(lang, "Français")
+
+def _text_dir(lang):
+    return "rtl" if lang == "ar" else "ltr"
 
 @app.context_processor
-def inject_refdata_lists():
-    cities, specialties = _load_refdata_snapshot()
-    return {"ALL_CITIES": list(cities), "ALL_SPECIALTIES": list(specialties)}
+def inject_i18n():
+    lang = getattr(g, "current_locale", DEFAULT_LANG)
+    return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
 
-# ========== Helpers images ==========
+@app.route("/set-language/<code>")
+def set_language_path(code):
+    code = _normalize_lang(code)
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    resp.set_cookie(
+        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax",
+        domain=_cookie_domain_for(request.host), path="/",
+    )
+    return resp
+
+@app.route("/set-language")
+def set_language_qs():
+    code = _normalize_lang(request.args.get("lang"))
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    resp.set_cookie(
+        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax",
+        domain=_cookie_domain_for(request.host), path="/",
+    )
+    return resp
+
+# =========================
+#   EMAILS (safe wrapper)
+# =========================
+from notifications import send_email as _notif_send_email
+def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None = None) -> bool:
+    try:
+        if not to_addr:
+            current_app.logger.warning("[EMAIL] destinataire manquant")
+            return False
+        ok = _notif_send_email(to_addr, subject, body_text, html)
+        (current_app.logger.info if ok else current_app.logger.error)(
+            "[EMAIL] %s -> %s : %s", "envoyé" if ok else "échec", to_addr, subject
+        )
+        return ok
+    except Exception as e:
+        current_app.logger.exception("safe_send_email exception: %s", e)
+        return False
+
+# =========================
+#   PIL (images)
+# =========================
+try:
+    from PIL import Image, ImageOps
+    _PIL_OK = True
+except Exception:
+    _PIL_OK = False
+
 AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
 PLACEHOLDER_AVATAR = os.path.join(app.root_path, "static", "avatar_default.webp")
+PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
+AVATAR_DEFAULT_REL = "img/avatar-default.png"
 
 def _ext_ok(filename: str) -> bool:
     if not filename:
@@ -218,9 +323,6 @@ def _avatar_file_for(pid: int) -> Optional[str]:
             return path
     return None
 
-PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
-AVATAR_DEFAULT_REL = "img/avatar-default.png"
-
 def _avatar_fallback_response():
     static_avatar = Path(app.static_folder or (BASE_DIR / "static")) / AVATAR_DEFAULT_REL
     if static_avatar.exists():
@@ -229,17 +331,9 @@ def _avatar_fallback_response():
         return resp
     return redirect(PHOTO_PLACEHOLDER)
 
-@app.route("/media/profiles/<path:filename>", methods=["GET"])
-def media_profiles_file(filename: str):
-    safe_name = os.path.basename(filename)
-    fpath = UPLOAD_FOLDER / safe_name
-    if fpath.exists():
-        resp = send_from_directory(str(UPLOAD_FOLDER), safe_name, as_attachment=False, conditional=True)
-        resp.headers["Cache-Control"] = "public, max-age=31536000"
-        return resp
-    return _avatar_fallback_response()
-
-# ========== Routes techniques ==========
+# =========================
+#   ROUTES TECH
+# =========================
 @app.route("/favicon.ico")
 def favicon():
     fav_path = Path(app.static_folder or (BASE_DIR / "static")) / "favicon.ico"
@@ -256,10 +350,11 @@ def robots():
         return send_from_directory(app.static_folder, "robots.txt", mimetype="text/plain")
     return ("User-agent: *\nDisallow:\n", 200, {"Content-Type": "text/plain"})
 
-# ========== Pages publiques ==========
+# =========================
+#   PAGES PUBLIQUES
+# =========================
 @app.route("/", endpoint="index")
 def index():
-    # Tri admin si table d’ordre dispo, sinon fallback
     try:
         base = (
             db.session.query(Professional)
@@ -299,7 +394,8 @@ def index():
 
 @app.route("/anthecc", endpoint="anthecc")
 def anthecc():
-    return render_template("anthecc.html")
+    tpl = BASE_DIR / "templates" / "anthecc.html"
+    return render_template("anthecc.html") if tpl.exists() else ("ANTHECC", 200)
 
 @app.route("/about", endpoint="about")
 def about():
@@ -309,21 +405,12 @@ def about():
 def contact():
     return render_template("contact.html")
 
-# Listing / recherche
 @app.route("/professionals", endpoint="professionals")
 def professionals():
     q = (request.args.get("q") or "").strip()
     city = (request.args.get("city") or "").strip()
     specialty = (request.args.get("specialty") or "").strip()
     mode = (request.args.get("mode") or "").strip().lower()
-
-    # Nouveaux filtres par ID (si selects dynamiques)
-    city_id = request.args.get("city_id", type=int)
-    specialty_id = request.args.get("specialty_id", type=int)
-
-    # normaliser le terme du mode
-    if mode == "visio":
-        mode = "en_ligne"
 
     qry = Professional.query.filter_by(status='valide')
 
@@ -336,15 +423,13 @@ def professionals():
         if conds:
             qry = qry.filter(or_(*conds))
 
-    if city_id and hasattr(Professional, "city_id"):
-        qry = qry.filter(Professional.city_id == city_id)
-    elif city and hasattr(Professional, "location"):
+    if city and hasattr(Professional, "location"):
         qry = qry.filter(Professional.location.ilike(f"%{city}%"))
 
-    if specialty_id and hasattr(Professional, "primary_specialty_id"):
-        qry = qry.filter(Professional.primary_specialty_id == specialty_id)
-    elif specialty and hasattr(Professional, "specialty"):
-        qry = qry.filter(Professional.specialty.ilike(f"%{specialty}%"))
+    if specialty:
+        like = f"%{specialty}%"
+        if hasattr(Professional, "specialty"):
+            qry = qry.filter(Professional.specialty.ilike(like))
 
     if mode and hasattr(Professional, "consultation_types"):
         qry = qry.filter(Professional.consultation_types.ilike(f"%{mode}%"))
@@ -352,13 +437,14 @@ def professionals():
     pros = qry.order_by(Professional.is_featured.desc(), Professional.created_at.desc()).all()
     return render_template("professionals.html", professionals=pros, specialty=specialty, search_query=q)
 
-# Fiche pro
 @app.route("/professional/<int:professional_id>", endpoint="professional_detail")
 def professional_detail(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
     return render_template("professional_detail.html", professional=professional)
 
-# ========== Photos / médias ==========
+# =========================
+#   MÉDIAS / PHOTOS
+# =========================
 @app.route("/media/profile/<int:professional_id>", endpoint="profile_photo")
 def profile_photo(professional_id: int):
     pro = Professional.query.get_or_404(professional_id)
@@ -388,7 +474,10 @@ def profile_photo(professional_id: int):
     if parsed.scheme not in ("http", "https"):
         return _avatar_fallback_response()
 
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)", "Referer": "https://www.tighri.com"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
+        "Referer": "https://www.tighri.com",
+    }
     try:
         r = requests.get(raw_url, headers=headers, timeout=8, stream=True)
         r.raise_for_status()
@@ -400,7 +489,7 @@ def profile_photo(professional_id: int):
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
 
-@app.route("/avatar", endpoint="avatar")
+@app.route("/avatar")
 def avatar_alias_qs():
     pid = request.args.get("professional_id", type=int)
     if not pid:
@@ -411,95 +500,43 @@ def avatar_alias_qs():
 def avatar_alias_path(professional_id: int):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
-# ========== Upload photos (corrigé: 1 GET + 1 POST, pas de doublons) ==========
-@app.route("/professional/profile/photo", methods=["GET"], endpoint="professional_upload_photo")
+@app.route("/professional/profile/photo", methods=["GET", "POST"], endpoint="professional_upload_photo")
 @login_required
 def professional_upload_photo():
-    if getattr(current_user, "user_type", None) != "professional":
-        flash("Accès non autorisé", "danger")
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé")
         return redirect(url_for("index"))
 
     pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro:
-        flash("Profil professionnel non trouvé", "warning")
+        flash("Profil professionnel non trouvé")
         return redirect(url_for("professional_dashboard"))
 
-    return render_template("upload_photo.html", professional=pro)
+    if request.method == "POST":
+        file = request.files.get("photo")
+        if not file:
+            flash("Veuillez sélectionner une image.", "warning")
+            return redirect(url_for("professional_upload_photo"))
+        try:
+            saved_name = _process_and_save_profile_image(file)
+            pro.image_url = f"/media/profiles/{saved_name}"
+            db.session.commit()
+            flash("Photo de profil mise à jour avec succès.", "success")
+            return redirect(url_for("professional_dashboard"))
+        except RuntimeError:
+            current_app.logger.exception("PIL manquant pour traitement image.")
+            flash("Le traitement d'image nécessite Pillow.", "danger")
+        except ValueError as e:
+            flash(str(e), "danger")
+        except Exception:
+            current_app.logger.exception("Erreur interne lors du traitement de l'image")
+            flash("Erreur interne lors du traitement de l'image.", "danger")
 
-@app.route("/professional/profile/photo", methods=["POST"], endpoint="professional_photos_upload")
-@login_required
-def professional_photos_upload():
-    if getattr(current_user, "user_type", None) != "professional":
-        flash("Accès non autorisé", "danger")
-        return redirect(url_for("index"))
+    return render_template("upload_photo.html")
 
-    pro = Professional.query.filter_by(name=current_user.username).first()
-    if not pro:
-        flash("Profil professionnel non trouvé", "warning")
-        return redirect(url_for("professional_dashboard"))
-
-    # Accepte photo1/photo2/photo3 OU input multiple name="photos"
-    files = []
-    for key in ("photo1", "photo2", "photo3"):
-        f = request.files.get(key)
-        if f and f.filename:
-            files.append((key, f))
-    for f in request.files.getlist("photos"):
-        if f and f.filename:
-            files.append(("photos", f))
-
-    if not files:
-        flash("Aucun fichier sélectionné.", "warning")
-        return redirect(url_for("professional_upload_photo"))
-
-    # Helper d’enregistrement local (respecte ton pattern /static/uploads/profile)
-    def _save(fileobj):
-        from werkzeug.utils import secure_filename
-        fn = secure_filename(fileobj.filename)
-        ext = os.path.splitext(fn)[1].lower()
-        new_name = f"{uuid.uuid4().hex}{ext}"
-        target_dir = os.path.join("static", "uploads", "profile")
-        os.makedirs(target_dir, exist_ok=True)
-        path = os.path.join(target_dir, new_name)
-        fileobj.save(path)
-        return "/" + path.replace(os.sep, "/")
-
-    gallery_slots = ["gallery_photo1_url", "gallery_photo2_url", "gallery_photo3_url"]
-    fallbacks = [
-        ("photo1_url", "image_url"),  # slot 1
-        ("photo2_url", None),         # slot 2
-        ("photo3_url", None),         # slot 3
-    ]
-
-    saved, i = 0, 0
-    for _, f in files:
-        if i >= 3:
-            break
-        url = _save(f)
-        written = False
-        slot_attr = gallery_slots[i]
-        if hasattr(pro, slot_attr):
-            setattr(pro, slot_attr, url)
-            written = True
-        else:
-            fb1, fb2 = fallbacks[i]
-            if fb1 and hasattr(pro, fb1):
-                setattr(pro, fb1, url)
-                written = True
-            elif fb2 and hasattr(pro, fb2):
-                setattr(pro, fb2, url)
-                written = True
-        if not written and hasattr(pro, "image_url"):
-            setattr(pro, "image_url", url)
-            written = True
-        saved += 1
-        i += 1
-
-    db.session.commit()
-    flash(f"{saved} photo(s) enregistrée(s).", "success")
-    return redirect(url_for("professional_upload_photo"))
-
-# ========== Auth local ==========
+# =========================
+#   AUTH LOCAL
+# =========================
 @app.route("/register", methods=["GET","POST"], endpoint="register")
 def register():
     if request.method == "POST":
@@ -636,7 +673,20 @@ def logout():
     logout_user()
     return redirect(url_for("index"))
 
-# ========== OAuth Google ==========
+# =========================
+#   OAUTH GOOGLE
+# =========================
+oauth = OAuth(app)
+google = oauth.register(
+    name="google",
+    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+    access_token_url="https://oauth2.googleapis.com/token",
+    authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
+    api_base_url="https://www.googleapis.com/oauth2/v3/",
+    client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
+)
+
 @app.route("/auth/google")
 def auth_google():
     redirect_uri = os.environ.get("OAUTH_REDIRECT_URI", url_for("auth_google_callback", _external=True, _scheme="https"))
@@ -691,7 +741,9 @@ def auth_google_callback():
         flash("Connexion Google impossible. Réessayez.", "danger")
         return redirect(url_for("login"))
 
-# ========== Mot de passe : reset ==========
+# =========================
+#   RESET PASSWORD
+# =========================
 def _hash_token(tok: str) -> str:
     return hashlib.sha256(tok.encode("utf-8")).hexdigest()
 
@@ -803,7 +855,9 @@ def reset_password(token: str):
         return redirect(url_for("login"))
     return render_template("reset_password.html")
 
-# ========== Espace pro / RDV ==========
+# =========================
+#   ESPACE PRO / RDV
+# =========================
 @app.route("/professional_dashboard", endpoint="professional_dashboard")
 @login_required
 def professional_dashboard():
@@ -819,7 +873,6 @@ def professional_dashboard():
     return render_template("professional_dashboard.html",
                            professional=professional, appointments=appointments)
 
-# Dispos hebdo
 @app.route("/professional/availability", methods=["GET","POST"], endpoint="professional_availability")
 @login_required
 def professional_availability():
@@ -861,7 +914,6 @@ def professional_availability():
                            availabilities=availability_dict,
                            windows_by_day=windows_by_day)
 
-# Indisponibilités ponctuelles
 @app.route("/professional/unavailable-slots", methods=["GET","POST"], endpoint="professional_unavailable_slots")
 @login_required
 def professional_unavailable_slots():
@@ -913,59 +965,43 @@ def delete_unavailable_slot(slot_id: int):
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
 
-# --- ROUTE: édition du profil pro ---
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
     professional = Professional.query.filter_by(name=current_user.username).first()
-    if professional is None:
-        flash("Profil professionnel non trouvé", "warning")
-        return redirect(url_for("professional_dashboard"))
+    if not professional:
+        professional = Professional(name=current_user.username, description="Profil en cours de complétion.", status="en_attente")
+        db.session.add(professional); db.session.commit()
 
     if request.method == "POST":
         f = request.form
-
-        city_sel = (f.get("city") or "").strip()
-        if city_sel:
-            professional.location = city_sel
-
-        professional.name = (f.get("name") or "").strip() or professional.name
-        professional.specialty = (f.get("specialty") or "").strip() or None
-        professional.description = (f.get("description") or "").strip() or None
-        professional.location = (f.get("location") or "").strip() or None
-        professional.address = (f.get("address") or "").strip() or None
-        professional.phone = (f.get("phone") or "").strip() or None
-
-        # Option B : champs URL supplémentaires
-        if hasattr(Professional, "image_url"):
-            professional.image_url = (f.get("image_url") or "").strip() or professional.image_url
-        if hasattr(Professional, "image_url2"):
-            professional.image_url2 = (f.get("image_url2") or "").strip() or None
-        if hasattr(Professional, "image_url3"):
-            professional.image_url3 = (f.get("image_url3") or "").strip() or None
+        professional.name = f.get("name", "").strip() or professional.name
+        professional.specialty = f.get("specialty", "").strip() or professional.specialty
+        professional.description = f.get("description", "").strip() or professional.description
+        professional.location = f.get("location", "").strip() or professional.location
+        professional.address = f.get("address", "").strip() or professional.address
+        professional.phone = f.get("phone", "").strip() or professional.phone
 
         def to_float(v):
             try:
-                v = (v or "").strip()
-                return float(v.replace(",", ".")) if v else None
-            except Exception:
+                return float(v) if v not in (None, "",) else None
+            except ValueError:
                 return None
 
         def to_int(v):
             try:
-                v = (v or "").strip()
-                return int(v) if v else None
-            except Exception:
+                return int(v) if v not in (None, "",) else None
+            except ValueError:
                 return None
 
         professional.latitude  = to_float(f.get("latitude"))
         professional.longitude = to_float(f.get("longitude"))
-        professional.consultation_fee = to_float(f.get("consultation_fee"))
+        professional.consultation_fee = to_int(f.get("consultation_fee"))
         professional.consultation_duration_minutes = to_int(f.get("consultation_duration_minutes")) or 45
         professional.buffer_between_appointments_minutes = to_int(f.get("buffer_between_appointments_minutes")) or 15
 
         types = f.getlist("consultation_types")
-        professional.consultation_types = ",".join(sorted(set(t for t in types if t)))
+        professional.consultation_types = ",".join(sorted({t for t in types if t}))
 
         old_links = (
             (professional.facebook_url or ""),
@@ -973,10 +1009,10 @@ def professional_edit_profile():
             (professional.tiktok_url or ""),
             (professional.youtube_url or ""),
         )
-        professional.facebook_url  = (f.get("facebook_url") or "").strip() or None
-        professional.instagram_url = (f.get("instagram_url") or "").strip() or None
-        professional.tiktok_url    = (f.get("tiktok_url") or "").strip() or None
-        professional.youtube_url   = (f.get("youtube_url") or "").strip() or None
+        professional.facebook_url  = f.get("facebook_url", "").strip() or None
+        professional.instagram_url = f.get("instagram_url", "").strip() or None
+        professional.tiktok_url    = f.get("tiktok_url", "").strip() or None
+        professional.youtube_url   = f.get("youtube_url", "").strip() or None
         new_links = (
             (professional.facebook_url or ""),
             (professional.instagram_url or ""),
@@ -992,7 +1028,6 @@ def professional_edit_profile():
 
     return render_template("professional_edit_profile.html", professional=professional)
 
-# Alias “voir mes RDV”
 @app.route("/professional/appointments", endpoint="professional_appointments")
 @login_required
 def professional_appointments():
@@ -1007,7 +1042,6 @@ def my_appointments():
         appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
     return render_template("my_appointments.html", appointments=appointments)
 
-# Réservation
 def _str_to_time(hhmm: str) -> dtime:
     return datetime.strptime(hhmm, "%H:%M").time()
 
@@ -1110,7 +1144,6 @@ def book_appointment(professional_id: int):
                            availabilities=availabilities,
                            unavailable_dates=unavailable_dates)
 
-# API slots
 @app.route("/api/professional/<int:professional_id>/available-slots", endpoint="api_available_slots")
 def api_available_slots(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
@@ -1163,7 +1196,9 @@ def api_available_slots(professional_id: int):
         "available_slots": _slots()
     })
 
-# ========== Statut site ==========
+# =========================
+#   STATUT / ERREURS
+# =========================
 @app.route("/site-status", endpoint="site_status")
 def site_status():
     status = app.config.get("SITE_STATUS", {})
@@ -1174,7 +1209,6 @@ def site_status():
     }
     return render_template("site_status.html", status=status, stats=stats)
 
-# ========== Erreurs ==========
 @app.errorhandler(404)
 def not_found(e):
     return render_template("errors/404.html"), 404
@@ -1183,7 +1217,9 @@ def not_found(e):
 def server_error(e):
     return render_template("errors/500.html"), 500
 
-# ========== Boot (migrations légères + admin seed) ==========
+# =========================
+#   BOOT (migrations légères + admin seed)
+# =========================
 with app.app_context():
     db.create_all()
     try:
@@ -1199,9 +1235,10 @@ with app.app_context():
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 45;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 15;",
-            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
-            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
-
+            # --- badges (NOUVEAU) ---
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS is_tighri_certified BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS is_anthecc_certified BOOLEAN DEFAULT FALSE;",
+            # --------------------------
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR(30);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_sub VARCHAR(255);",
@@ -1216,27 +1253,6 @@ with app.app_context():
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
 
-    # Seed villes (si table Cities utilisée)
-    try:
-        _cities = [
-            "Casablanca","Rabat","Fès","Marrakech","Tanger","Agadir","Meknès","Oujda",
-            "Kénitra","Tétouan","Safi","Mohammedia","El Jadida","Béni Mellal","Nador",
-            "Taza","Khouribga","Settat","Larache","Ksar El Kébir","Guelmim","Laâyoune",
-            "Dakhla","Errachidia","Ouarzazate","Taroudant","Essaouira","Berkane","Taourirt",
-            "Guercif","Sidi Kacem","Sidi Slimane","Tiflet","Skhirat","Temara","Salé",
-            "Inezgane","Aït Melloul","Fkih Ben Salah","Youssoufia","Azemmour","Berrechid",
-            "Médiouna","Bouznika","Bouskoura","Sidi Bennour","Chichaoua","El Kelaa des Sraghna",
-            "Ifrane","Midelt","Azrou","Khénifra","Ouezzane","Chefchaouen","Al Hoceima",
-            "Tinghir","Zagora","Smara","Boujdour"
-        ]
-        for name in _cities:
-            if not City.query.filter_by(name=name).first():
-                db.session.add(City(name=name))
-        db.session.commit()
-    except Exception as e:
-        app.logger.warning(f"Seed cities ignoré: {e}")
-
-    # seed admin
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -1254,12 +1270,4 @@ with app.app_context():
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
 
-# Filet de sécurité: alias si l'endpoint attendu par le template n'existe pas
-if 'professional_edit_profile' not in app.view_functions:
-    @app.route('/professional/profile', methods=['GET', 'POST'], endpoint='professional_edit_profile')
-    @login_required
-    def _professional_edit_profile_alias():
-        flash("Redirection vers votre espace professionnel.", "info")
-        return redirect(url_for('professional_dashboard'))
-
-# Pas de __main__ : Gunicorn lance app:app
+# Pas de __main__: Gunicorn lance app:app
