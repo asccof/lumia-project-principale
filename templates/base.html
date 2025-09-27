@@ -1,95 +1,577 @@
+base html
+
 <!DOCTYPE html>
-<html lang="{{ current_lang }}" dir="{{ dir_value|default('ltr') }}">
+<html lang="{{ current_lang or 'fr' }}">
 <head>
-  <meta charset="utf-8">
-  <meta http-equiv="x-ua-compatible" content="ie=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Tighri - Plateforme de Rendez-vous Médicaux{% endblock %}</title>
 
-  <title>{% block title %}Tighri{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('favicon') }}" type="image/x-icon">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
 
-  {# CSS global éventuel de ton projet #}
-  {# <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}"> #}
+  <style id="force-burger-css">
+    :root {
+      --primary-color:#6b46c1; --secondary-color:#553c9a; --accent-color:#9f7aea;
+      --dark-color:#2d3748; --light-color:#f7fafc; --success-color:#38a169;
+      --warning-color:#ed8936; --danger-color:#e53e3e;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',sans-serif;line-height:1.6;color:var(--dark-color);background:#fff}
 
-  {% block extra_css %}{% endblock %}
-  <style>
-    /* Mini styles NE CHANGENT PAS la police : uniquement mise en page nav + flash */
-    .site-nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 1rem;border-bottom:1px solid #eee;background:#fff}
-    .nav-left,.nav-right{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
-    .brand{font-weight:700;text-decoration:none;color:inherit}
-    .nav-link{color:inherit;text-decoration:none;padding:.35rem .6rem;border-radius:.4rem}
-    .nav-link:hover{background:#f4f4f8}
-    .lang-switch{display:flex;align-items:center;gap:.25rem}
-    .lang-switch a{padding:.25rem .5rem;border-radius:.4rem;text-decoration:none}
-    .lang-switch .is-active{background:#efeff6;font-weight:700}
-    .flash{margin:0 auto;max-width:1100px;padding:.75rem 1rem;border-radius:.5rem}
-    .flash.info{background:#eef6ff}
-    .flash.success{background:#ebf7ee}
-    .flash.warning{background:#fff9e6}
-    .flash.danger{background:#ffecec}
-    main{min-height:60vh}
-    footer{border-top:1px solid #eee;padding:1.25rem 1rem;margin-top:2rem;color:#555}
+    .navbar{
+      background:linear-gradient(135deg,var(--primary-color),var(--secondary-color));
+      box-shadow:0 2px 10px rgba(0,0,0,.1);
+      padding:1rem 0;
+      position:relative;
+      z-index:1052;
+    }
+    .navbar-brand{font-weight:700;font-size:1.8rem;color:#fff!important}
+    .navbar-nav .nav-link{color:rgba(255,255,255,.9)!important;font-weight:500;margin:0 .5rem;transition:.3s}
+    .navbar-nav .nav-link:hover{color:#fff!important;transform:translateY(-2px)}
+
+    .hero-section{background:linear-gradient(135deg,var(--primary-color),var(--accent-color));color:#fff;padding:4rem 0;text-align:center}
+    .hero-section h1{font-size:3.5rem;font-weight:700;margin-bottom:1rem}
+    .hero-section p{font-size:1.2rem;margin-bottom:2rem;opacity:.9}
+    .btn-primary{background:var(--primary-color);border:none;padding:.75rem 2rem;border-radius:50px;font-weight:600;transition:.3s}
+    .btn-primary:hover{background:var(--secondary-color);transform:translateY(-2px);box-shadow:0 5px 15px rgba(0,120,212,.3)}
+    .card{border:none;border-radius:15px;box-shadow:0 5px 20px rgba(0,0,0,.1);transition:.3s;overflow:hidden}
+    .card:hover{transform:translateY(-5px);box-shadow:0 10px 30px rgba(0,0,0,.15)}
+    .card-img-top{height:200px;object-fit:cover}
+    .product-card{height:100%}
+    .price{font-size:1.5rem;font-weight:700;color:var(--primary-color)}
+    .footer{background:var(--dark-color);color:#fff;padding:3rem 0 1rem;margin-top:4rem}
+    .footer h5{color:var(--accent-color);margin-bottom:1rem}
+    .footer a{color:rgba(255,255,255,.8);text-decoration:none;transition:color .3s}
+    .footer a:hover{color:var(--accent-color)}
+    .social-links a{display:inline-block;width:40px;height:40px;background:var(--primary-color);color:#fff;text-align:center;line-height:40px;border-radius:50%;margin-right:10px;transition:.3s}
+    .social-links a:hover{background:var(--accent-color);transform:translateY(-2px)}
+    .alert{border-radius:10px;border:none}
+    .form-control{border-radius:10px;border:2px solid #e9ecef;padding:.75rem 1rem;transition:.3s}
+    .form-control:focus{border-color:var(--primary-color);box-shadow:0 0 0 .2rem rgba(0,120,212,.25)}
+    .section-title{text-align:center;margin-bottom:3rem}
+    .section-title h2{font-size:2.5rem;font-weight:700;color:var(--dark-color);margin-bottom:1rem}
+    .section-title p{color:#6c757d;font-size:1.1rem}
+    @media (max-width:768px){.hero-section h1{font-size:2.5rem}.section-title h2{font-size:2rem}}
+
+    @media (max-width: 991.98px){
+      .navbar .navbar-toggler{
+        display:inline-flex !important; align-items:center; justify-content:center;
+        gap:.35rem; padding:.4rem .6rem;
+        border:1px solid rgba(255,255,255,.4) !important; border-radius:.5rem;
+        background:transparent; position:relative !important; z-index:1062 !important;
+        visibility:visible !important; opacity:1 !important;
+        width:auto !important; height:auto !important;
+      }
+      #navbarNav{display:none !important;}
+    }
   </style>
+  {% block extra_css %}{% endblock %}
 </head>
 <body>
 
-  <header class="site-nav">
-    <div class="nav-left">
-      <a class="brand" href="{{ url_for('index') }}">Tighri</a>
-      <a class="nav-link" href="{{ url_for('professionals') }}">{{ t('nav.professionals','Professionnels') }}</a>
-      <a class="nav-link" href="{{ url_for('anthecc') }}">{{ t('nav.anthecc','ANTHECC') }}</a>
-      <a class="nav-link" href="{{ url_for('about') }}">{{ t('nav.about','À propos') }}</a>
-      <a class="nav-link" href="{{ url_for('contact') }}">{{ t('nav.contact','Contact') }}</a>
-    </div>
+  <!-- NAVBAR -->
+  <nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container align-items-center justify-content-between">
+      <a class="navbar-brand" href="{{ url_for('index') }}">
+        <i class="fas fa-heart me-2"></i>Tighri
+      </a>
 
-    <div class="nav-right">
+      <!-- Burger mobile -->
+      <button id="burgerBtn" class="navbar-toggler d-lg-none" type="button"
+              style="display:inline-flex!important;visibility:visible!important;opacity:1!important;position:relative!important;z-index:1062!important;"
+              data-bs-toggle="offcanvas" data-bs-target="#mobileMenu" aria-controls="mobileMenu" aria-label="Ouvrir le menu">
+        <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 6h18M3 12h18M3 18h18" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        <span class="ms-1 fw-semibold text-white">Menu</span>
+      </button>
+
+      <!-- Menu desktop -->
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">Accueil</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('professionals') }}">Professionnels</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('anthecc') }}">ANTHECC</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}#about">À propos</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('contact') }}">Contact</a></li>
+          {% if request.blueprint == 'admin' or request.path.startswith('/admin') %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('site_status') }}"><i class="fas fa-server me-1"></i>Statut</a></li>
+          {% endif %}
+        </ul>
+        <ul class="navbar-nav align-items-center">
+          <!-- Sélecteur de langue -->
+          <li class="nav-item dropdown me-2">
+            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
+              <i class="fa-solid fa-globe me-2"></i>{{ current_lang_label or 'Français' }}
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="{{ url_for('set_language', lang='fr') }}">Français</a></li>
+<li><a class="dropdown-item" href="{{ url_for('set_language', lang='ar') }}">العربية</a></li>
+<li><a class="dropdown-item" href="{{ url_for('set_language', lang='en') }}">English</a></li>
+>
+            </ul>
+          </li>
+
+          {% if current_user.is_authenticated %}
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                <i class="fas fa-user me-1"></i>{{ current_user.username }}
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>Profil</a></li>
+                <li><a class="dropdown-item" href="#"><i class="fas fa-shopping-cart me-2"></i>Commandes</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Déconnexion</a></li>
+              </ul>
+            </li>
+          {% else %}
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}"><i class="fas fa-sign-in-alt me-1"></i>Connexion</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('register') }}"><i class="fas fa-user-plus me-1"></i>Inscription</a></li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Offcanvas mobile -->
+  <div class="offcanvas offcanvas-end" tabindex="-1" id="mobileMenu" aria-labelledby="mobileMenuLabel">
+    <div class="offcanvas-header">
+      <h5 class="offcanvas-title" id="mobileMenuLabel"><i class="fas fa-heart me-2 text-primary"></i>Tighri</h5>
+      <button type="button" class="btn-close text-reset" data-bs-dismiss="offcanvas" aria-label="Fermer"></button>
+    </div>
+    <div class="offcanvas-body">
+      <div class="list-group">
+        <a class="list-group-item list-group-item-action" href="{{ url_for('index') }}#about"><i class="fas fa-circle-info me-2"></i>À propos</a>
+        <a class="list-group-item list-group-item-action" href="{{ url_for('index') }}#services"><i class="fas fa-briefcase-medical me-2"></i>Services</a>
+        <a class="list-group-item list-group-item-action" href="{{ url_for('anthecc') }}"><i class="fa-solid fa-certificate me-2"></i>ANTHECC</a>
+        <a class="list-group-item list-group-item-action" href="{{ url_for('contact') }}"><i class="fas fa-envelope me-2"></i>Contact</a>
+      </div>
+      <hr class="my-3">
+      <!-- Sélecteur langue mobile -->
+      <div class="d-grid gap-2 mb-3">
+        <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang_code='fr') }}">Français</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang_code='ar') }}">العربية</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang_code='en') }}">English</a>
+      </div>
       {% if current_user.is_authenticated %}
-        {% if current_user.user_type == 'professional' %}
-          <a class="nav-link" href="{{ url_for('professional_dashboard') }}">Mon espace</a>
-        {% else %}
-          <a class="nav-link" href="{{ url_for('my_appointments') }}">Mes rendez-vous</a>
-        {% endif %}
-        <a class="nav-link" href="{{ url_for('logout') }}">{{ t('auth.logout','Déconnexion') }}</a>
+        <a class="btn btn-outline-primary w-100 mb-2" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Déconnexion</a>
       {% else %}
-        <a class="nav-link" href="{{ url_for('login') }}">{{ t('auth.login','Connexion') }}</a>
-        <a class="nav-link" href="{{ url_for('register') }}">{{ t('auth.register','Inscription') }}</a>
-      {% endif %}
-
-      <nav class="lang-switch" aria-label="Langue">
-        {# aucune police ajoutée ; simple switch. Le courant est en surbrillance #}
-        <a href="{{ url_for('set_language_path', code='fr') }}"
-           class="{{ 'is-active' if current_lang=='fr' else '' }}">FR</a>
-        <a href="{{ url_for('set_language_path', code='en') }}"
-           class="{{ 'is-active' if current_lang=='en' else '' }}">EN</a>
-        <a href="{{ url_for('set_language_path', code='ar') }}"
-           class="{{ 'is-active' if current_lang=='ar' else '' }}">AR</a>
-      </nav>
-    </div>
-  </header>
-
-  {# messages flash #}
-  <section style="padding:0 1rem;margin-top:.75rem">
-    {% with msgs = get_flashed_messages(with_categories=true) %}
-      {% if msgs %}
-        <div style="display:grid;gap:.5rem;max-width:1100px;margin:0 auto">
-          {% for cat, msg in msgs %}
-            <div class="flash {{ cat|default('info') }}">{{ msg }}</div>
-          {% endfor %}
+        <div class="d-grid gap-2">
+          <a class="btn btn-primary" href="{{ url_for('login') }}"><i class="fas fa-sign-in-alt me-2"></i>Connexion</a>
+          <a class="btn btn-outline-primary" href="{{ url_for('register') }}"><i class="fas fa-user-plus me-2"></i>Inscription</a>
         </div>
       {% endif %}
-    {% endwith %}
-  </section>
+    </div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="container mt-3">
+        {% for cat, message in messages %}
+          <div class="alert alert-{{ cat if cat in ['primary','secondary','success','danger','warning','info','light','dark'] else 'info' }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
 
   <main>
     {% block content %}{% endblock %}
   </main>
 
-  <footer>
-    <div style="max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
-      <div>© {{  now().year if false else '' }} Tighri</div>
-      <div><a class="nav-link" href="{{ url_for('site_status') }}">Statut</a></div>
+  <footer class="footer">
+    <div class="container">
+      <div class="row">
+        <div class="col-lg-4 col-md-6 mb-4">
+          <h5><i class="fas fa-heart me-2"></i>Tighri</h5>
+          <p>Plateforme de prise de rendez-vous pour consultations psychologiques et professionnelles au Maroc. Cabinet, domicile ou vidéo.</p>
+          <div class="social-links">
+            <a href="#"><i class="fab fa-facebook-f"></i></a>
+            <a href="#"><i class="fab fa-twitter"></i></a>
+            <a href="#"><i class="fab fa-instagram"></i></a>
+            <a href="#"><i class="fab fa-linkedin-in"></i></a>
+          </div>
+        </div>
+        <div class="col-lg-2 col-md-6 mb-4">
+          <h5>Services</h5>
+          <ul class="list-unstyled">
+            <li><a href="{{ url_for('professionals', specialty='Psychologue') }}">Psychologues</a></li>
+            <li><a href="{{ url_for('professionals', specialty='Thérapeute') }}">Thérapeutes</a></li>
+            <li><a href="{{ url_for('professionals') }}">Consultations</a></li>
+            <li><a href="#">Nouveaux professionnels</a></li>
+          </ul>
+        </div>
+        <div class="col-lg-2 col-md-6 mb-4">
+          <h5>Support</h5>
+          <ul class="list-unstyled">
+            <li><a href="#">Aide</a></li>
+            <li><a href="#">FAQ</a></li>
+            <li><a href="#">Service client</a></li>
+            <li><a href="#">Confidentialité</a></li>
+          </ul>
+        </div>
+        <div class="col-lg-2 col-md-6 mb-4">
+          <h5>Entreprise</h5>
+          <ul class="list-unstyled">
+            <li><a href="{{ url_for('about') }}">À propos</a></li>
+            <li><a href="#">Carrières</a></li>
+            <li><a href="#">Presse</a></li>
+            <li><a href="#">Investisseurs</a></li>
+          </ul>
+        </div>
+        <div class="col-lg-2 col-md-6 mb-4">
+          <h5>Contact</h5>
+          <ul class="list-unstyled">
+            <li><a href="{{ url_for('contact') }}">Nous contacter</a></li>
+            <li><a href="#">Boutiques</a></li>
+            <li><a href="#">Partenaires</a></li>
+            <li><a href="#">Devenir revendeur</a></li>
+          </ul>
+        </div>
+      </div>
+      <hr class="my-4" style="border-color: rgba(255,255,255,0.1);">
+      <div class="row align-items-center">
+        <div class="col-md-6"><p class="mb-0">&copy; 2024 Tighri. Tous droits réservés.</p></div>
+        <div class="col-md-6 text-md-end">
+          <a href="#" class="me-3">Conditions d'utilisation</a>
+          <a href="#" class="me-3">Politique de confidentialité</a>
+          <a href="#">Cookies</a>
+        </div>
+      </div>
     </div>
   </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // Fermer l'offcanvas avant de naviguer (UX mobile propre)
+    document.addEventListener('click', function (e) {
+      const a = e.target.closest('#mobileMenu a[href]');
+      if (!a) return;
+      const href = a.getAttribute('href');
+      if (!href) return;
+      e.preventDefault();
+      const ocEl = document.getElementById('mobileMenu');
+      if (!ocEl) { window.location.assign(href); return; }
+      const inst = bootstrap.Offcanvas.getInstance(ocEl) || new bootstrap.Offcanvas(ocEl);
+      const go = () => window.location.assign(href);
+      ocEl.addEventListener('hidden.bs.offcanvas', function handler() {
+        ocEl.removeEventListener('hidden.bs.offcanvas', handler);
+        go();
+      });
+      inst.hide();
+      setTimeout(go, 500);
+    });
+
+    // Modales utilitaires
+    window.showSiteConfirm = function(message, onConfirm) {
+      const el = document.getElementById('confirmModal');
+      if (!el) return;
+      document.getElementById('confirmModalMessage').textContent = message || 'Êtes-vous sûr ?';
+      const modal = new bootstrap.Modal(el);
+      const okBtn = document.getElementById('confirmModalOk');
+      const clone = okBtn.cloneNode(true);
+      okBtn.parentNode.replaceChild(clone, okBtn);
+      clone.addEventListener('click', function(){ modal.hide(); if(typeof onConfirm==='function') onConfirm(); });
+      modal.show();
+    }
+    window.showSiteNotification = function(message, type='info') {
+      const n = document.createElement('div');
+      n.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+      n.style.cssText = 'top:20px;right:20px;z-index:9999;min-width:300px;';
+      n.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+      document.body.appendChild(n);
+      setTimeout(()=>{ if(n.parentNode) n.remove(); }, 5000);
+      n.querySelector('.btn-close').addEventListener('click', ()=> n.remove());
+    }
+  </script>
+
+  <!-- Modal confirmation -->
+  <div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog"><div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-question-circle me-2"></i>Confirmation</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="confirmModalMessage">Êtes-vous sûr ?</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-primary" id="confirmModalOk">Confirmer</button>
+      </div>
+    </div></div>
+  </div>
 
   {% block extra_js %}{% endblock %}
 </body>
 </html>
+
+index
+
+{% extends "base.html" %}
+{% block title %}Tighri - Prendre rendez-vous avec un professionnel{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root{
+    --primary:#8B5CF6; --primary-dark:#6D28D9;
+    --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; --card:#fff;
+    --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;
+  }
+  body{background:var(--bg);color:var(--ink)}
+  header{background:linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);color:#fff;padding:8rem 0 2rem;text-align:center}
+  header h1{margin:0 0 .5rem;font-size:3rem;font-weight:700}
+  header p{margin:0 auto 1.5rem;max-width:700px;font-size:1.15rem;opacity:.95}
+
+  .search-wrap{max-width:1100px;margin:-2.5rem auto 1rem;padding:0 1rem}
+  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
+  .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
+  .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
+  .search-bar button:hover{background:var(--primary-dark)}
+  @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
+  @media (max-width:640px){ .search-bar{grid-template-columns:1fr} }
+
+  .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
+  .section{background:#fff;border-radius:18px;box-shadow:var(--shadow);padding:2.5rem;min-width:320px;max-width:400px;flex:1 1 320px;text-align:center}
+  .section h2{color:var(--primary);margin:0 0 1rem}
+  .section p{color:var(--muted);margin:0 0 1.5rem}
+  .section a{display:inline-block;background:var(--primary);color:#fff;padding:1rem 2rem;border-radius:30px;text-decoration:none;font-weight:700}
+  .section a:hover{background:var(--primary-dark)}
+
+  .featured{max-width:1200px;margin:0 auto 3rem;padding:0 2rem}
+  .featured h3{color:#6D28D9;margin:0 0 1.5rem;text-align:center;font-size:2rem}
+  .professionals{display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:1.25rem;justify-items:center}
+  @media (max-width:1024px){ .professionals{grid-template-columns:repeat(2,minmax(260px,1fr));} }
+  @media (max-width:640px){ .professionals{grid-template-columns:1fr;} }
+
+  .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:340px;width:100%;text-align:center}
+  .professional-card .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
+  .professional-card .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
+  .professional-card h4{margin:.5rem 0 .2rem;color:#6D28D9}
+  .professional-card p{color:#4B3869;font-size:.95rem;margin:.35rem 0}
+  .professional-card a{color:var(--primary);text-decoration:none;font-weight:600}
+  .professional-card a:hover{text-decoration:underline}
+
+  .strip{max-width:1200px;margin:0 auto 4rem;padding:0 2rem}
+  .strip h3{color:#6D28D9;margin:0 0 1rem;font-size:1.5rem}
+  .hscroll{display:flex;gap:1rem;overflow-x:auto;padding-bottom:.5rem;scroll-snap-type:x mandatory}
+  .hscroll::-webkit-scrollbar{height:8px}
+  .hscroll::-webkit-scrollbar-thumb{background:#d8cfff;border-radius:999px}
+  .card-mini{scroll-snap-align:start;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1rem;min-width:240px;max-width:240px;text-align:center;flex:0 0 auto}
+  .card-mini .avatar-box{width:84px;height:84px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .6rem}
+  .card-mini .avatar-img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .card-mini h4{margin:.4rem 0 .1rem;color:#6D28D9;font-size:1rem}
+  .card-mini p{margin:0;color:#4B3869;font-size:.9rem}
+
+  .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
+  .about-container{max-width:1200px;margin:0 auto;text-align:center}
+  .about-section h2{color:var(--primary);font-size:2.2rem;margin:0 0 1rem}
+  .about-section p{color:#4B3869;font-size:1.05rem;line-height:1.8;max-width:800px;margin:0 auto 1.25rem}
+
+  .services-section{padding:4rem 2rem;background:var(--bg)}
+  .services-container{max-width:1200px;margin:0 auto}
+  .services-section h2{color:var(--primary);font-size:2.2rem;text-align:center;margin:0 0 2rem}
+  .services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem}
+  .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);text-align:center}
+  .service-card h3{color:#6D28D9;margin:.25rem 0 1rem}
+  .service-card p{color:#4B3869;margin:0}
+
+  .contact-section{background:var(--primary);color:#fff;padding:4rem 2rem;text-align:center}
+  .contact-container{max-width:800px;margin:0 auto}
+  .contact-section h2{font-size:2rem;margin:0 0 1rem}
+  .contact-section p{font-size:1.05rem;margin:0 0 1.25rem;opacity:.95}
+  .contact-info{display:flex;justify-content:center;gap:2rem;flex-wrap:wrap}
+  .contact-item{display:flex;flex-direction:column;align-items:center;gap:.35rem}
+  .contact-item strong{font-size:1.05rem}
+  .contact-actions{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin-top:1.25rem}
+  .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#ffffff;color:#6D28D9;border:2px solid #ffffff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,0.18);transition:.2s}
+  .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
+  .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
+</style>
+{% endblock %}
+
+{% block content %}
+  <header id="top">
+    <h1>Tighri</h1>
+    <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
+  </header>
+
+  <!-- SEARCH avec filtres -->
+  <div class="search-wrap">
+    <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
+      <!-- Champ libre -->
+      <input type="text" name="q" placeholder="Nom, mot-clé..." aria-label="Recherche libre">
+
+      <!-- Ville -->
+      {% if cities is defined and cities %}
+        <select name="city_id" aria-label="Ville">
+          <option value="">Ville</option>
+          {% for c in cities %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="city" placeholder="Ville" aria-label="Ville">
+      {% endif %}
+
+      <!-- Spécialité -->
+      {% if specialties is defined and specialties %}
+        <select name="specialty_id" aria-label="Spécialité">
+          <option value="">Spécialité</option>
+          {% for s in specialties %}
+            <option value="{{ s.id }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="specialty" placeholder="Spécialité" aria-label="Spécialité">
+      {% endif %}
+
+      <!-- Mode -->
+      <select name="mode" aria-label="Mode de consultation">
+        <option value="">Mode</option>
+        <option value="cabinet">Cabinet</option>
+        <option value="visio">Visio</option>
+        <option value="domicile">Domicile</option>
+      </select>
+
+      <button type="submit">Rechercher</button>
+    </form>
+  </div>
+
+  <!-- 2 BLOCS -->
+  <div class="sections">
+    <div class="section">
+      <h2>Espace Patient</h2>
+      <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
+      <a href="{{ url_for('register') }}">Je suis patient</a>
+    </div>
+    <div class="section">
+      <h2>Espace Professionnel</h2>
+      <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
+      <a href="{{ url_for('professional_register') }}">Je suis professionnel</a>
+    </div>
+  </div>
+
+  <!-- PROFESSIONNELS EN VEDETTE -->
+  <div class="featured">
+    <h3>Professionnels en vedette</h3>
+    {% set grid = top_professionals if top_professionals is defined else professionals %}
+    <div class="professionals">
+      {% for professional in grid %}
+        <div class="professional-card">
+          <div class="avatar-box">
+            <img class="avatar-img js-zoom"
+                 src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+                 data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+                 alt="Photo de {{ professional.name|e }}"
+                 width="96" height="96" loading="lazy"
+                 onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
+          </div>
+          <h4>{{ professional.name }}</h4>
+          <p>
+            {% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}Professionnel{% endif %}
+          </p>
+          <p>
+            {% set d = professional.description or '' %}
+            {{ d[:80] }}{% if d|length > 80 %}…{% endif %}
+          </p>
+          <a href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if other_professionals is defined and other_professionals %}
+  <section class="strip">
+    <h3>Autres professionnels</h3>
+    <div class="hscroll">
+      {% for professional in other_professionals %}
+      <div class="card-mini">
+        <div class="avatar-box">
+          <img class="avatar-img js-zoom"
+               src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               alt="Photo de {{ professional.name|e }}"
+               width="84" height="84" loading="lazy"
+               onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
+        </div>
+        <h4>{{ professional.name }}</h4>
+        <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}—{% endif %}</p>
+        <a href="{{ url_for('professional_detail', professional_id=professional.id) }}" style="color:var(--primary);font-weight:600;text-decoration:none">Voir</a>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- À PROPOS -->
+  <section id="about" class="about-section">
+    <div class="about-container">
+      <h2>À propos de Tighri</h2>
+      <p>Tighri est la première plateforme marocaine dédiée à la santé mentale et au bien-être. Nous connectons patients et professionnels pour faciliter l'accès à des soins psychologiques de qualité.</p>
+      <p>Notre mission est de démocratiser l'accès aux services de santé mentale au Maroc, dans un environnement de confiance et de sécurité.</p>
+    </div>
+  </section>
+
+  <!-- SERVICES -->
+  <section id="services" class="services-section">
+    <div class="services-container">
+      <h2>Nos Services</h2>
+      <div class="services-grid">
+        <div class="service-card"><h3>Consultations en Cabinet</h3><p>Rencontrez des professionnels en face à face.</p></div>
+        <div class="service-card"><h3>Consultations à Domicile</h3><p>Certains professionnels se déplacent chez vous.</p></div>
+        <div class="service-card"><h3>Consultations en Vidéo</h3><p>Consultez en ligne en toute sécurité.</p></div>
+        <div class="service-card"><h3>Gestion de Planning</h3><p>Réservez vos créneaux, rappel 24h avant.</p></div>
+        <div class="service-card"><h3>Profils Vérifiés</h3><p>Diplômes et identités vérifiés par Tighri.</p></div>
+        <div class="service-card"><h3>Support 24/7</h3><p>Nous vous accompagnons à chaque étape.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section id="contact" class="contact-section">
+    <div class="contact-container">
+      <h2>Nous contacter</h2>
+      <p><strong>Bienvenue au Centre d'écoute et de conseil Tighri.</strong><br>Besoin d'aide ou de conseils gratuits ? Contactez-nous.</p>
+      <div class="contact-info" style="margin-top:1rem;">
+        <div class="contact-item"><strong>Email</strong><span>contact@tighri.ma</span></div>
+        <div class="contact-item"><strong>Téléphone</strong><span>06 63 40 01 90</span></div>
+        <div class="contact-item"><strong>WhatsApp</strong><span class="contact-badge">Disponible</span></div>
+      </div>
+      <div class="contact-actions">
+        <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">✉️ Contacter par e-mail</a>
+        <a class="contact-btn" href="tel:+212663400190">📞 Appeler le <span>06 63 40 01 90</span></a>
+        <a class="contact-btn" target="_blank" rel="noopener"
+           href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">💬 WhatsApp direct</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lightbox -->
+  <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
+    <button class="lightbox-close" id="lbClose" aria-label="Fermer">✕</button>
+    <img id="lbImg" class="lightbox-img" alt="Agrandissement">
+  </div>
+  <script>
+    (function(){
+      const backdrop = document.getElementById('lbBackdrop');
+      const imgBig   = document.getElementById('lbImg');
+      const btnClose = document.getElementById('lbClose');
+      function open(src){ imgBig.src = src; backdrop.classList.add('is-open'); }
+      function close(){ backdrop.classList.remove('is-open'); imgBig.src=''; }
+      document.addEventListener('click', function(e){
+        const t = e.target.closest('.js-zoom'); if(!t) return; e.preventDefault();
+        const src = t.getAttribute('data-full') || t.src || t.getAttribute('src') || '';
+        if(src) open(src);
+      });
+      btnClose.addEventListener('click', close);
+      backdrop.addEventListener('click', function(e){ if(e.target === backdrop) close(); });
+      document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+    })();
+  </script>
+{% endblock %}
