@@ -1,238 +1,58 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="referrer" content="no-referrer" />
-  <meta name="theme-color" content="#8B5CF6" />
-  <title>Professionnels – Tighri</title>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
-  <style>
-    :root{
-      --primary:#8B5CF6;--primary-dark:#6D28D9;
-      --ink:#2d1a47;--muted:#4B3869;--bg:#f7f5fa;--card:#fff;
-      --shadow:0 2px 12px rgba(139,92,246,.12);--radius:18px;--nav-h:64px
-    }
-    *{box-sizing:border-box}
-    html,body{margin:0;padding:0}
-    body{
-      font-family:'Montserrat',system-ui,Segoe UI,Roboto,Arial,sans-serif;
-      color:var(--ink);background:var(--bg);line-height:1.45;padding-top:var(--nav-h)
-    }
-    img{max-width:100%;display:block}
+{% extends "base.html" %}
+{% block title %}{{ t('nav.professionals') }} - Tighri{% endblock %}
 
-    /* NAV */
-    .navbar{
-      position:fixed;inset:0 0 auto 0;height:var(--nav-h);
-      background:rgba(255,255,255,.98);
-      backdrop-filter:saturate(140%) blur(10px);
-      border-bottom:1px solid rgba(139,92,246,.12);z-index:1000
-    }
-    .nav-inner{height:100%;max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 .75rem}
-    .brand{display:flex;align-items:center;gap:.5rem;text-decoration:none;color:var(--primary);font-weight:700;font-size:1.25rem}
-    .burger{appearance:none;border:0;background:transparent;padding:.4rem .5rem;border-radius:10px}
-    .burger:focus-visible{outline:2px solid var(--primary)}
-    .burger svg{width:26px;height:26px;color:var(--muted)}
-    .nav-links{display:none;position:fixed;top:var(--nav-h);left:0;right:0;background:#fff;border-bottom:1px solid rgba(139,92,246,.12);box-shadow:var(--shadow)}
-    .nav-links.open{display:block}
-    .nav-list{list-style:none;margin:0;padding:.5rem .75rem;display:grid;gap:.25rem}
-    .nav-list a{display:block;padding:.65rem .75rem;border-radius:10px;text-decoration:none;font-weight:600;color:var(--muted)}
-    .nav-list a:hover{background:#f2ecff;color:var(--primary)}
-    .auth{display:grid;gap:.5rem;padding:0 .75rem .75rem}
-    .btn{display:inline-block;text-decoration:none;font-weight:700;text-align:center;padding:.6rem 1rem;border-radius:999px}
-    .btn-outline{color:var(--primary);border:2px solid var(--primary);background:#fff}
-    .btn-outline:hover{background:#f4edff}
-    .btn-solid{background:var(--primary);color:#fff;border:2px solid var(--primary)}
-    .btn-solid:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
-    @media(min-width:900px){
-      .nav-links{position:static;display:block;background:transparent;border:0;box-shadow:none}
-      .nav-list{grid-auto-flow:column;gap:1rem;padding:0}
-      .auth{display:flex;gap:.6rem;padding:0}
-      .burger{display:none}
-    }
+{% block content %}
+  <div style="max-width:1100px;margin:2rem auto;padding:0 1rem">
+    <h1 style="margin:.5rem 0 1rem">{{ t('nav.professionals') }}</h1>
 
-    /* WRAPPER */
-    .container{max-width:1200px;margin:0 auto;padding:1rem}
-    .page-header{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:clamp(1rem,2.5vw,2rem);text-align:center;margin-bottom:1rem}
-    .page-header h1{color:var(--primary);margin:.25rem 0 .5rem}
-    .page-header p{color:var(--muted);margin:0}
+    <form method="get" action="{{ url_for('professionals') }}" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">
+      <input type="text" name="q" value="{{ request.args.get('q','') }}" placeholder="{{ t('search.q') }}" style="padding:.6rem .8rem;border:1px solid #ddd;border-radius:10px;flex:1 1 220px">
+      <input type="text" name="city" value="{{ request.args.get('city','') }}" placeholder="{{ t('search.city') }}" style="padding:.6rem .8rem;border:1px solid #ddd;border-radius:10px">
+      <input type="text" name="specialty" value="{{ request.args.get('specialty','') }}" placeholder="{{ t('search.specialty') }}" style="padding:.6rem .8rem;border:1px solid #ddd;border-radius:10px">
+      <select name="mode" style="padding:.6rem .8rem;border:1px solid #ddd;border-radius:10px">
+        <option value="">{{ t('search.mode') }}</option>
+        {% set mode = request.args.get('mode','') %}
+        <option value="cabinet" {{ 'selected' if mode=='cabinet' else '' }}>Cabinet</option>
+        <option value="visio"   {{ 'selected' if mode=='visio'   else '' }}>Visio</option>
+        <option value="domicile"{{ 'selected' if mode=='domicile'else '' }}>Domicile</option>
+      </select>
+      <button type="submit" style="padding:.6rem 1rem;border:0;background:#8B5CF6;color:#fff;border-radius:10px">{{ t('search.cta') }}</button>
+    </form>
 
-    /* SEARCH + FILTERS */
-    .search-card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem;margin-bottom:1rem}
-    .search-form{display:grid;grid-template-columns:1fr auto;gap:.5rem}
-    .search-input{padding:.85rem 1rem;border:1.5px solid #e6e2f3;border-radius:10px;font-size:1rem}
-    .search-input:focus{outline:none;border-color:var(--primary)}
-    .search-btn{background:var(--primary);color:#fff;border:0;border-radius:10px;font-weight:700;padding:.85rem 1.25rem;cursor:pointer}
-    .search-btn:hover{background:var(--primary-dark)}
-    .filters{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem}
-    .chip{padding:.5rem .9rem;border:1px solid #e6e2f3;border-radius:999px;background:#fff;color:var(--muted);text-decoration:none;font-weight:600}
-    .chip.active,.chip:hover{background:var(--primary);border-color:var(--primary);color:#fff}
-    @media(max-width:640px){.search-form{grid-template-columns:1fr}}
-
-    /* GRID */
-    .grid{display:grid;grid-template-columns:1fr;gap:1rem}
-    @media(min-width:720px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(min-width:1024px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-
-    .card{background:#fff;border-radius:14px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column}
-    .thumb-box{position:relative;width:100%;height:200px;background:linear-gradient(180deg,#eee,#ddd)}
-    .thumb-img{
-      position:absolute;inset:0;width:100%;height:100%;
-      object-fit:cover;object-position:center center;
-      background:#f3f3f8   /* pour éviter un “trou” si l’image tarde */
-    }
-    .content{padding:1rem;display:grid;gap:.4rem}
-    .name{color:var(--primary-dark);font-weight:700;font-size:1.1rem;margin:0}
-    .spec{color:var(--primary);font-weight:600;margin:0}
-    .loc{color:var(--muted);display:flex;align-items:center;gap:.4rem;margin:.15rem 0}
-    .desc{color:var(--muted)}
-    .fee{color:var(--primary);font-weight:700;margin-top:.25rem}
-    .actions{display:flex;gap:.5rem;margin-top:.4rem}
-    .actions .btn{flex:1}
-
-    /* Empty */
-    .empty{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);text-align:center;padding:2rem}
-    .empty h3{color:var(--primary);margin:.25rem 0 .5rem}
-  </style>
-</head>
-<body>
-
-  <!-- NAV -->
-  <nav class="navbar" role="navigation" aria-label="Navigation principale">
-    <div class="nav-inner">
-      <a href="{{ url_for('index') }}" class="brand" aria-label="Accueil Tighri">Tighri</a>
-      <button class="burger" aria-label="Ouvrir le menu" aria-controls="mobile-menu" aria-expanded="false" id="burger">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
-    </div>
-
-    <div class="nav-links" id="mobile-menu">
-      <ul class="nav-list">
-        <li><a href="{{ url_for('index') }}">Accueil</a></li>
-        <li><a href="{{ url_for('professionals') }}">Professionnels</a></li>
-        <li><a href="#filters">Filtres</a></li>
-      </ul>
-      <div class="auth">
-        {% if current_user.is_authenticated %}
-          <a class="btn btn-outline" href="{{ url_for('my_appointments') }}">Mes rendez-vous</a>
-          <a class="btn btn-solid" href="{{ url_for('logout') }}">Déconnexion</a>
-        {% else %}
-          <a class="btn btn-outline" href="{{ url_for('login') }}">Se connecter</a>
-          <a class="btn btn-solid" href="{{ url_for('register') }}">S'inscrire</a>
-        {% endif %}
-      </div>
-    </div>
-  </nav>
-
-  <!-- HEADER -->
-  <div class="container">
-    <div class="page-header">
-      <h1>Trouvez votre professionnel</h1>
-      <p>Psychologues, thérapeutes et coachs qualifiés près de chez vous</p>
-    </div>
-
-    <!-- SEARCH/FILTERS -->
-    <div class="search-card" id="filters">
-      <form class="search-form" method="GET">
-        <input class="search-input" type="text" name="q"
-               placeholder="Nom, spécialité, ville…" value="{{ search_query or '' }}" />
-        <button class="search-btn" type="submit">🔍 Rechercher</button>
-      </form>
-
-      <div class="filters" role="group" aria-label="Filtrer par spécialité">
-        <a href="?specialty=all{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-           class="chip {% if specialty == 'all' %}active{% endif %}">Toutes</a>
-        <a href="?specialty=Psychologue{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-           class="chip {% if specialty == 'Psychologue' %}active{% endif %}">Psychologue</a>
-        <a href="?specialty=Thérapeute{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-           class="chip {% if specialty == 'Thérapeute' %}active{% endif %}">Thérapeute</a>
-        <a href="?specialty=Coach{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-           class="chip {% if specialty == 'Coach' %}active{% endif %}">Coach</a>
-      </div>
-    </div>
-
-    {% if professionals %}
-      <div class="grid">
-        {% for professional in professionals %}
-          <article class="card">
-            <div class="thumb-box">
-              <picture>
-                <source type="image/webp"
-                        srcset="
-                          {{ url_for('avatar', professional_id=professional.id, s=192, f='webp', v=professional.updated_at|default(0)) }} 192w,
-                          {{ url_for('avatar', professional_id=professional.id, s=384, f='webp', v=professional.updated_at|default(0)) }} 384w">
-                <source type="image/jpeg"
-                        srcset="
-                          {{ url_for('avatar', professional_id=professional.id, s=192, f='jpg', v=professional.updated_at|default(0)) }} 192w,
-                          {{ url_for('avatar', professional_id=professional.id, s=384, f='jpg', v=professional.updated_at|default(0)) }} 384w">
-                <img
-                  class="thumb-img"
-                  src="{{ url_for('avatar', professional_id=professional.id, s=384, f='jpg', v=professional.updated_at|default(0)) }}"
-                  alt="Photo de {{ professional.name|e }}"
-                  referrerpolicy="no-referrer"
-                  loading="lazy"
-                  decoding="async"
-                  width="400" height="200">
-              </picture>
-            </div>
-            <div class="content">
-              <h3 class="name">{{ professional.name }}</h3>
-              <p class="spec">{{ professional.specialty }}</p>
-              <p class="loc">📍 {{ professional.address or professional.location or '—' }}</p>
-              <p class="desc">
-                {% set d = professional.description or '' %}
-                {{ d[:120] }}{% if d|length > 120 %}…{% endif %}
-              </p>
-              <p class="fee">{{ '%.0f'|format(professional.consultation_fee or 0) }} MAD / consultation</p>
-              <div class="actions">
-                <a class="btn btn-outline" href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
-                <a class="btn btn-solid" href="{{ url_for('book_appointment', professional_id=professional.id) }}">Prendre RDV</a>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem">
+      {% for p in professionals %}
+        <article style="background:#fff;border:1px solid #eee;border-radius:14px;padding:1rem">
+          <div style="display:flex;gap:.8rem;align-items:center">
+            <img src="{{ url_for('profile_photo', professional_id=p.id) }}" alt="Photo de {{ p.name|e }}" width="64" height="64" style="border-radius:50%;object-fit:cover">
+            <div>
+              <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+                <strong style="color:#6D28D9">{{ p.name }}</strong>
+                <div class="badges">
+                  {% if p.is_tighri_certified %}
+                    <span class="badge badge-tighri" title="{{ t('badge.tighri') }}">🛡️ <i>{{ t('badge.tighri_short') }}</i></span>
+                  {% endif %}
+                  {% if p.is_anthecc_certified %}
+                    <span class="badge badge-anthecc" title="{{ t('badge.anthecc') }}">🏅 <i>{{ t('badge.anthecc_short') }}</i></span>
+                  {% endif %}
+                </div>
+              </div>
+              <div style="color:#4B3869;font-size:.95rem">
+                {% if p.specialty %}{{ p.specialty }}
+                {% elif p.primary_specialty %}{{ p.primary_specialty.name }}
+                {% else %}—{% endif %}
               </div>
             </div>
-          </article>
-        {% endfor %}
-      </div>
-    {% else %}
-     <div class="col-md-4">
-  <label class="form-label">Ville (Maroc)</label>
-  <select name="city" class="form-select" onchange="this.form.submit()">
-    <option value="">— Toutes les villes —</option>
-    {% for c in CITIES %}
-      <option value="{{ c.name }}" {% if request.args.get('city') == c.name %}selected{% endif %}>{{ c.name }}</option>
-    {% endfor %}
-  </select>
-</div>
- 
-    <div class="empty">
-        <h3>Aucun professionnel trouvé</h3>
-        <p>Essayez d’élargir vos critères ou consultez toutes les spécialités.</p>
-      </div>
-    {% endif %}
+          </div>
+          {% if p.description %}
+            <p style="margin:.6rem 0 0;color:#4B3869">{{ p.description[:110] }}{% if p.description|length>110 %}…{% endif %}</p>
+          {% endif %}
+          <p style="margin:.7rem 0 0">
+            <a href="{{ url_for('professional_detail', professional_id=p.id) }}" style="color:#8B5CF6;font-weight:600">Voir le profil</a>
+          </p>
+        </article>
+      {% else %}
+        <p>Aucun professionnel trouvé.</p>
+      {% endfor %}
+    </div>
   </div>
-
-  <script>
-    // Menu mobile
-    (function(){
-      const btn = document.getElementById('burger');
-      const panel = document.getElementById('mobile-menu');
-      if(!btn || !panel) return;
-      btn.addEventListener('click', function(){
-        const open = panel.classList.toggle('open');
-        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      });
-      panel.addEventListener('click', (e)=>{
-        if(e.target.tagName === 'A'){
-          panel.classList.remove('open');
-          btn.setAttribute('aria-expanded','false');
-        }
-      });
-    })();
-  </script>
-</body>
-</html>
+{% endblock %}
