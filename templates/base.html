@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ current_lang or 'fr' }}" dir="{{ text_dir or ('rtl' if current_lang=='ar' else 'ltr') }}">
+<html lang="{{ current_lang or 'fr' }}" dir="{{ text_dir or 'ltr' }}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -19,12 +19,6 @@
     }
     *{margin:0;padding:0;box-sizing:border-box}
     body{font-family:'Inter',sans-serif;line-height:1.6;color:var(--dark-color);background:#fff}
-    /* RTL aide visuelle légère sans bootstrap-rtl */
-    {% if current_lang == 'ar' %}
-    body{direction:rtl;text-align:right}
-    .navbar .ms-1{margin-left:0!important;margin-right:.25rem!important}
-    .dropdown-menu-end{right:auto;left:0}
-    {% endif %}
 
     .navbar{
       background:linear-gradient(135deg,var(--primary-color),var(--secondary-color));
@@ -81,7 +75,7 @@
   <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container align-items-center justify-content-between">
       <a class="navbar-brand" href="{{ url_for('index') }}">
-        <i class="fas fa-heart me-2"></i>Tighri
+        <i class="fas fa-heart me-2"></i>{{ t('brand') }}
       </a>
 
       <!-- Burger mobile -->
@@ -91,14 +85,14 @@
         <svg width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M3 6h18M3 12h18M3 18h18" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
         </svg>
-        <span class="ms-1 fw-semibold text-white">Menu</span>
+        <span class="ms-1 fw-semibold text-white">{{ t('nav.menu') }}</span>
       </button>
 
       <!-- Menu desktop -->
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav me-auto">
           <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}">{{ t('nav.home') }}</a></li>
-          <li class="nav-item"><a class="nav-link" href="{{ url_for('professionals') }}">{{ t('nav.professionals') }}</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('professionals') }}">{{ t('nav.pros') }}</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('anthecc') }}">{{ t('nav.anthecc') }}</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}#about">{{ t('nav.about') }}</a></li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('contact') }}">{{ t('nav.contact') }}</a></li>
@@ -125,8 +119,8 @@
                 <i class="fas fa-user me-1"></i>{{ current_user.username }}
               </a>
               <ul class="dropdown-menu dropdown-menu-end">
-                <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>{{ t('auth.profile') }}</a></li>
-                <li><a class="dropdown-item" href="#"><i class="fas fa-shopping-cart me-2"></i>{{ t('auth.orders') }}</a></li>
+                <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>Profil</a></li>
+                <li><a class="dropdown-item" href="#"><i class="fas fa-shopping-cart me-2"></i>Commandes</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>{{ t('auth.logout') }}</a></li>
               </ul>
@@ -148,17 +142,17 @@
     </div>
     <div class="offcanvas-body">
       <div class="list-group">
-        <a class="list-group-item list-group-item-action" href="{{ url_for('index') }}#about"><i class="fas fa-circle-info me-2"></i>{{ t('nav.about') }}</a>
-        <a class="list-group-item list-group-item-action" href="{{ url_for('index') }}#services"><i class="fas fa-briefcase-medical me-2"></i>{{ t('services.title') }}</a>
-        <a class="list-group-item list-group-item-action" href="{{ url_for('anthecc') }}"><i class="fa-solid fa-certificate me-2"></i>{{ t('nav.anthecc') }}</a>
-        <a class="list-group-item list-group-item-action" href="{{ url_for('contact') }}"><i class="fas fa-envelope me-2"></i>{{ t('nav.contact') }}</a>
+        <a class="list-group-item list-group-item-action" href="{{ url_for('index') }}#about"><i class="fas fa-circle-info me-2"></i>À propos</a>
+        <a class="list-group-item list-group-item-action" href="{{ url_for('index') }}#services"><i class="fas fa-briefcase-medical me-2"></i>Services</a>
+        <a class="list-group-item list-group-item-action" href="{{ url_for('anthecc') }}"><i class="fa-solid fa-certificate me-2"></i>ANTHECC</a>
+        <a class="list-group-item list-group-item-action" href="{{ url_for('contact') }}"><i class="fas fa-envelope me-2"></i>Contact</a>
       </div>
       <hr class="my-3">
       <!-- Sélecteur langue mobile -->
       <div class="d-grid gap-2 mb-3">
-        <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang_code='fr') }}">Français</a>
-        <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang_code='ar') }}">العربية</a>
-        <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang_code='en') }}">English</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang='fr') }}">Français</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang='ar') }}">العربية</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang='en') }}">English</a>
       </div>
       {% if current_user.is_authenticated %}
         <a class="btn btn-outline-primary w-100 mb-2" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>{{ t('auth.logout') }}</a>
