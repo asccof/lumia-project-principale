@@ -1,191 +1,40 @@
 {% extends "base.html" %}
-{% block title %}{{ professional.name }} — Profil{% endblock %}
-
-{% block extra_css %}
-<style>
-  :root{
-    --primary:#8B5CF6; --primary-dark:#6D28D9;
-    --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; --card:#fff;
-    --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;
-  }
-  body{background:var(--bg);color:var(--ink)}
-  .hero{max-width:1100px;margin:1.5rem auto;padding:0 1rem;display:grid;grid-template-columns:320px 1fr;gap:1.25rem}
-  @media (max-width:900px){ .hero{grid-template-columns:1fr} }
-
-  .card{background:#fff;border-radius:14px;box-shadow:var(--shadow)}
-  .p16{padding:1rem}
-  .p24{padding:1.25rem}
-  .h4{font-size:1.25rem;margin:0 0 .25rem}
-  .muted{color:var(--muted)}
-
-  /* Bloc photo + galerie */
-  .photo-block{display:flex;flex-direction:column;gap:.75rem}
-  .main-photo{width:100%;aspect-ratio:1/1;border-radius:12px;overflow:hidden;background:#eee}
-  .main-photo img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
-
-  .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
-  .thumb{width:100%;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:#f1f1f1;cursor:zoom-in}
-  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
-
-  /* Fiche infos */
-  .row2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
-  @media (max-width:680px){ .row2{grid-template-columns:1fr} }
-
-  .badge{display:inline-block;padding:.3rem .6rem;border-radius:999px;background:#efeafe;color:#6D28D9;font-weight:600;border:1px solid #e2d8ff}
-  .btn{display:inline-flex;align-items:center;gap:.5rem;border:none;border-radius:999px;background:var(--primary);color:#fff;padding:.65rem 1rem;font-weight:700;text-decoration:none}
-  .btn:hover{background:var(--primary-dark)}
-  .btn-outline{background:#fff;color:var(--primary);border:2px solid #e7defe}
-  .btn-outline:hover{border-color:#cdbdfd;background:#faf8ff}
-
-  /* Lightbox (même esprit que l'accueil) */
-  .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:1000;padding:1rem}
-  .lightbox-backdrop.is-open{display:flex}
-  .lightbox-img{max-width:92vw;max-height:90vh;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
-  .lightbox-close{position:absolute;top:12px;right:12px;background:#fff;border:none;border-radius:999px;padding:.4rem .6rem;font-size:1.05rem;cursor:pointer}
-</style>
-{% endblock %}
+{% block title %}{{ professional.name }} - Tighri{% endblock %}
 
 {% block content %}
-<div class="hero">
-  <!-- Colonne gauche : photo + galerie -->
-  <aside class="card p16 photo-block">
-    <!-- Photo principale (comme avant) -->
-    <div class="main-photo">
-      <img
-        class="js-zoom"
-        src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-        data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
-        alt="Photo de {{ professional.name|e }}"
-        onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=Photo';">
-    </div>
+  <div style="max-width:1000px;margin:1.5rem auto;padding:0 1rem">
+    <a href="{{ url_for('professionals') }}" style="text-decoration:none">&larr; {{ t('nav.professionals') }}</a>
 
-    {# Galerie jusqu'à 3 items : 1 principale + 2 supplémentaires si définies #}
-    <div class="thumbs">
-      <!-- Vignette 1 : reprend la principale -->
-      <a class="thumb js-zoom" href="{{ url_for('professional_detail', professional_id=professional.id) }}"
-         onclick="return false;" data-full="{{ url_for('profile_photo', professional_id=professional.id) }}">
-        <img src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-             alt="Photo 1 de {{ professional.name|e }}"
-             onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
-      </a>
-
-      {# Vignette 2 : image_url2 si définie et non vide #}
-      {% if professional.image_url2 is defined and professional.image_url2 %}
-        <a class="thumb js-zoom" href="{{ professional.image_url2 }}" onclick="return false;" data-full="{{ professional.image_url2 }}">
-          <img src="{{ professional.image_url2 }}"
-               alt="Photo 2 de {{ professional.name|e }}"
-               onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
-        </a>
-      {% else %}
-        <div class="thumb" style="opacity:.35;display:flex;align-items:center;justify-content:center;">—</div>
-      {% endif %}
-
-      {# Vignette 3 : image_url3 si définie et non vide #}
-      {% if professional.image_url3 is defined and professional.image_url3 %}
-        <a class="thumb js-zoom" href="{{ professional.image_url3 }}" onclick="return false;" data-full="{{ professional.image_url3 }}">
-          <img src="{{ professional.image_url3 }}"
-               alt="Photo 3 de {{ professional.name|e }}"
-               onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
-        </a>
-      {% else %}
-        <div class="thumb" style="opacity:.35;display:flex;align-items:center;justify-content:center;">—</div>
-      {% endif %}
-    </div>
-    <small class="text-muted" style="display:block;text-align:center;">Cliquez pour agrandir</small>
-  </aside>
-
-  <!-- Colonne droite : infos -->
-  <main class="card p24">
-    <h1 class="h4">{{ professional.name }}</h1>
-    <p class="muted" style="margin:.25rem 0 1rem;">
-      {% if professional.specialty %}{{ professional.specialty }}
-      {% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}
-      {% else %}Professionnel{% endif %}
-      {% if professional.location %} · <span class="badge">{{ professional.location }}</span>{% endif %}
-    </p>
+    <header style="display:flex;gap:1rem;align-items:center;margin-top:1rem">
+      <img src="{{ url_for('profile_photo', professional_id=professional.id) }}" alt="Photo de {{ professional.name|e }}" width="96" height="96" style="border-radius:50%;object-fit:cover">
+      <div>
+        <h1 style="margin:0;color:#6D28D9">{{ professional.name }}</h1>
+        <div class="badges" style="margin:.4rem 0">
+          {% if professional.is_tighri_certified %}
+            <span class="badge badge-tighri" title="{{ t('badge.tighri') }}">🛡️ <i>{{ t('badge.tighri_short') }}</i></span>
+          {% endif %}
+          {% if professional.is_anthecc_certified %}
+            <span class="badge badge-anthecc" title="{{ t('badge.anthecc') }}">🏅 <i>{{ t('badge.anthecc_short') }}</i></span>
+          {% endif %}
+        </div>
+        <div style="color:#4B3869">
+          {% if professional.specialty %}{{ professional.specialty }}
+          {% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}
+          {% endif %}
+          {% if professional.location %} · {{ professional.location }}{% endif %}
+        </div>
+      </div>
+    </header>
 
     {% if professional.description %}
-      <p style="line-height:1.7;margin-top:.5rem;">{{ professional.description }}</p>
+      <section style="margin-top:1rem">
+        <h2 style="font-size:1.1rem;margin:.5rem 0">Présentation</h2>
+        <p style="line-height:1.7;color:#333">{{ professional.description }}</p>
+      </section>
     {% endif %}
 
-    <div class="row2" style="margin-top:1rem">
-      <div class="card p16">
-        <strong>Types de consultation</strong>
-        <div class="muted" style="margin-top:.35rem">
-          {% set types = (professional.consultation_types or '') %}
-          {% if 'cabinet' in types %}🏥 Cabinet<br>{% endif %}
-          {% if 'en_ligne' in types or 'visio' in types %}💻 En ligne<br>{% endif %}
-          {% if 'domicile' in types %}🏠 À domicile{% endif %}
-          {% if not types %}—{% endif %}
-        </div>
-      </div>
-      <div class="card p16">
-        <strong>Informations</strong>
-        <div class="muted" style="margin-top:.35rem">
-          {% if professional.phone %}📞 {{ professional.phone }}<br>{% endif %}
-          {% if professional.consultation_fee is not none %}💳 {{ '%.0f'|format(professional.consultation_fee) }} MAD / séance<br>{% endif %}
-          {% if professional.address %}📍 {{ professional.address }}{% endif %}
-          {% if not (professional.phone or professional.consultation_fee is not none or professional.address) %}—{% endif %}
-        </div>
-      </div>
-    </div>
-
-    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem">
-      <a class="btn" href="{{ url_for('book_appointment', professional_id=professional.id) }}">Prendre rendez-vous</a>
-      {% set maps_q = None %}
-      {% if professional.latitude and professional.longitude %}
-        {% set maps_q = (professional.latitude|string) ~ ',' ~ (professional.longitude|string) %}
-      {% elif professional.address %}
-        {% set maps_q = professional.address %}
-      {% endif %}
-      {% if maps_q %}
-        <a class="btn btn-outline" target="_blank" rel="noopener"
-           href="https://www.google.com/maps?q={{ maps_q|replace(' ','+') }}">Voir sur Google Maps</a>
-      {% endif %}
-    </div>
-
-    {% if professional.facebook_url or professional.instagram_url or professional.tiktok_url or professional.youtube_url %}
-      <div class="card p16" style="margin-top:1rem">
-        <strong>Réseaux sociaux</strong>
-        <div style="margin-top:.35rem;display:flex;gap:.75rem;flex-wrap:wrap">
-          {% if professional.facebook_url %}<a class="btn btn-outline" href="{{ professional.facebook_url }}" target="_blank" rel="noopener">Facebook</a>{% endif %}
-          {% if professional.instagram_url %}<a class="btn btn-outline" href="{{ professional.instagram_url }}" target="_blank" rel="noopener">Instagram</a>{% endif %}
-          {% if professional.tiktok_url %}<a class="btn btn-outline" href="{{ professional.tiktok_url }}" target="_blank" rel="noopener">TikTok</a>{% endif %}
-          {% if professional.youtube_url %}<a class="btn btn-outline" href="{{ professional.youtube_url }}" target="_blank" rel="noopener">YouTube</a>{% endif %}
-        </div>
-        {% if professional.social_links_approved is defined %}
-          <div class="muted" style="margin-top:.5rem">
-            Statut : <span class="badge" style="background:#e8f7ec;color:#1b7a3a;border-color:#bfe8cc">
-              {{ 'approuvés' if professional.social_links_approved else 'en attente / non approuvés' }}
-            </span>
-          </div>
-        {% endif %}
-      </div>
-    {% endif %}
-  </main>
-</div>
-
-<!-- Lightbox -->
-<div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
-  <button class="lightbox-close" id="lbClose" aria-label="Fermer">✕</button>
-  <img id="lbImg" class="lightbox-img" alt="Agrandissement">
-</div>
-<script>
-  (function(){
-    const backdrop = document.getElementById('lbBackdrop');
-    const imgBig   = document.getElementById('lbImg');
-    const btnClose = document.getElementById('lbClose');
-    function open(src){ imgBig.src = src; backdrop.classList.add('is-open'); }
-    function close(){ backdrop.classList.remove('is-open'); imgBig.src=''; }
-    document.addEventListener('click', function(e){
-      const t = e.target.closest('.js-zoom'); if(!t) return;
-      e.preventDefault();
-      const src = t.getAttribute('data-full') || t.getAttribute('href') || t.src || t.getAttribute('src') || '';
-      if(src) open(src);
-    });
-    btnClose.addEventListener('click', close);
-    backdrop.addEventListener('click', function(e){ if(e.target === backdrop) close(); });
-    document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
-  })();
-</script>
+    <section style="margin-top:1rem">
+      <a href="{{ url_for('book_appointment', professional_id=professional.id) }}" style="display:inline-block;background:#8B5CF6;color:#fff;padding:.7rem 1rem;border-radius:10px;text-decoration:none">Prendre rendez-vous</a>
+    </section>
+  </div>
 {% endblock %}
