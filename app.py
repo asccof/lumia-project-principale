@@ -137,13 +137,14 @@ def _cookie_domain_for(host: str | None):
 
 @app.before_request
 def _load_locale():
-    # Priorité au paramètre d'URL (?lang=), puis cookie, puis détection navigateur
+    # Priorité: ?lang=  >  cookie  >  Accept-Language
     lang = (
-        request.args.get("lang")
+        request.args.get("lang")  # <-- en premier !
         or request.cookies.get(LANG_COOKIE)
         or (request.accept_languages.best_match(SUPPORTED_LANGS) if request.accept_languages else None)
     )
     g.current_locale = _normalize_lang(lang)
+
 
 
 @app.after_request
