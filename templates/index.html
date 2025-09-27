@@ -78,79 +78,78 @@
   .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
   .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
 
-  /* Lightbox */
-  .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:9999}
-  .lightbox-backdrop.is-open{display:flex}
-  .lightbox-img{max-width:92vw;max-height:88vh;border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.35);background:#000}
-  .lightbox-close{position:absolute;top:16px;right:16px;background:#fff;border:none;border-radius:999px;padding:.5rem .7rem;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.2)}
+  /* RTL petits ajustements */
+  {% if current_lang == 'ar' %}
+  .search-bar{direction:rtl;text-align:right}
+  {% endif %}
 </style>
 {% endblock %}
 
 {% block content %}
   <header id="top">
     <h1>Tighri</h1>
-    <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
+    <p>{{ t('home.tagline') }}</p>
   </header>
 
   <!-- SEARCH avec filtres -->
   <div class="search-wrap">
     <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
       <!-- Champ libre -->
-      <input type="text" name="q" placeholder="Nom, mot-clé..." aria-label="Recherche libre">
+      <input type="text" name="q" placeholder="{{ t('search.q.placeholder') }}" aria-label="{{ t('search.q.placeholder') }}">
 
       <!-- Ville -->
       {% if cities is defined and cities %}
-        <select name="city_id" aria-label="Ville">
-          <option value="">Ville</option>
+        <select name="city_id" aria-label="{{ t('search.city.placeholder') }}">
+          <option value="">{{ t('search.city.placeholder') }}</option>
           {% for c in cities %}
             <option value="{{ c.id }}">{{ c.name }}</option>
           {% endfor %}
         </select>
       {% else %}
-        <input type="text" name="city" placeholder="Ville" aria-label="Ville">
+        <input type="text" name="city" placeholder="{{ t('search.city.placeholder') }}" aria-label="{{ t('search.city.placeholder') }}">
       {% endif %}
 
       <!-- Spécialité -->
       {% if specialties is defined and specialties %}
-        <select name="specialty_id" aria-label="Spécialité">
-          <option value="">Spécialité</option>
+        <select name="specialty_id" aria-label="{{ t('search.specialty.placeholder') }}">
+          <option value="">{{ t('search.specialty.placeholder') }}</option>
           {% for s in specialties %}
             <option value="{{ s.id }}">{{ s.name }}</option>
           {% endfor %}
         </select>
       {% else %}
-        <input type="text" name="specialty" placeholder="Spécialité" aria-label="Spécialité">
+        <input type="text" name="specialty" placeholder="{{ t('search.specialty.placeholder') }}" aria-label="{{ t('search.specialty.placeholder') }}">
       {% endif %}
 
       <!-- Mode -->
-      <select name="mode" aria-label="Mode de consultation">
-        <option value="">Mode</option>
-        <option value="cabinet">Cabinet</option>
-        <option value="visio">Visio</option>
-        <option value="domicile">Domicile</option>
+      <select name="mode" aria-label="{{ t('search.mode.label') }}">
+        <option value="">{{ t('search.mode.label') }}</option>
+        <option value="cabinet">{{ t('search.mode.cabinet') }}</option>
+        <option value="visio">{{ t('search.mode.visio') }}</option>
+        <option value="domicile">{{ t('search.mode.domicile') }}</option>
       </select>
 
-      <button type="submit">Rechercher</button>
+      <button type="submit">{{ t('search.submit') }}</button>
     </form>
   </div>
 
   <!-- 2 BLOCS -->
   <div class="sections">
     <div class="section">
-      <h2>Espace Patient</h2>
-      <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
-      <a href="{{ url_for('register') }}">Je suis patient</a>
+      <h2>{{ t('sections.patient.title') }}</h2>
+      <p>{{ t('sections.patient.desc') }}</p>
+      <a href="{{ url_for('register') }}">{{ t('sections.patient.cta') }}</a>
     </div>
     <div class="section">
-      <h2>Espace Professionnel</h2>
-      <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
-      <a href="{{ url_for('professional_register') }}">Je suis professionnel</a>
+      <h2>{{ t('sections.pro.title') }}</h2>
+      <p>{{ t('sections.pro.desc') }}</p>
+      <a href="{{ url_for('professional_register') }}">{{ t('sections.pro.cta') }}</a>
     </div>
   </div>
 
   <!-- PROFESSIONNELS EN VEDETTE -->
   <div class="featured">
-    <h3>Professionnels en vedette</h3>
+    <h3>{{ t('featured.title') }}</h3>
     {% set grid = top_professionals if top_professionals is defined else professionals %}
     <div class="professionals">
       {% for professional in grid %}
@@ -171,19 +170,17 @@
             {% set d = professional.description or '' %}
             {{ d[:80] }}{% if d|length > 80 %}…{% endif %}
           </p>
-          <a href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
+          <a href="{{ url_for('professional_detail', professional_id=professional.id) }}">{{ t('card.view_profile') }}</a>
         </div>
       {% endfor %}
     </div>
   </div>
 
-  {# Autres professionnels : compatible other_professionals OU more_professionals #}
-  {% set other = (other_professionals if (other_professionals is defined and other_professionals) else (more_professionals if (more_professionals is defined and more_professionals) else [])) %}
-  {% if other %}
+  {% if other_professionals is defined and other_professionals %}
   <section class="strip">
-    <h3>Autres professionnels</h3>
+    <h3>{{ t('other.title') }}</h3>
     <div class="hscroll">
-      {% for professional in other %}
+      {% for professional in other_professionals %}
       <div class="card-mini">
         <div class="avatar-box">
           <img class="avatar-img js-zoom"
@@ -195,7 +192,7 @@
         </div>
         <h4>{{ professional.name }}</h4>
         <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}—{% endif %}</p>
-        <a href="{{ url_for('professional_detail', professional_id=professional.id) }}" style="color:var(--primary);font-weight:600;text-decoration:none">Voir</a>
+        <a href="{{ url_for('professional_detail', professional_id=professional.id) }}" style="color:var(--primary);font-weight:600;text-decoration:none">{{ t('other.view') }}</a>
       </div>
       {% endfor %}
     </div>
@@ -205,23 +202,23 @@
   <!-- À PROPOS -->
   <section id="about" class="about-section">
     <div class="about-container">
-      <h2>À propos de Tighri</h2>
-      <p>Tighri est la première plateforme marocaine dédiée à la santé mentale et au bien-être. Nous connectons patients et professionnels pour faciliter l'accès à des soins psychologiques de qualité.</p>
-      <p>Notre mission est de démocratiser l'accès aux services de santé mentale au Maroc, dans un environnement de confiance et de sécurité.</p>
+      <h2>{{ t('about.title') }}</h2>
+      <p>{{ t('about.p1') }}</p>
+      <p>{{ t('about.p2') }}</p>
     </div>
   </section>
 
   <!-- SERVICES -->
   <section id="services" class="services-section">
     <div class="services-container">
-      <h2>Nos Services</h2>
+      <h2>{{ t('services.title') }}</h2>
       <div class="services-grid">
-        <div class="service-card"><h3>Consultations en Cabinet</h3><p>Rencontrez des professionnels en face à face.</p></div>
-        <div class="service-card"><h3>Consultations à Domicile</h3><p>Certains professionnels se déplacent chez vous.</p></div>
-        <div class="service-card"><h3>Consultations en Vidéo</h3><p>Consultez en ligne en toute sécurité.</p></div>
-        <div class="service-card"><h3>Gestion de Planning</h3><p>Réservez vos créneaux, rappel 24h avant.</p></div>
-        <div class="service-card"><h3>Profils Vérifiés</h3><p>Diplômes et identités vérifiés par Tighri.</p></div>
-        <div class="service-card"><h3>Support 24/7</h3><p>Nous vous accompagnons à chaque étape.</p></div>
+        <div class="service-card"><h3>{{ t('services.cabinet.title') }}</h3><p>{{ t('services.cabinet.desc') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.home.title') }}</h3><p>{{ t('services.home.desc') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.video.title') }}</h3><p>{{ t('services.video.desc') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.schedule.title') }}</h3><p>{{ t('services.schedule.desc') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.verified.title') }}</h3><p>{{ t('services.verified.desc') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.support.title') }}</h3><p>{{ t('services.support.desc') }}</p></div>
       </div>
     </div>
   </section>
@@ -229,18 +226,18 @@
   <!-- CONTACT -->
   <section id="contact" class="contact-section">
     <div class="contact-container">
-      <h2>Nous contacter</h2>
-      <p><strong>Bienvenue au Centre d'écoute et de conseil Tighri.</strong><br>Besoin d'aide ou de conseils gratuits ? Contactez-nous.</p>
+      <h2>{{ t('contact.title') }}</h2>
+      <p><strong>{{ t('contact.lead').split('.')[0] }}.</strong><br>{{ t('contact.lead').split('.', 1)[1] | trim }}</p>
       <div class="contact-info" style="margin-top:1rem;">
-        <div class="contact-item"><strong>Email</strong><span>contact@tighri.ma</span></div>
-        <div class="contact-item"><strong>Téléphone</strong><span>06 63 40 01 90</span></div>
-        <div class="contact-item"><strong>WhatsApp</strong><span class="contact-badge">Disponible</span></div>
+        <div class="contact-item"><strong>{{ t('contact.email') }}</strong><span>contact@tighri.ma</span></div>
+        <div class="contact-item"><strong>{{ t('contact.phone') }}</strong><span>06 63 40 01 90</span></div>
+        <div class="contact-item"><strong>{{ t('contact.whatsapp') }}</strong><span class="contact-badge">Disponible</span></div>
       </div>
       <div class="contact-actions">
-        <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">✉️ Contacter par e-mail</a>
-        <a class="contact-btn" href="tel:+212663400190">📞 Appeler le <span>06 63 40 01 90</span></a>
+        <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">{{ t('contact.btn.email') }}</a>
+        <a class="contact-btn" href="tel:+212663400190">{{ t('contact.btn.phone', phone='06 63 40 01 90') }}</a>
         <a class="contact-btn" target="_blank" rel="noopener"
-           href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">💬 WhatsApp direct</a>
+           href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">{{ t('contact.btn.whatsapp') }}</a>
       </div>
     </div>
   </section>
