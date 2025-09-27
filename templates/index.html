@@ -3,11 +3,9 @@
 
 {% block extra_css %}
 <style>
-  :root{
-    --primary:#8B5CF6; --primary-dark:#6D28D9;
+  :root{--primary:#8B5CF6; --primary-dark:#6D28D9;
     --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; --card:#fff;
-    --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;
-  }
+    --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;}
   body{background:var(--bg);color:var(--ink)}
   header{background:linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);color:#fff;padding:8rem 0 2rem;text-align:center}
   header h1{margin:0 0 .5rem;font-size:3rem;font-weight:700}
@@ -18,18 +16,8 @@
   .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
   .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
   .search-bar button:hover{background:var(--primary-dark)}
-
-  /* Responsive grille de base */
   @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
   @media (max-width:640px){ .search-bar{grid-template-columns:1fr} }
-
-  /* --- MODE MOBILE : barre repliable (contrat fixe: mêmes champs & action) --- */
-  .search-bar.collapsible { position:relative; }
-  @media (max-width:640px){
-    /* quand replié, on ne montre QUE le bouton submit */
-    .search-bar.collapsible.collapsed > *:not(.search-submit){ display:none; }
-    .search-bar.collapsible .search-submit{ display:block; }
-  }
 
   .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
   .section{background:#fff;border-radius:18px;box-shadow:var(--shadow);padding:2.5rem;min-width:320px;max-width:400px;flex:1 1 320px;text-align:center}
@@ -44,13 +32,16 @@
   @media (max-width:1024px){ .professionals{grid-template-columns:repeat(2,minmax(260px,1fr));} }
   @media (max-width:640px){ .professionals{grid-template-columns:1fr;} }
 
-  .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:340px;width:100%;text-align:center}
-  .professional-card .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
-  .professional-card .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
-  .professional-card h4{margin:.5rem 0 .2rem;color:#6D28D9}
-  .professional-card p{color:#4B3869;font-size:.95rem;margin:.35rem 0}
+  .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:340px;width:100%}
+  .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
+  .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
+  .professional-card h4{margin:.5rem 0 .35rem;color:#6D28D9;text-align:center}
+  .professional-card p{color:#4B3869;font-size:.95rem;margin:.35rem 0;text-align:center}
   .professional-card a{color:var(--primary);text-decoration:none;font-weight:600}
   .professional-card a:hover{text-decoration:underline}
+
+  .card-head{display:flex;align-items:center;justify-content:center;gap:.5rem;flex-wrap:wrap}
+  .badges{justify-content:center}
 
   .strip{max-width:1200px;margin:0 auto 4rem;padding:0 2rem}
   .strip h3{color:#6D28D9;margin:0 0 1rem;font-size:1.5rem}
@@ -87,73 +78,67 @@
   .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#ffffff;color:#6D28D9;border:2px solid #ffffff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,0.18);transition:.2s}
   .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
   .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
+
+  /* lightbox */
+  .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);opacity:0;pointer-events:none;display:flex;align-items:center;justify-content:center;transition:.2s}
+  .lightbox-backdrop.is-open{opacity:1;pointer-events:auto}
+  .lightbox-img{max-width:92vw;max-height:85vh;border-radius:10px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+  .lightbox-close{position:absolute;top:14px;right:14px;font-size:20px;border:0;background:#fff;border-radius:999px;padding:.35rem .55rem;cursor:pointer}
 </style>
 {% endblock %}
 
 {% block content %}
   <header id="top">
     <h1>Tighri</h1>
-    <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
+    <p>{{ t('home.tagline') }}</p>
   </header>
 
-  <!-- SEARCH avec filtres (contrat fixe : mêmes names + action) -->
   <div class="search-wrap">
-    <form id="searchForm" class="search-bar collapsible collapsed" method="get" action="{{ url_for('professionals') }}">
-      <!-- Champ libre -->
-      <input type="text" name="q" placeholder="Nom, mot-clé..." aria-label="Recherche libre">
+    <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
+      <input type="text" name="q" placeholder="{{ t('search.q') }}" aria-label="{{ t('search.q') }}">
 
-      <!-- Ville -->
       {% if cities is defined and cities %}
-        <select name="city_id" aria-label="Ville">
-          <option value="">Ville</option>
-          {% for c in cities %}
-            <option value="{{ c.id }}">{{ c.name }}</option>
-          {% endfor %}
+        <select name="city_id" aria-label="{{ t('search.city') }}">
+          <option value="">{{ t('search.city') }}</option>
+          {% for c in cities %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
         </select>
       {% else %}
-        <input type="text" name="city" placeholder="Ville" aria-label="Ville">
+        <input type="text" name="city" placeholder="{{ t('search.city') }}" aria-label="{{ t('search.city') }}">
       {% endif %}
 
-      <!-- Spécialité -->
       {% if specialties is defined and specialties %}
-        <select name="specialty_id" aria-label="Spécialité">
-          <option value="">Spécialité</option>
-          {% for s in specialties %}
-            <option value="{{ s.id }}">{{ s.name }}</option>
-          {% endfor %}
+        <select name="specialty_id" aria-label="{{ t('search.specialty') }}">
+          <option value="">{{ t('search.specialty') }}</option>
+          {% for s in specialties %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
         </select>
       {% else %}
-        <input type="text" name="specialty" placeholder="Spécialité" aria-label="Spécialité">
+        <input type="text" name="specialty" placeholder="{{ t('search.specialty') }}" aria-label="{{ t('search.specialty') }}">
       {% endif %}
 
-      <!-- Mode -->
-      <select name="mode" aria-label="Mode de consultation">
-        <option value="">Mode</option>
+      <select name="mode" aria-label="{{ t('search.mode') }}">
+        <option value="">{{ t('search.mode') }}</option>
         <option value="cabinet">Cabinet</option>
         <option value="visio">Visio</option>
         <option value="domicile">Domicile</option>
       </select>
 
-      <!-- Bouton submit (avec loupe) -->
-      <button id="searchBtn" class="search-submit" type="submit" aria-expanded="false">🔍 Rechercher</button>
+      <button type="submit">{{ t('search.cta') }}</button>
     </form>
   </div>
 
-  <!-- 2 BLOCS -->
   <div class="sections">
     <div class="section">
-      <h2>Espace Patient</h2>
+      <h2>{{ t('cards.patient') }}</h2>
       <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
       <a href="{{ url_for('register') }}">Je suis patient</a>
     </div>
     <div class="section">
-      <h2>Espace Professionnel</h2>
+      <h2>{{ t('cards.pro') }}</h2>
       <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
       <a href="{{ url_for('professional_register') }}">Je suis professionnel</a>
     </div>
   </div>
 
-  <!-- PROFESSIONNELS EN VEDETTE -->
   <div class="featured">
     <h3>Professionnels en vedette</h3>
     {% set grid = top_professionals if top_professionals is defined else professionals %}
@@ -168,25 +153,42 @@
                  width="96" height="96" loading="lazy"
                  onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
           </div>
-          <h4>{{ professional.name }}</h4>
+
+          <div class="card-head">
+            <h4>{{ professional.name }}</h4>
+            <div class="badges">
+              {% if professional.is_tighri_certified %}
+                <span class="badge badge-tighri" title="{{ t('badge.tighri') }}">🛡️ <i>{{ t('badge.tighri_short') }}</i></span>
+              {% endif %}
+              {% if professional.is_anthecc_certified %}
+                <span class="badge badge-anthecc" title="{{ t('badge.anthecc') }}">🏅 <i>{{ t('badge.anthecc_short') }}</i></span>
+              {% endif %}
+            </div>
+          </div>
+
           <p>
-            {% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}Professionnel{% endif %}
+            {% if professional.specialty %}{{ professional.specialty }}
+            {% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}
+            {% else %}Professionnel{% endif %}
           </p>
           <p>
             {% set d = professional.description or '' %}
             {{ d[:80] }}{% if d|length > 80 %}…{% endif %}
           </p>
-          <a href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
+          <p style="text-align:center;">
+            <a href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
+          </p>
         </div>
       {% endfor %}
     </div>
   </div>
 
-  {% if other_professionals is defined and other_professionals %}
+  {% set other = (other_professionals if (other_professionals is defined and other_professionals) else (more_professionals if (more_professionals is defined and more_professionals) else [])) %}
+  {% if other %}
   <section class="strip">
     <h3>Autres professionnels</h3>
     <div class="hscroll">
-      {% for professional in other_professionals %}
+      {% for professional in other %}
       <div class="card-mini">
         <div class="avatar-box">
           <img class="avatar-img js-zoom"
@@ -197,6 +199,14 @@
                onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
         </div>
         <h4>{{ professional.name }}</h4>
+        <div class="badges" style="justify-content:center">
+          {% if professional.is_tighri_certified %}
+            <span class="badge badge-tighri" title="{{ t('badge.tighri') }}">🛡️ <i>{{ t('badge.tighri_short') }}</i></span>
+          {% endif %}
+          {% if professional.is_anthecc_certified %}
+            <span class="badge badge-anthecc" title="{{ t('badge.anthecc') }}">🏅 <i>{{ t('badge.anthecc_short') }}</i></span>
+          {% endif %}
+        </div>
         <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}—{% endif %}</p>
         <a href="{{ url_for('professional_detail', professional_id=professional.id) }}" style="color:var(--primary);font-weight:600;text-decoration:none">Voir</a>
       </div>
@@ -205,7 +215,6 @@
   </section>
   {% endif %}
 
-  <!-- À PROPOS -->
   <section id="about" class="about-section">
     <div class="about-container">
       <h2>À propos de Tighri</h2>
@@ -214,7 +223,6 @@
     </div>
   </section>
 
-  <!-- SERVICES -->
   <section id="services" class="services-section">
     <div class="services-container">
       <h2>Nos Services</h2>
@@ -229,7 +237,6 @@
     </div>
   </section>
 
-  <!-- CONTACT -->
   <section id="contact" class="contact-section">
     <div class="contact-container">
       <h2>Nous contacter</h2>
@@ -248,13 +255,11 @@
     </div>
   </section>
 
-  <!-- Lightbox -->
   <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
     <button class="lightbox-close" id="lbClose" aria-label="Fermer">✕</button>
     <img id="lbImg" class="lightbox-img" alt="Agrandissement">
   </div>
   <script>
-    /* Lightbox */
     (function(){
       const backdrop = document.getElementById('lbBackdrop');
       const imgBig   = document.getElementById('lbImg');
@@ -269,32 +274,6 @@
       btnClose.addEventListener('click', close);
       backdrop.addEventListener('click', function(e){ if(e.target === backdrop) close(); });
       document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
-    })();
-
-    /* Barre de recherche repliable (mobile uniquement, contrat fixe) */
-    (function(){
-      const form = document.getElementById('searchForm');
-      const btn  = document.getElementById('searchBtn');
-      if(!form || !btn) return;
-
-      const mq = window.matchMedia('(max-width: 640px)');
-      function applyState(){
-        if(mq.matches){ form.classList.add('collapsed'); btn.setAttribute('aria-expanded','false'); }
-        else{ form.classList.remove('collapsed'); btn.setAttribute('aria-expanded','true'); }
-      }
-      applyState();
-      mq.addEventListener ? mq.addEventListener('change', applyState) : window.addEventListener('resize', applyState);
-
-      btn.addEventListener('click', function(e){
-        const isMobile = window.matchMedia('(max-width: 640px)').matches;
-        if(isMobile && form.classList.contains('collapsed')){
-          e.preventDefault();                 // 1er clic → on déplie, pas de soumission
-          form.classList.remove('collapsed');
-          btn.setAttribute('aria-expanded','true');
-          const first = form.querySelector('input[name="q"], input, select');
-          if(first) first.focus();
-        }
-      });
     })();
   </script>
 {% endblock %}
