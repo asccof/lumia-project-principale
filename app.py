@@ -157,6 +157,16 @@ def _vary_on_cookie_for_lang(resp):
         resp.headers["Pragma"] = "no-cache"
         resp.headers["Expires"] = "0"
     return resp
+@app.route("/set-language/clear")
+def clear_language_cookie():
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    resp.delete_cookie(
+        LANG_COOKIE,
+        domain=_cookie_domain_for(request.host),
+        path="/",
+        samesite="Lax",
+    )
+    return resp
 
 # Mini-dico (tu peux étendre)
 TRANSLATIONS = {
