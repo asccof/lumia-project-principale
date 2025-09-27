@@ -217,6 +217,7 @@ def _text_dir(lang):
 def inject_i18n():
     lang = getattr(g, "current_locale", DEFAULT_LANG)
     return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
+
 # ---- Compat i18n: préserver l'endpoint attendu par base.html ----
 from flask import request, redirect, url_for
 
@@ -259,6 +260,17 @@ def set_language_qs():
         domain=_cookie_domain_for(request.host), path="/",
     )
     return resp
+
+# =========================
+#   ⚙️ CANONICAL HOST (fix chofochement langues)
+# =========================
+PRIMARY_HOST = os.getenv("PRIMARY_HOST", "www.tighri.ma")
+
+@app.before_request
+def _enforce_primary_domain():
+    host = request.host.split(":")[0]
+    if host != PRIMARY_HOST:
+        return redirect(request.url.replace(host, PRIMARY_HOST, 1), code=301)
 
 # =========================
 #   EMAILS (safe wrapper)
@@ -544,7 +556,8 @@ def professional_upload_photo():
             current_app.logger.exception("Erreur interne lors du traitement de l'image")
             flash("Erreur interne lors du traitement de l'image.", "danger")
 
-    return render_template("upload_photo.html")
+    # << FIX : passer l'objet au template pour éviter 'professional' undefined >>
+    return render_template("upload_photo.html", professional=pro)
 
 # =========================
 #   AUTH LOCAL
