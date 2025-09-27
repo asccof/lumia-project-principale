@@ -9,12 +9,51 @@
   header h1{margin:0 0 .5rem;font-size:3rem;font-weight:700}
   header p{margin:0 auto 1.5rem;max-width:700px;font-size:1.15rem;opacity:.95}
   .search-wrap{max-width:1100px;margin:-2.5rem auto 1rem;padding:0 1rem}
+
+  /* === barre de recherche (desktop intact) === */
   .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
   .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
   .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
   .search-bar button:hover{background:var(--primary-dark)}
   @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
   @media (max-width:640px){ .search-bar{grid-template-columns:1fr} }
+
+  /* === groupe action (loupe + bouton + switch) pour mobile === */
+  .search-actions{display:flex;align-items:center;gap:.5rem}
+  .btn-icon{display:inline-flex;align-items:center;gap:.4rem}
+  .btn-icon svg{width:16px;height:16px}
+
+  /* === panneau avancé MOBILE-ONLY (masqué par défaut) === */
+  @media (max-width:640px){
+    /* on ne masque QUE sur mobile */
+    #mobile-advanced-filters{
+      overflow:hidden;
+      max-height:0;
+      opacity:0;
+      transform:translateY(-4px);
+      transition:max-height .28s ease, opacity .25s ease, transform .25s ease;
+    }
+    #mobile-advanced-filters.is-open{
+      max-height:480px; /* assez pour contenir 3-4 champs */
+      opacity:1;
+      transform:translateY(0);
+      margin-top:.35rem;
+    }
+    /* pour garder le même style des champs à l’intérieur */
+    #mobile-advanced-filters .adv-stack{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:.5rem;
+    }
+    /* les champs originaux restent visibles sur desktop, masqués ici car déplacés dans le panneau */
+    .desktop-only{display:none !important;}
+  }
+
+  /* Desktop: panneau transparent (ne change rien) */
+  @media (min-width:641px){
+    #mobile-advanced-filters{display:contents;}
+  }
+
   .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
   .section{background:#fff;border-radius:18px;box-shadow:var(--shadow);padding:2.5rem;min-width:320px;max-width:400px;flex:1 1 320px;text-align:center}
   .section h2{color:var(--primary);margin:0 0 1rem}
@@ -78,35 +117,62 @@
   </header>
 
   <div class="search-wrap">
-    <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
-      <input type="text" name="q" placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}">
+    {# === FORM RECHERCHE : desktop intact / mobile -> champs avancés masqués par défaut === #}
+    <form id="tighri-search-form" class="search-bar" method="get" action="{{ url_for('professionals') }}">
+      {# Champ principal (toujours visible) #}
+      <input type="text" name="q" placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}" value="{{ request.args.get('q','') }}">
 
-      {% if cities is defined and cities %}
-        <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
-          <option value="">{{ t('search.city','Ville') }}</option>
-          {% for c in cities %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
-        </select>
-      {% else %}
-        <input type="text" name="city" placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}">
-      {% endif %}
+      {# === Panneau avancé (contient tes champs existants) === #}
+      <div id="mobile-advanced-filters" aria-hidden="true">
+        <div class="adv-stack">
+          {# VILLE #}
+          {% if cities is defined and cities %}
+            <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
+              <option value="">{{ t('search.city','Ville') }}</option>
+              {% for c in cities %}<option value="{{ c.id }}" {% if request.args.get('city_id')==c.id|string %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+            </select>
+          {% else %}
+            <input type="text" name="city" placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}" value="{{ request.args.get('city','') }}">
+          {% endif %}
 
-      {% if specialties is defined and specialties %}
-        <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
-          <option value="">{{ t('search.specialty','Spécialité') }}</option>
-          {% for s in specialties %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
-        </select>
-      {% else %}
-        <input type="text" name="specialty" placeholder="{{ t('search.specialty','Spécialité') }}" aria-label="{{ t('search.specialty','Spécialité') }}">
-      {% endif %}
+          {# SPECIALITE #}
+          {% if specialties is defined and specialties %}
+            <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
+              <option value="">{{ t('search.specialty','Spécialité') }}</option>
+              {% for s in specialties %}<option value="{{ s.id }}" {% if request.args.get('specialty_id')==s.id|string %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+            </select>
+          {% else %}
+            <input type="text" name="specialty" placeholder="{{ t('search.specialty','Spécialité') }}" aria-label="{{ t('search.specialty','Spécialité') }}" value="{{ request.args.get('specialty','') }}">
+          {% endif %}
 
-      <select name="mode" aria-label="{{ t('search.mode','Mode') }}">
-        <option value="">{{ t('search.mode','Mode') }}</option>
-        <option value="cabinet">{{ t('mode.cabinet','Cabinet') }}</option>
-        <option value="visio">{{ t('mode.visio','Visio') }}</option>
-        <option value="domicile">{{ t('mode.domicile','Domicile') }}</option>
-      </select>
+          {# MODE #}
+          <select name="mode" aria-label="{{ t('search.mode','Mode') }}">
+            <option value="">{{ t('search.mode','Mode') }}</option>
+            <option value="cabinet"  {% if request.args.get('mode')=='cabinet' %}selected{% endif %}>{{ t('mode.cabinet','Cabinet') }}</option>
+            <option value="visio"    {% if request.args.get('mode')=='visio' %}selected{% endif %}>{{ t('mode.visio','Visio') }}</option>
+            <option value="domicile" {% if request.args.get('mode')=='domicile' %}selected{% endif %}>{{ t('mode.domicile','Domicile') }}</option>
+          </select>
+        </div>
+      </div>
 
-      <button type="submit">{{ t('search.cta','Rechercher') }}</button>
+      {# === Actions : bouton + loupe + mini-switch (contrôlent l’ouverture sur mobile) === #}
+      <div class="search-actions">
+        <button id="btn-search-submit" type="submit" class="btn-icon" aria-expanded="false">
+          <!-- loupe -->
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.415l-3.867-3.833zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>
+          </svg>
+          <span>{{ t('search.cta','Rechercher') }}</span>
+        </button>
+
+        <!-- mini-switch “Plus de filtres” (mobile) -->
+        <div class="form-check form-switch" style="margin:0 .25rem;">
+          <input class="form-check-input" type="checkbox" id="switch-advanced" role="switch"
+                 aria-controls="mobile-advanced-filters" aria-label="Afficher les filtres"
+                 {% if request.args.get('city') or request.args.get('city_id') or request.args.get('specialty') or request.args.get('specialty_id') or request.args.get('mode') %}checked{% endif %}>
+          <label class="form-check-label" for="switch-advanced" style="font-size:.85rem;">Plus</label>
+        </div>
+      </div>
     </form>
   </div>
 
@@ -216,7 +282,9 @@
     <button class="lightbox-close" id="lbClose" aria-label="{{ t('lightbox.close','Fermer') }}">✕</button>
     <img id="lbImg" class="lightbox-img" alt="{{ t('lightbox.zoom_alt','Agrandissement') }}">
   </div>
+
   <script>
+    /* ===== Lightbox (inchangé) ===== */
     (function(){
       const b=document.getElementById('lbBackdrop'), img=document.getElementById('lbImg'), x=document.getElementById('lbClose');
       function open(src){ img.src=src; b.classList.add('is-open'); }
@@ -225,6 +293,77 @@
         e.preventDefault(); open(t.getAttribute('data-full')||t.src||'');});
       x.addEventListener('click',close); b.addEventListener('click',(e)=>{ if(e.target===b) close();});
       document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close();});
+    })();
+
+    /* ===== Toggle filtres avancés MOBILE-ONLY =====
+       - OFF (par défaut): on ne voit que q + bouton + switch
+       - ON: on déroule les champs (Ville, Spécialité, Mode)
+       - Clic sur bouton/loupe: si panneau fermé en mobile => on ouvre et on annule la soumission
+    */
+    (function(){
+      const form   = document.getElementById('tighri-search-form');
+      const panel  = document.getElementById('mobile-advanced-filters');
+      const btn    = document.getElementById('btn-search-submit');
+      const sw     = document.getElementById('switch-advanced');
+
+      const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
+      const openPanel = () => {
+        panel.classList.add('is-open');
+        panel.setAttribute('aria-hidden','false');
+        btn.setAttribute('aria-expanded','true');
+        if (sw) sw.checked = true;
+      };
+      const closePanel = () => {
+        panel.classList.remove('is-open');
+        panel.setAttribute('aria-hidden','true');
+        btn.setAttribute('aria-expanded','false');
+        if (sw) sw.checked = false;
+      };
+
+      // État initial: si des filtres sont dans l’URL, on ouvre
+      const qs = new URLSearchParams(window.location.search);
+      if (qs.get('city') || qs.get('city_id') || qs.get('specialty') || qs.get('specialty_id') || qs.get('mode')) {
+        openPanel();
+      } else {
+        closePanel();
+      }
+
+      // Switch “Plus” contrôle l’ouverture en mobile (ne touche pas desktop)
+      sw && sw.addEventListener('change', function(){
+        if (!isMobile()) return; // desktop: ne rien faire
+        if (this.checked) openPanel(); else closePanel();
+      });
+
+      // Bouton “Rechercher” : si mobile et panneau fermé, on ouvre au premier clic, sinon on soumet
+      btn && btn.addEventListener('click', function(e){
+        if (!isMobile()) return; // desktop: soumission normale
+        const isOpen = panel.classList.contains('is-open');
+        if (!isOpen){
+          e.preventDefault();
+          openPanel();
+        }
+        // si déjà ouvert: laisser la soumission se faire
+      });
+
+      // Icône loupe est dans le bouton — même logique qu’au-dessus.
+      // Si besoin, on pourrait ajouter un raccourci “tap” sur le champ q pour ouvrir:
+      const q = form.querySelector('input[name="q"]');
+      q && q.addEventListener('dblclick', function(){
+        if (isMobile() && !panel.classList.contains('is-open')) openPanel();
+      });
+
+      // Adaptation live si on redimensionne
+      window.addEventListener('resize', () => {
+        if (!isMobile()){
+          // desktop: afficher transparent (contents)
+          panel.classList.remove('is-open');
+          panel.setAttribute('aria-hidden','false'); // desktop: accessible
+          btn.setAttribute('aria-expanded','false');
+        } else {
+          // mobile: revenir à l’état selon switch
+          sw && (sw.checked ? openPanel() : closePanel());
+        }
+      });
     })();
   </script>
 {% endblock %}
