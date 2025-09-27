@@ -230,7 +230,14 @@ def _text_dir(lang):
 @app.context_processor
 def inject_i18n():
     lang = getattr(g, "current_locale", DEFAULT_LANG)
-    return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
+    return {
+        "t": t,
+        "current_lang": lang,
+        "current_lang_label": _lang_label(lang),
+        "text_dir": _text_dir,        # <- on donne la FONCTION, pas la valeur (fix définitif)
+        "dir_value": _text_dir(lang), # dispo si tu veux l'utiliser comme variable
+    }
+
 
 @app.route("/set-language/<code>")
 def set_language_path(code):
