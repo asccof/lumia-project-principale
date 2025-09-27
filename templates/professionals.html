@@ -1,58 +1,138 @@
 {% extends "base.html" %}
-{% block title %}{{ t('nav.professionals') }} - Tighri{% endblock %}
+{% block title %}Trouver un professionnel – Tighri{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root{
+    --primary:#8B5CF6; --primary-dark:#6D28D9;
+    --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; --card:#fff;
+    --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;
+  }
+  body{background:var(--bg);color:var(--ink)}
+  .page-head{padding:3.5rem 1rem 1.25rem;text-align:center}
+  .page-head h1{margin:0 0 .35rem;font-weight:800}
+  .page-head p{margin:0;color:#6b5a82}
+
+  .search-wrap{max-width:1100px;margin:0 auto 1.25rem;padding:0 1rem}
+  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
+  .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
+  .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
+  .search-bar button:hover{background:var(--primary-dark)}
+  @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
+  @media (max-width:640px){ .search-bar{grid-template-columns:1fr} }
+
+  .grid{max-width:1200px;margin:0 auto 2.5rem;padding:0 1rem;display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:1.25rem;justify-items:center}
+  @media (max-width:1024px){ .grid{grid-template-columns:repeat(2,minmax(260px,1fr));} }
+  @media (max-width:640px){ .grid{grid-template-columns:1fr;} }
+
+  .card{position:relative;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:360px;width:100%;text-align:center}
+  .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
+  .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
+  h3{margin:.4rem 0 .2rem;color:#6D28D9}
+  .meta{color:#4B3869;font-size:.95rem;margin:.2rem 0}
+  .desc{color:#4B3869;font-size:.95rem;margin:.35rem 0}
+  .link{color:var(--primary);text-decoration:none;font-weight:600}
+  .link:hover{text-decoration:underline}
+
+  /* Badges (facultatifs) */
+  .badges{position:absolute;top:.6rem;right:.6rem;display:flex;gap:.35rem}
+  .b{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .45rem;border-radius:999px;font-size:.72rem;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.08);background:#fff}
+  .b svg{width:14px;height:14px}
+  .b-tighri{border:1.5px solid #8B5CF6}
+  .b-anthecc{border:1.5px solid #10b981}
+</style>
+{% endblock %}
 
 {% block content %}
-  <div style="max-width:1100px;margin:2rem auto;padding:0 1rem">
-    <h1 style="margin:.5rem 0 1rem">{{ t('nav.professionals') }}</h1>
-
-    <form method="get" action="{{ url_for('professionals') }}" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem">
-      <input type="text" name="q" value="{{ request.args.get('q','') }}" placeholder="{{ t('search.q') }}" style="padding:.6rem .8rem;border:1px solid #ddd;border-radius:10px;flex:1 1 220px">
-      <input type="text" name="city" value="{{ request.args.get('city','') }}" placeholder="{{ t('search.city') }}" style="padding:.6rem .8rem;border:1px solid #ddd;border-radius:10px">
-      <input type="text" name="specialty" value="{{ request.args.get('specialty','') }}" placeholder="{{ t('search.specialty') }}" style="padding:.6rem .8rem;border:1px solid #ddd;border-radius:10px">
-      <select name="mode" style="padding:.6rem .8rem;border:1px solid #ddd;border-radius:10px">
-        <option value="">{{ t('search.mode') }}</option>
-        {% set mode = request.args.get('mode','') %}
-        <option value="cabinet" {{ 'selected' if mode=='cabinet' else '' }}>Cabinet</option>
-        <option value="visio"   {{ 'selected' if mode=='visio'   else '' }}>Visio</option>
-        <option value="domicile"{{ 'selected' if mode=='domicile'else '' }}>Domicile</option>
-      </select>
-      <button type="submit" style="padding:.6rem 1rem;border:0;background:#8B5CF6;color:#fff;border-radius:10px">{{ t('search.cta') }}</button>
-    </form>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem">
-      {% for p in professionals %}
-        <article style="background:#fff;border:1px solid #eee;border-radius:14px;padding:1rem">
-          <div style="display:flex;gap:.8rem;align-items:center">
-            <img src="{{ url_for('profile_photo', professional_id=p.id) }}" alt="Photo de {{ p.name|e }}" width="64" height="64" style="border-radius:50%;object-fit:cover">
-            <div>
-              <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-                <strong style="color:#6D28D9">{{ p.name }}</strong>
-                <div class="badges">
-                  {% if p.is_tighri_certified %}
-                    <span class="badge badge-tighri" title="{{ t('badge.tighri') }}">🛡️ <i>{{ t('badge.tighri_short') }}</i></span>
-                  {% endif %}
-                  {% if p.is_anthecc_certified %}
-                    <span class="badge badge-anthecc" title="{{ t('badge.anthecc') }}">🏅 <i>{{ t('badge.anthecc_short') }}</i></span>
-                  {% endif %}
-                </div>
-              </div>
-              <div style="color:#4B3869;font-size:.95rem">
-                {% if p.specialty %}{{ p.specialty }}
-                {% elif p.primary_specialty %}{{ p.primary_specialty.name }}
-                {% else %}—{% endif %}
-              </div>
-            </div>
-          </div>
-          {% if p.description %}
-            <p style="margin:.6rem 0 0;color:#4B3869">{{ p.description[:110] }}{% if p.description|length>110 %}…{% endif %}</p>
-          {% endif %}
-          <p style="margin:.7rem 0 0">
-            <a href="{{ url_for('professional_detail', professional_id=p.id) }}" style="color:#8B5CF6;font-weight:600">Voir le profil</a>
-          </p>
-        </article>
-      {% else %}
-        <p>Aucun professionnel trouvé.</p>
-      {% endfor %}
-    </div>
+  <div class="page-head">
+    <h1>Professionnels</h1>
+    <p>Recherchez par nom, ville, spécialité ou mode de consultation.</p>
   </div>
+
+  <div class="search-wrap">
+    <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
+      <input type="text" name="q" value="{{ request.args.get('q','') }}" placeholder="Nom, mot-clé..." aria-label="Recherche libre">
+
+      {% if cities is defined and cities %}
+        <select name="city_id" aria-label="Ville">
+          <option value="">Ville</option>
+          {% for c in cities %}
+            <option value="{{ c.id }}" {{ 'selected' if request.args.get('city_id')==c.id|string else '' }}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="city" value="{{ request.args.get('city','') }}" placeholder="Ville" aria-label="Ville">
+      {% endif %}
+
+      {% if specialties is defined and specialties %}
+        <select name="specialty_id" aria-label="Spécialité">
+          <option value="">Spécialité</option>
+          {% for s in specialties %}
+            <option value="{{ s.id }}" {{ 'selected' if request.args.get('specialty_id')==s.id|string else '' }}>{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="specialty" value="{{ request.args.get('specialty','') }}" placeholder="Spécialité" aria-label="Spécialité">
+      {% endif %}
+
+      <select name="mode" aria-label="Mode de consultation">
+        {% set _mode = request.args.get('mode','') %}
+        <option value="" {{ 'selected' if _mode=='' else '' }}>Mode</option>
+        <option value="cabinet" {{ 'selected' if _mode=='cabinet' else '' }}>Cabinet</option>
+        <option value="visio" {{ 'selected' if _mode=='visio' else '' }}>Visio</option>
+        <option value="domicile" {{ 'selected' if _mode=='domicile' else '' }}>Domicile</option>
+      </select>
+
+      <button type="submit">Rechercher</button>
+    </form>
+  </div>
+
+  <section class="grid">
+    {% for professional in professionals %}
+      {% set tighri  = professional.is_certified_tighri|default(professional.tighri_certified|default(false)) %}
+      {% set anthecc = professional.is_certified_anthecc|default(professional.anthecc_certified|default(false)) %}
+
+      <article class="card">
+        <div class="badges">
+          {% if tighri %}
+            <span class="b b-tighri" title="Certifié Tighri">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M20 7l-9 9-5-5" stroke="#8B5CF6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Tighri
+            </span>
+          {% endif %}
+          {% if anthecc %}
+            <span class="b b-anthecc" title="Certifié ANTHECC">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.5L12 17l-5.6 3.7 1.1-6.5L3 9.9 9 9z" stroke="#10b981" stroke-width="1.6" stroke-linejoin="round"/></svg>
+              ANTHECC
+            </span>
+          {% endif %}
+        </div>
+
+        <div class="avatar-box">
+          <img class="avatar-img js-zoom"
+               src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               alt="Photo de {{ professional.name|e }}"
+               width="96" height="96" loading="lazy"
+               onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
+        </div>
+
+        <h3>{{ professional.name }}</h3>
+        <div class="meta">
+          {% if professional.specialty %}{{ professional.specialty }}
+          {% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}
+          {% else %}Professionnel{% endif %}
+          {% if professional.location %} · {{ professional.location }}{% endif %}
+        </div>
+        <div class="desc">
+          {% set d = professional.description or '' %}
+          {{ d[:110] }}{% if d|length > 110 %}…{% endif %}
+        </div>
+
+        <a class="link" href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
+      </article>
+    {% else %}
+      <div style="grid-column:1/-1;text-align:center;color:#6b5a82">Aucun résultat.</div>
+    {% endfor %}
+  </section>
 {% endblock %}
