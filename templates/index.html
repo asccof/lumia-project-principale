@@ -1,18 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Tighri - Prendre rendez-vous avec un professionnel{% endblock %}
+{% block title %}Tighri{% endblock %}
 
 {% block extra_css %}
 <style>
-  :root{
-    --primary:#8B5CF6; --primary-dark:#6D28D9;
-    --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; --card:#fff;
-    --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;
-  }
+  :root{--primary:#8B5CF6;--primary-dark:#6D28D9;--ink:#2d1a47;--muted:#4B3869;--bg:#f7f5fa;--card:#fff;--shadow:0 2px 12px rgba(139,92,246,.1);--radius:18px}
   body{background:var(--bg);color:var(--ink)}
-  header{background:linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);color:#fff;padding:8rem 0 2rem;text-align:center}
+  header{background:linear-gradient(90deg,var(--primary) 0%,var(--primary-dark) 100%);color:#fff;padding:8rem 0 2rem;text-align:center}
   header h1{margin:0 0 .5rem;font-size:3rem;font-weight:700}
   header p{margin:0 auto 1.5rem;max-width:700px;font-size:1.15rem;opacity:.95}
-
   .search-wrap{max-width:1100px;margin:-2.5rem auto 1rem;padding:0 1rem}
   .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
   .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
@@ -20,52 +15,44 @@
   .search-bar button:hover{background:var(--primary-dark)}
   @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
   @media (max-width:640px){ .search-bar{grid-template-columns:1fr} }
-
   .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
   .section{background:#fff;border-radius:18px;box-shadow:var(--shadow);padding:2.5rem;min-width:320px;max-width:400px;flex:1 1 320px;text-align:center}
   .section h2{color:var(--primary);margin:0 0 1rem}
   .section p{color:var(--muted);margin:0 0 1.5rem}
   .section a{display:inline-block;background:var(--primary);color:#fff;padding:1rem 2rem;border-radius:30px;text-decoration:none;font-weight:700}
   .section a:hover{background:var(--primary-dark)}
-
   .featured{max-width:1200px;margin:0 auto 3rem;padding:0 2rem}
   .featured h3{color:#6D28D9;margin:0 0 1.5rem;text-align:center;font-size:2rem}
   .professionals{display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:1.25rem;justify-items:center}
-  @media (max-width:1024px){ .professionals{grid-template-columns:repeat(2,minmax(260px,1fr));} }
-  @media (max-width:640px){ .professionals{grid-template-columns:1fr;} }
-
-  .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:340px;width:100%;text-align:center}
+  @media (max-width:1024px){ .professionals{grid-template-columns:repeat(2,minmax(260px,1fr))} }
+  @media (max-width:640px){ .professionals{grid-template-columns:1fr} }
+  .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);padding:1.25rem;min-width:260px;max-width:340px;width:100%;text-align:center}
   .professional-card .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
   .professional-card .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
   .professional-card h4{margin:.5rem 0 .2rem;color:#6D28D9}
   .professional-card p{color:#4B3869;font-size:.95rem;margin:.35rem 0}
   .professional-card a{color:var(--primary);text-decoration:none;font-weight:600}
   .professional-card a:hover{text-decoration:underline}
-
   .strip{max-width:1200px;margin:0 auto 4rem;padding:0 2rem}
   .strip h3{color:#6D28D9;margin:0 0 1rem;font-size:1.5rem}
   .hscroll{display:flex;gap:1rem;overflow-x:auto;padding-bottom:.5rem;scroll-snap-type:x mandatory}
-  .hscroll::-webkit-scrollbar{height:8px}
-  .hscroll::-webkit-scrollbar-thumb{background:#d8cfff;border-radius:999px}
-  .card-mini{scroll-snap-align:start;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1rem;min-width:240px;max-width:240px;text-align:center;flex:0 0 auto}
+  .hscroll::-webkit-scrollbar{height:8px}.hscroll::-webkit-scrollbar-thumb{background:#d8cfff;border-radius:999px}
+  .card-mini{scroll-snap-align:start;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);padding:1rem;min-width:240px;max-width:240px;text-align:center;flex:0 0 auto}
   .card-mini .avatar-box{width:84px;height:84px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .6rem}
   .card-mini .avatar-img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
   .card-mini h4{margin:.4rem 0 .1rem;color:#6D28D9;font-size:1rem}
   .card-mini p{margin:0;color:#4B3869;font-size:.9rem}
-
   .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
   .about-container{max-width:1200px;margin:0 auto;text-align:center}
   .about-section h2{color:var(--primary);font-size:2.2rem;margin:0 0 1rem}
   .about-section p{color:#4B3869;font-size:1.05rem;line-height:1.8;max-width:800px;margin:0 auto 1.25rem}
-
   .services-section{padding:4rem 2rem;background:var(--bg)}
   .services-container{max-width:1200px;margin:0 auto}
   .services-section h2{color:var(--primary);font-size:2.2rem;text-align:center;margin:0 0 2rem}
   .services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem}
-  .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);text-align:center}
+  .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);text-align:center}
   .service-card h3{color:#6D28D9;margin:.25rem 0 1rem}
   .service-card p{color:#4B3869;margin:0}
-
   .contact-section{background:var(--primary);color:#fff;padding:4rem 2rem;text-align:center}
   .contact-container{max-width:800px;margin:0 auto}
   .contact-section h2{font-size:2rem;margin:0 0 1rem}
@@ -74,75 +61,68 @@
   .contact-item{display:flex;flex-direction:column;align-items:center;gap:.35rem}
   .contact-item strong{font-size:1.05rem}
   .contact-actions{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin-top:1.25rem}
-  .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#ffffff;color:#6D28D9;border:2px solid #ffffff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,0.18);transition:.2s}
+  .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#fff;color:#6D28D9;border:2px solid #fff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,.18);transition:.2s}
   .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
   .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
+  .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
+  .lightbox-backdrop.is-open{display:flex}
+  .lightbox-img{max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  .lightbox-close{position:absolute;top:10px;right:10px;border:none;background:#fff;border-radius:999px;padding:.4rem .6rem;cursor:pointer}
 </style>
 {% endblock %}
 
 {% block content %}
   <header id="top">
-    <h1>Tighri</h1>
-    <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
+    <h1>{{ t('home.title', 'Tighri') }}</h1>
+    <p>{{ t('home.tagline', 'La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés') }}</p>
   </header>
 
-  <!-- SEARCH avec filtres -->
   <div class="search-wrap">
     <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
-      <!-- Champ libre -->
-      <input type="text" name="q" placeholder="Nom, mot-clé..." aria-label="Recherche libre">
+      <input type="text" name="q" placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}">
 
-      <!-- Ville -->
       {% if cities is defined and cities %}
-        <select name="city_id" aria-label="Ville">
-          <option value="">Ville</option>
-          {% for c in cities %}
-            <option value="{{ c.id }}">{{ c.name }}</option>
-          {% endfor %}
+        <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
+          <option value="">{{ t('search.city','Ville') }}</option>
+          {% for c in cities %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
         </select>
       {% else %}
-        <input type="text" name="city" placeholder="Ville" aria-label="Ville">
+        <input type="text" name="city" placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}">
       {% endif %}
 
-      <!-- Spécialité -->
       {% if specialties is defined and specialties %}
-        <select name="specialty_id" aria-label="Spécialité">
-          <option value="">Spécialité</option>
-          {% for s in specialties %}
-            <option value="{{ s.id }}">{{ s.name }}</option>
-          {% endfor %}
+        <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
+          <option value="">{{ t('search.specialty','Spécialité') }}</option>
+          {% for s in specialties %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
         </select>
       {% else %}
-        <input type="text" name="specialty" placeholder="Spécialité" aria-label="Spécialité">
+        <input type="text" name="specialty" placeholder="{{ t('search.specialty','Spécialité') }}" aria-label="{{ t('search.specialty','Spécialité') }}">
       {% endif %}
 
-      <!-- Mode -->
-      <select name="mode" aria-label="Mode de consultation">
-        <option value="">Mode</option>
+      <select name="mode" aria-label="{{ t('search.mode','Mode') }}">
+        <option value="">{{ t('search.mode','Mode') }}</option>
         <option value="cabinet">Cabinet</option>
         <option value="visio">Visio</option>
         <option value="domicile">Domicile</option>
       </select>
 
-      <button type="submit">Rechercher</button>
+      <button type="submit">{{ t('search.cta','Rechercher') }}</button>
     </form>
   </div>
 
-  <!-- 2 BLOCS -->
   <div class="sections">
     <div class="section">
-      <h2>Espace Patient</h2>
+      <h2>{{ t('cards.patient','Espace Patient') }}</h2>
       <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
-      <a href="{{ url_for('register') }}">Je suis patient</a>
+      <a href="{{ url_for('register') }}">{{ t('cards.patient','Espace Patient') }}</a>
     </div>
     <div class="section">
-      <h2>Espace Professionnel</h2>
+      <h2>{{ t('cards.pro','Espace Professionnel') }}</h2>
       <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
-      <a href="{{ url_for('professional_register') }}">Je suis professionnel</a>
+      <a href="{{ url_for('professional_register') }}">{{ t('cards.pro','Espace Professionnel') }}</a>
     </div>
   </div>
 
-  <!-- PROFESSIONNELS EN VEDETTE -->
   <div class="featured">
     <h3>Professionnels en vedette</h3>
     {% set grid = top_professionals if top_professionals is defined else professionals %}
@@ -158,9 +138,7 @@
                  onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
           </div>
           <h4>{{ professional.name }}</h4>
-          <p>
-            {% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}Professionnel{% endif %}
-          </p>
+          <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}Professionnel{% endif %}</p>
           <p>
             {% set d = professional.description or '' %}
             {{ d[:80] }}{% if d|length > 80 %}…{% endif %}
@@ -171,7 +149,6 @@
     </div>
   </div>
 
-  {# Autres professionnels : compatible other_professionals OU more_professionals #}
   {% set other = (other_professionals if (other_professionals is defined and other_professionals) else (more_professionals if (more_professionals is defined and more_professionals) else [])) %}
   {% if other %}
   <section class="strip">
@@ -196,7 +173,6 @@
   </section>
   {% endif %}
 
-  <!-- À PROPOS -->
   <section id="about" class="about-section">
     <div class="about-container">
       <h2>À propos de Tighri</h2>
@@ -205,7 +181,6 @@
     </div>
   </section>
 
-  <!-- SERVICES -->
   <section id="services" class="services-section">
     <div class="services-container">
       <h2>Nos Services</h2>
@@ -220,7 +195,6 @@
     </div>
   </section>
 
-  <!-- CONTACT -->
   <section id="contact" class="contact-section">
     <div class="contact-container">
       <h2>Nous contacter</h2>
@@ -233,32 +207,24 @@
       <div class="contact-actions">
         <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">✉️ Contacter par e-mail</a>
         <a class="contact-btn" href="tel:+212663400190">📞 Appeler le <span>06 63 40 01 90</span></a>
-        <a class="contact-btn" target="_blank" rel="noopener"
-           href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">💬 WhatsApp direct</a>
+        <a class="contact-btn" target="_blank" rel="noopener" href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">💬 WhatsApp direct</a>
       </div>
     </div>
   </section>
 
-  <!-- Lightbox -->
   <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
     <button class="lightbox-close" id="lbClose" aria-label="Fermer">✕</button>
     <img id="lbImg" class="lightbox-img" alt="Agrandissement">
   </div>
   <script>
     (function(){
-      const backdrop = document.getElementById('lbBackdrop');
-      const imgBig   = document.getElementById('lbImg');
-      const btnClose = document.getElementById('lbClose');
-      function open(src){ imgBig.src = src; backdrop.classList.add('is-open'); }
-      function close(){ backdrop.classList.remove('is-open'); imgBig.src=''; }
-      document.addEventListener('click', function(e){
-        const t = e.target.closest('.js-zoom'); if(!t) return; e.preventDefault();
-        const src = t.getAttribute('data-full') || t.src || t.getAttribute('src') || '';
-        if(src) open(src);
-      });
-      btnClose.addEventListener('click', close);
-      backdrop.addEventListener('click', function(e){ if(e.target === backdrop) close(); });
-      document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+      const b=document.getElementById('lbBackdrop'), img=document.getElementById('lbImg'), x=document.getElementById('lbClose');
+      function open(src){ img.src=src; b.classList.add('is-open'); }
+      function close(){ b.classList.remove('is-open'); img.src=''; }
+      document.addEventListener('click',(e)=>{ const t=e.target.closest('.js-zoom'); if(!t) return;
+        e.preventDefault(); open(t.getAttribute('data-full')||t.src||'');});
+      x.addEventListener('click',close); b.addEventListener('click',(e)=>{ if(e.target===b) close();});
+      document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close();});
     })();
   </script>
 {% endblock %}
