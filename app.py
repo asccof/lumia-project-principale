@@ -1,6 +1,7 @@
-# app.py — Tighri (version propre & autonome)
+# app.py — Tighri (cohérent + fix i18n multi-domaine + aucun appel externe)
 
 from __future__ import annotations
+
 import os, io, uuid, secrets, hashlib, requests
 from datetime import datetime, date, timedelta, time as dtime
 from pathlib import Path
@@ -20,34 +21,20 @@ from flask_login import (
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
 
-# ===========================
-# Base paths & brand
-# ===========================
+# =========================
+#   CONSTANTES / DOSSIERS
+# =========================
 BASE_DIR = Path(__file__).resolve().parent
 BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
 
-# ===========================
-# Uploads
-# ===========================
 UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
 UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
 
-# ===========================
-# Langues
-# ===========================
-DEFAULT_LANG = os.getenv("DEFAULT_LANG", "fr")
-SUPPORTED_LANGS = {"fr", "en", "ar"}
-LANG_COOKIE = os.getenv("LANG_COOKIE", "lang")
-LANG_MAX_AGE = 60 * 60 * 24 * 180  # 180 jours
-PRIMARY_COOKIE_DOMAIN = os.getenv("PRIMARY_COOKIE_DOMAIN", "")  # ex: .tighri.ma
-PRIMARY_HOST = os.getenv("PRIMARY_HOST", "")  # ex: www.tighri.ma
-ENFORCE_PRIMARY_HOST = os.getenv("PRIMARY_HOST_ENFORCE", "0") == "1"
-
-# ===========================
-# Flask app
-# ===========================
+# =========================
+#   FLASK APP
+# =========================
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
@@ -70,16 +57,20 @@ try:
 except Exception as e:
     app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
 
-# ========== DB & modèles ==========
+# =========================
+#   DB / MODELS
+# =========================
 def _normalize_pg_uri(uri: str) -> str:
     if not uri:
         return uri
     if uri.startswith("postgres://"):
         uri = "postgresql://" + uri[len("postgres://"):]
+    # forcer psycopg3
     if uri.startswith("postgresql+psycopg2://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
     elif uri.startswith("postgresql://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
+    # sslmode=require si absent
     parsed = urlparse(uri)
     q = parse_qs(parsed.query)
     if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
@@ -96,25 +87,15 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
 db.init_app(app)
 
-# ========== Admin (Blueprint) ==========
-try:
-    from admin_server import admin_bp, ProfessionalOrder, _build_notif
-    app.register_blueprint(admin_bp, url_prefix="/admin")
-except Exception as e:
-    app.logger.warning("admin_server non chargé (%s) — admin désactivé.", e)
-    ProfessionalOrder = None
+# =========================
+#   ADMIN BLUEPRINT
+# =========================
+from admin_server import admin_bp, ProfessionalOrder, _build_notif
+app.register_blueprint(admin_bp, url_prefix="/admin")
 
-    def _build_notif(kind, appointment, role="patient"):
-        # fallback simple
-        if kind == "pending":
-            if role == "patient":
-                return (f"{BRAND_NAME} — Réservation enregistrée",
-                        "Votre demande de rendez-vous a bien été enregistrée.")
-            else:
-                return (f"{BRAND_NAME} — Nouveau rendez-vous en attente",
-                        "Un nouveau rendez-vous est en attente de confirmation.")
-
-# ========== Login Manager ==========
+# =========================
+#   LOGIN MANAGER
+# =========================
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -126,27 +107,36 @@ def _load_user(user_id: str):
     except Exception:
         return None
 
-# ===========================
-# I18N minimal intégré
-# ===========================
-def _normalize_lang(code):
+# =========================
+#   I18N / LANG
+#   (cookie valable sur .tighri.ma / .tighri.com, Vary: Cookie, no-cache HTML)
+# =========================
+DEFAULT_LANG = "fr"
+SUPPORTED_LANGS = {"fr", "en", "ar"}
+LANG_COOKIE = "lang"
+LANG_MAX_AGE = 60 * 60 * 24 * 180  # 180 jours
+
+def _normalize_lang(code: str | None):
     if not code:
         return DEFAULT_LANG
     v = str(code).strip().lower()
-    if "-" in v:
+    if "-" in v:  # en-US -> en
         v = v.split("-", 1)[0]
     return v if v in SUPPORTED_LANGS else DEFAULT_LANG
 
-@app.before_request
-def _enforce_primary_host_and_load_locale():
-    # (Optionnel) forcer l’hôte canonique si demandé
-    if ENFORCE_PRIMARY_HOST and PRIMARY_HOST:
-        host = request.host.split(":")[0]
-        if host != PRIMARY_HOST:
-            target = request.url.replace("//" + host, "//" + PRIMARY_HOST, 1)
-            return redirect(target, code=301)
+def _cookie_domain_for(host: str | None):
+    if not host:
+        return None
+    host = host.split(":")[0]
+    if host in ("localhost",) or host.replace(".", "").isdigit():
+        return None
+    parts = host.split(".")
+    if len(parts) >= 2:
+        return "." + ".".join(parts[-2:])   # .tighri.ma / .tighri.com
+    return None
 
-    # ordre: cookie -> ?lang= -> entête Accept-Language
+@app.before_request
+def _load_locale():
     lang = (
         request.cookies.get(LANG_COOKIE)
         or request.args.get("lang")
@@ -154,22 +144,43 @@ def _enforce_primary_host_and_load_locale():
     )
     g.current_locale = _normalize_lang(lang)
 
-# Dictionnaire court pour les libellés (ajoute des clés selon tes besoins)
+@app.after_request
+def _vary_on_cookie_for_lang(resp):
+    ct = resp.headers.get("Content-Type", "")
+    if "text/html" in ct:
+        existing_vary = resp.headers.get("Vary")
+        resp.headers["Vary"] = "Cookie" if not existing_vary else f"{existing_vary}, Cookie"
+        # Empêche les caches partagés de mélanger les langues
+        resp.headers["Cache-Control"] = "private, no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    return resp
+
+# Mini-dico (tu peux étendre)
 TRANSLATIONS = {
     "fr": {
-        "nav": {"home": "Accueil", "professionals": "Professionnels", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact", "status": "Statut"},
+        "nav": {"home": "Accueil", "professionals": "Professionnels", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact"},
         "auth": {"login": "Connexion", "register": "Inscription", "logout": "Déconnexion"},
-        "common": {"menu": "Menu"},
+        "common": {"menu": "menu"},
+        "home": {"title": "Tighri", "tagline": "La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés"},
+        "search": {"cta": "Rechercher", "mode": "Mode", "city": "Ville", "specialty": "Spécialité", "q": "Nom, mot-clé..."},
+        "cards": {"patient": "Espace Patient", "pro": "Espace Professionnel"},
     },
     "en": {
-        "nav": {"home": "Home", "professionals": "Professionals", "anthecc": "ANTHECC", "about": "About", "contact": "Contact", "status": "Status"},
+        "nav": {"home": "Home", "professionals": "Professionals", "anthecc": "ANTHECC", "about": "About", "contact": "Contact"},
         "auth": {"login": "Login", "register": "Sign up", "logout": "Logout"},
-        "common": {"menu": "Menu"},
+        "common": {"menu": "menu"},
+        "home": {"title": "Tighri", "tagline": "Moroccan platform to book certified psychologists, therapists and coaches"},
+        "search": {"cta": "Search", "mode": "Mode", "city": "City", "specialty": "Specialty", "q": "Name, keyword..."},
+        "cards": {"patient": "Patient Space", "pro": "Professional Space"},
     },
     "ar": {
-        "nav": {"home": "الرئيسية", "professionals": "المهنيون", "anthecc": "ANTHECC", "about": "حول", "contact": "اتصل", "status": "الحالة"},
+        "nav": {"home": "الرئيسية", "professionals": "المهنيون", "anthecc": "ANTHECC", "about": "حول", "contact": "اتصل"},
         "auth": {"login": "تسجيل الدخول", "register": "إنشاء حساب", "logout": "تسجيل الخروج"},
         "common": {"menu": "القائمة"},
+        "home": {"title": "تيغري", "tagline": "منصة مغربية لحجز مواعيد مع أخصائيين ومعالجين ومدربين معتمدين"},
+        "search": {"cta": "ابحث", "mode": "النمط", "city": "المدينة", "specialty": "التخصص", "q": "اسم، كلمة..."},
+        "cards": {"patient": "فضاء المريض", "pro": "فضاء المهني"},
     },
 }
 
@@ -205,88 +216,37 @@ def _text_dir(lang):
 @app.context_processor
 def inject_i18n():
     lang = getattr(g, "current_locale", DEFAULT_LANG)
-    return {
-        "t": t,
-        "current_lang": lang,
-        "current_lang_label": _lang_label(lang),
-        "text_dir": _text_dir(lang),
-    }
+    return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
 
-def _cookie_args(max_age=LANG_MAX_AGE):
-    params = dict(max_age=max_age, httponly=False, samesite="Lax", path="/")
-    # On ne met domain= que si explicitement fourni, pour éviter les conflits multi-domaine
-    if PRIMARY_COOKIE_DOMAIN:
-        params["domain"] = PRIMARY_COOKIE_DOMAIN
-    # Render sert en HTTPS → Secure
-    params["secure"] = True
-    return params
-
-# Routes de changement de langue (compatibles)
-@app.route("/set-language/<lang>")
-@app.route("/set-language/<lang_code>")
-def set_language(lang=None, lang_code=None):
-    code = _normalize_lang(lang or lang_code)
-    # on nettoie ?lang= dans l’URL de retour
-    ref = request.referrer or url_for("index")
-    if ref and "?lang=" in ref:
-        try:
-            p = urlparse(ref)
-            q = parse_qs(p.query)
-            q.pop("lang", None)
-            ref = urlunparse(p._replace(query=urlencode({k: v[0] for k, v in q.items()})))
-        except Exception:
-            pass
-    resp = make_response(redirect(ref))
-    resp.set_cookie(LANG_COOKIE, code, **_cookie_args())
+# Routes pour changer de langue (cookie domaine = .tighri.ma / .tighri.com)
+@app.route("/set-language/<code>")
+def set_language_path(code):
+    code = _normalize_lang(code)
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    resp.set_cookie(
+        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax",
+        domain=_cookie_domain_for(request.host), path="/",
+    )
     return resp
 
 @app.route("/set-language")
 def set_language_qs():
     code = _normalize_lang(request.args.get("lang"))
-    ref = request.referrer or url_for("index")
-    resp = make_response(redirect(ref))
-    resp.set_cookie(LANG_COOKIE, code, **_cookie_args())
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    resp.set_cookie(
+        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax",
+        domain=_cookie_domain_for(request.host), path="/",
+    )
     return resp
 
-# Page debug locale
-@app.route("/__debug/lang")
-def _debug_lang():
-    return jsonify({
-        "g.current_locale": getattr(g, "current_locale", None),
-        "cookie_lang": request.cookies.get(LANG_COOKIE),
-        "host": request.host,
-        "PRIMARY_COOKIE_DOMAIN": PRIMARY_COOKIE_DOMAIN,
-        "SUPPORTED_LANGS": sorted(SUPPORTED_LANGS),
-    })
-
-@app.after_request
-def _vary_on_cookie_for_lang(resp):
-    # N'applique qu’aux pages HTML (laisser images/CSS/JS tranquilles)
-    ct = resp.headers.get("Content-Type", "")
-    if "text/html" in ct:
-        existing_vary = resp.headers.get("Vary")
-        resp.headers["Vary"] = "Cookie" if not existing_vary else f"{existing_vary}, Cookie"
-        # Empêche la mise en cache partagée (CDN/Proxy). Le navigateur garde un cache privé court.
-        resp.headers["Cache-Control"] = "private, no-store, no-cache, max-age=0, must-revalidate"
-    return resp
-
-# ========== PIL (images) ==========
-try:
-    from PIL import Image, ImageOps
-    _PIL_OK = True
-except Exception:
-    _PIL_OK = False
-
-# ========== Notifications sûres ==========
-try:
-    from notifications import send_email as _notif_send_email
-except Exception:
-    _notif_send_email = None
-
+# =========================
+#   EMAILS (safe wrapper)
+# =========================
+from notifications import send_email as _notif_send_email
 def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None = None) -> bool:
     try:
-        if not to_addr or not _notif_send_email:
-            current_app.logger.warning("[EMAIL] envoi indisponible (destinataire ou module)")
+        if not to_addr:
+            current_app.logger.warning("[EMAIL] destinataire manquant")
             return False
         ok = _notif_send_email(to_addr, subject, body_text, html)
         (current_app.logger.info if ok else current_app.logger.error)(
@@ -297,21 +257,19 @@ def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None
         current_app.logger.exception("safe_send_email exception: %s", e)
         return False
 
-# ========== OAuth Google ==========
-oauth = OAuth(app)
-google = oauth.register(
-    name="google",
-    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
-    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
-    access_token_url="https://oauth2.googleapis.com/token",
-    authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
-    api_base_url="https://www.googleapis.com/oauth2/v3/",
-    client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
-)
+# =========================
+#   PIL (images)
+# =========================
+try:
+    from PIL import Image, ImageOps
+    _PIL_OK = True
+except Exception:
+    _PIL_OK = False
 
-# ========== Helpers images ==========
 AVATAR_DIR = os.path.join(app.root_path, "static", "avatars")
 PLACEHOLDER_AVATAR = os.path.join(app.root_path, "static", "avatar_default.webp")
+PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
+AVATAR_DEFAULT_REL = "img/avatar-default.png"
 
 def _ext_ok(filename: str) -> bool:
     if not filename:
@@ -327,7 +285,6 @@ def _process_and_save_profile_image(file_storage) -> str:
     if not _PIL_OK:
         raise RuntimeError("Le traitement d'image nécessite Pillow (PIL).")
 
-    # validation
     try:
         img = Image.open(io.BytesIO(raw))
         img.verify()
@@ -337,8 +294,6 @@ def _process_and_save_profile_image(file_storage) -> str:
     img = Image.open(io.BytesIO(raw))
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
-
-    # strip EXIF + crop carré 512
     img_no_exif = Image.new(img.mode, img.size)
     img_no_exif.putdata(list(img.getdata()))
     img_square = ImageOps.fit(img_no_exif, (512, 512), Image.Resampling.LANCZOS)
@@ -358,9 +313,6 @@ def _avatar_file_for(pid: int) -> Optional[str]:
             return path
     return None
 
-PHOTO_PLACEHOLDER = "https://placehold.co/600x600?text=Photo"
-AVATAR_DEFAULT_REL = "img/avatar-default.png"
-
 def _avatar_fallback_response():
     static_avatar = Path(app.static_folder or (BASE_DIR / "static")) / AVATAR_DEFAULT_REL
     if static_avatar.exists():
@@ -369,7 +321,9 @@ def _avatar_fallback_response():
         return resp
     return redirect(PHOTO_PLACEHOLDER)
 
-# ========== Routes techniques ==========
+# =========================
+#   ROUTES TECH
+# =========================
 @app.route("/favicon.ico")
 def favicon():
     fav_path = Path(app.static_folder or (BASE_DIR / "static")) / "favicon.ico"
@@ -386,37 +340,36 @@ def robots():
         return send_from_directory(app.static_folder, "robots.txt", mimetype="text/plain")
     return ("User-agent: *\nDisallow:\n", 200, {"Content-Type": "text/plain"})
 
-# ========== Pages publiques ==========
+# =========================
+#   PAGES PUBLIQUES
+# =========================
 @app.route("/", endpoint="index")
 def index():
     # Tri admin si table d’ordre dispo, sinon fallback
     try:
-        if ProfessionalOrder is not None:
-            base = (
-                db.session.query(Professional)
-                .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
-                .filter(Professional.status == 'valide')
-                .order_by(
-                    db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc(),
-                    Professional.is_featured.desc(),
-                    db.func.coalesce(Professional.featured_rank, 999999).asc(),
-                    Professional.created_at.desc(),
-                    Professional.id.desc()
-                )
+        base = (
+            db.session.query(Professional)
+            .outerjoin(ProfessionalOrder, ProfessionalOrder.professional_id == Professional.id)
+            .filter(Professional.status == 'valide')
+            .order_by(
+                db.func.coalesce(ProfessionalOrder.order_priority, 999999).asc(),
+                Professional.is_featured.desc(),
+                db.func.coalesce(Professional.featured_rank, 999999).asc(),
+                Professional.created_at.desc(),
+                Professional.id.desc()
             )
-        else:
-            raise RuntimeError("No ProfessionalOrder")
+        )
         top_professionals = base.limit(9).all()
         top_ids = [p.id for p in top_professionals]
         more_professionals = base.filter(~Professional.id.in_(top_ids)).all() if top_ids else base.offset(9).all()
     except Exception as e:
-        app.logger.info("Classement admin indisponible (%s) → fallback 'featured puis récents'.", e)
+        app.logger.warning("Classement admin indisponible (%s), fallback 'featured puis récents'.", e)
         fb = (
             Professional.query
             .filter_by(status='valide')
             .order_by(
                 Professional.is_featured.desc(),
-                db.func.coalesce(getattr(Professional, "featured_rank", 999999), 999999).asc(),
+                db.func.coalesce(Professional.featured_rank, 999999).asc(),
                 Professional.created_at.desc(),
                 Professional.id.desc()
             )
@@ -443,7 +396,6 @@ def about():
 def contact():
     return render_template("contact.html")
 
-# Listing / recherche
 @app.route("/professionals", endpoint="professionals")
 def professionals():
     q = (request.args.get("q") or "").strip()
@@ -476,19 +428,19 @@ def professionals():
     pros = qry.order_by(Professional.is_featured.desc(), Professional.created_at.desc()).all()
     return render_template("professionals.html", professionals=pros, specialty=specialty, search_query=q)
 
-# Fiche pro
 @app.route("/professional/<int:professional_id>", endpoint="professional_detail")
 def professional_detail(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
     return render_template("professional_detail.html", professional=professional)
 
-# ========== Photos / médias ==========
+# =========================
+#   MÉDIAS / PHOTOS
+# =========================
 @app.route("/media/profile/<int:professional_id>", endpoint="profile_photo")
 def profile_photo(professional_id: int):
     pro = Professional.query.get_or_404(professional_id)
-    raw_url = (getattr(pro, "image_url", "") or "").strip()
+    raw_url = (pro.image_url or "").strip()
 
-    # Fichiers uploadés localement (/media/profiles/NAME)
     if raw_url.startswith("/media/profiles/"):
         fname = raw_url.split("/media/profiles/")[-1]
         safe_name = os.path.basename(fname)
@@ -500,7 +452,6 @@ def profile_photo(professional_id: int):
         return _avatar_fallback_response()
 
     if not raw_url:
-        # avatars pack statique (ex: static/avatars/ID.webp)
         file_path = _avatar_file_for(professional_id)
         if file_path and os.path.isfile(file_path):
             return send_from_directory(AVATAR_DIR, os.path.basename(file_path), max_age=60*60*24*7)
@@ -508,7 +459,6 @@ def profile_photo(professional_id: int):
             return send_from_directory(os.path.join(app.root_path, "static"), "avatar_default.webp", max_age=86400)
         return _avatar_fallback_response()
 
-    # Proxy https
     if raw_url.startswith("http://"):
         raw_url = "https://" + raw_url[len("http://"):]
     parsed = urlparse(raw_url)
@@ -530,7 +480,6 @@ def profile_photo(professional_id: int):
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
 
-# Alias rétro-compatibles
 @app.route("/avatar")
 def avatar_alias_qs():
     pid = request.args.get("professional_id", type=int)
@@ -542,7 +491,6 @@ def avatar_alias_qs():
 def avatar_alias_path(professional_id: int):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
-# Upload photo pro
 @app.route("/professional/profile/photo", methods=["GET", "POST"], endpoint="professional_upload_photo")
 @login_required
 def professional_upload_photo():
@@ -577,7 +525,9 @@ def professional_upload_photo():
 
     return render_template("upload_photo.html")
 
-# ========== Auth local ==========
+# =========================
+#   AUTH LOCAL
+# =========================
 @app.route("/register", methods=["GET","POST"], endpoint="register")
 def register():
     if request.method == "POST":
@@ -714,7 +664,20 @@ def logout():
     logout_user()
     return redirect(url_for("index"))
 
-# ========== OAuth Google ==========
+# =========================
+#   OAUTH GOOGLE
+# =========================
+oauth = OAuth(app)
+google = oauth.register(
+    name="google",
+    client_id=os.environ.get("GOOGLE_CLIENT_ID", ""),
+    client_secret=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+    access_token_url="https://oauth2.googleapis.com/token",
+    authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
+    api_base_url="https://www.googleapis.com/oauth2/v3/",
+    client_kwargs={"scope": "openid email profile", "prompt": "select_account"},
+)
+
 @app.route("/auth/google")
 def auth_google():
     redirect_uri = os.environ.get("OAUTH_REDIRECT_URI", url_for("auth_google_callback", _external=True, _scheme="https"))
@@ -738,11 +701,11 @@ def auth_google_callback():
 
         if user:
             changed = False
-            if not getattr(user, "oauth_sub", None) and sub:
+            if not user.oauth_sub and sub:
                 user.oauth_provider = "google"; user.oauth_sub = sub; changed = True
-            if picture and not getattr(user, "picture_url", None):
+            if picture and not user.picture_url:
                 user.picture_url = picture; changed = True
-            if name and not getattr(user, "full_name", None):
+            if name and not user.full_name:
                 user.full_name = name; changed = True
             if changed:
                 db.session.commit()
@@ -769,7 +732,9 @@ def auth_google_callback():
         flash("Connexion Google impossible. Réessayez.", "danger")
         return redirect(url_for("login"))
 
-# ========== Mot de passe : reset ==========
+# =========================
+#   RESET PASSWORD
+# =========================
 def _hash_token(tok: str) -> str:
     return hashlib.sha256(tok.encode("utf-8")).hexdigest()
 
@@ -860,7 +825,7 @@ def forgot_password():
 def reset_password(token: str):
     user = consume_token_to_user(token)
     if not user:
-        flash("Lien invalide ou expiré. Refaire une demande.", "danger")
+        flash("Lien invalide ou expiré. Refaite une demande.", "danger")
         return redirect(url_for("forgot_password"))
 
     if request.method == "POST":
@@ -881,7 +846,9 @@ def reset_password(token: str):
         return redirect(url_for("login"))
     return render_template("reset_password.html")
 
-# ========== Espace pro / RDV ==========
+# =========================
+#   ESPACE PRO / RDV
+# =========================
 @app.route("/professional_dashboard", endpoint="professional_dashboard")
 @login_required
 def professional_dashboard():
@@ -989,87 +956,23 @@ def delete_unavailable_slot(slot_id: int):
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
 
-# --- Helpers robustes pour récupérer/créer le profil pro ---
-def _query_professional_for_user(db, Professional, User, current_user):
-    if hasattr(Professional, "name") and getattr(current_user, "username", None):
-        return Professional.query.filter_by(name=current_user.username)
-    if hasattr(Professional, "user_id"):
-        return Professional.query.filter_by(user_id=current_user.id)
-    if hasattr(Professional, "user"):
-        return Professional.query.filter_by(user=current_user)
-    try:
-        return db.session.query(Professional).join(User, User.id == Professional.id).filter(User.id == current_user.id)
-    except Exception:
-        return Professional.query.filter(False)
-
-def get_or_create_professional_for_current_user(db, Professional, User, current_user, defaults=None):
-    defaults = defaults or {}
-    q = _query_professional_for_user(db, Professional, User, current_user)
-    professional = q.first()
-    if professional:
-        return professional
-    professional = Professional()
-    if hasattr(Professional, "name") and getattr(current_user, "username", None):
-        try:
-            professional.name = current_user.username
-        except Exception:
-            pass
-    if hasattr(Professional, "user_id"):
-        try:
-            setattr(professional, "user_id", current_user.id)
-        except Exception:
-            pass
-    if hasattr(Professional, "user"):
-        try:
-            setattr(professional, "user", current_user)
-        except Exception:
-            pass
-    base_defaults = {
-        "description": "Profil en cours de complétion.",
-        "availability": "disponible",
-        "consultation_types": "cabinet",
-        "status": "en_attente",
-    }
-    base_defaults.update(defaults or {})
-    for key, val in base_defaults.items():
-        if hasattr(Professional, key) and getattr(professional, key, None) in (None, ""):
-            try:
-                setattr(professional, key, val)
-            except Exception:
-                pass
-    if hasattr(Professional, "phone") and getattr(current_user, "phone", None) and not getattr(professional, "phone", None):
-        try:
-            professional.phone = current_user.phone
-        except Exception:
-            pass
-    db.session.add(professional)
-    try:
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-    return professional
-
-# --- ROUTE: édition du profil pro ---
+# Edition profil pro (conservatif)
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
-    professional = get_or_create_professional_for_current_user(
-        db, Professional, User, current_user,
-        defaults={
-            "name": getattr(current_user, "username", None) or getattr(current_user, "email", None) or "Profil",
-            "location": None,
-            "specialty": None,
-        }
-    )
+    professional = Professional.query.filter_by(name=current_user.username).first()
+    if not professional:
+        professional = Professional(name=current_user.username, description="Profil en cours de complétion.", status="en_attente")
+        db.session.add(professional); db.session.commit()
 
     if request.method == "POST":
         f = request.form
-        professional.name = f.get("name", "").strip() or None
-        professional.specialty = f.get("specialty", "").strip() or None
-        professional.description = f.get("description", "").strip() or None
-        professional.location = f.get("location", "").strip() or None
-        professional.address = f.get("address", "").strip() or None
-        professional.phone = f.get("phone", "").strip() or None
+        professional.name = f.get("name", "").strip() or professional.name
+        professional.specialty = f.get("specialty", "").strip() or professional.specialty
+        professional.description = f.get("description", "").strip() or professional.description
+        professional.location = f.get("location", "").strip() or professional.location
+        professional.address = f.get("address", "").strip() or professional.address
+        professional.phone = f.get("phone", "").strip() or professional.phone
 
         def to_float(v):
             try:
@@ -1090,7 +993,7 @@ def professional_edit_profile():
         professional.buffer_between_appointments_minutes = to_int(f.get("buffer_between_appointments_minutes")) or 15
 
         types = f.getlist("consultation_types")
-        professional.consultation_types = ",".join(sorted(set(t for t in types if t)))
+        professional.consultation_types = ",".join(sorted({t for t in types if t}))
 
         old_links = (
             (professional.facebook_url or ""),
@@ -1109,7 +1012,7 @@ def professional_edit_profile():
             (professional.youtube_url or ""),
         )
         if new_links != old_links:
-            professional.social_links_approved = False  # revalidation admin
+            professional.social_links_approved = False
 
         db.session.commit()
         flash("Profil mis à jour.", "success")
@@ -1117,7 +1020,7 @@ def professional_edit_profile():
 
     return render_template("professional_edit_profile.html", professional=professional)
 
-# Alias “voir mes RDV”
+# Alias rendez-vous
 @app.route("/professional/appointments", endpoint="professional_appointments")
 @login_required
 def professional_appointments():
@@ -1146,7 +1049,7 @@ def _overlap(start1: dtime, end1: dtime, start2: dtime, end2: dtime) -> bool:
 @login_required
 def book_appointment(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
-    if getattr(professional, "status", "") != "valide":
+    if professional.status != "valide":
         flash("Ce professionnel n'est pas encore validé par l'administration.")
         return redirect(url_for("professionals"))
 
@@ -1207,7 +1110,6 @@ def book_appointment(professional_id: int):
         )
         db.session.add(appointment); db.session.commit()
 
-        # mails
         try:
             subject, text = _build_notif("pending", appointment, role="patient")
             safe_send_email(current_user.email, subject, text)
@@ -1236,11 +1138,10 @@ def book_appointment(professional_id: int):
                            availabilities=availabilities,
                            unavailable_dates=unavailable_dates)
 
-# API slots
 @app.route("/api/professional/<int:professional_id>/available-slots", endpoint="api_available_slots")
 def api_available_slots(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
-    if getattr(professional, "status", "") != "valide":
+    if professional.status != "valide":
         return jsonify({"error": "Professionnel non validé"}), 400
 
     requested_date = request.args.get("date", date.today().isoformat())
@@ -1289,7 +1190,9 @@ def api_available_slots(professional_id: int):
         "available_slots": _slots()
     })
 
-# ========== Statut site ==========
+# =========================
+#   STATUT / ERREURS
+# =========================
 @app.route("/site-status", endpoint="site_status")
 def site_status():
     status = app.config.get("SITE_STATUS", {})
@@ -1300,7 +1203,6 @@ def site_status():
     }
     return render_template("site_status.html", status=status, stats=stats)
 
-# ========== Erreurs ==========
 @app.errorhandler(404)
 def not_found(e):
     return render_template("errors/404.html"), 404
@@ -1309,7 +1211,9 @@ def not_found(e):
 def server_error(e):
     return render_template("errors/500.html"), 500
 
-# ========== Boot (migrations légères + admin seed) ==========
+# =========================
+#   BOOT (migrations légères + admin seed)
+# =========================
 with app.app_context():
     db.create_all()
     try:
@@ -1337,9 +1241,8 @@ with app.app_context():
             db.session.execute(text(sql))
         db.session.commit()
     except Exception as e:
-        app.logger.warning("Mini-migration colonnes: %s", e)
+        app.logger.warning(f"Mini-migration colonnes: {e}")
 
-    # seed admin
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -1357,4 +1260,274 @@ with app.app_context():
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
 
-# Pas de __main__ : Gunicorn lance app:app
+# Pas de __main__: Gunicorn lance app:app
+
+
+INDEX ACTUEL
+
+{% extends "base.html" %}
+{% block title %}Tighri - Prendre rendez-vous avec un professionnel{% endblock %}
+
+{% block extra_css %}
+<style>
+  :root{
+    --primary:#8B5CF6; --primary-dark:#6D28D9;
+    --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; --card:#fff;
+    --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;
+  }
+  body{background:var(--bg);color:var(--ink)}
+  header{background:linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);color:#fff;padding:8rem 0 2rem;text-align:center}
+  header h1{margin:0 0 .5rem;font-size:3rem;font-weight:700}
+  header p{margin:0 auto 1.5rem;max-width:700px;font-size:1.15rem;opacity:.95}
+
+  .search-wrap{max-width:1100px;margin:-2.5rem auto 1rem;padding:0 1rem}
+  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
+  .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
+  .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
+  .search-bar button:hover{background:var(--primary-dark)}
+  @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
+  @media (max-width:640px){ .search-bar{grid-template-columns:1fr} }
+
+  .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
+  .section{background:#fff;border-radius:18px;box-shadow:var(--shadow);padding:2.5rem;min-width:320px;max-width:400px;flex:1 1 320px;text-align:center}
+  .section h2{color:var(--primary);margin:0 0 1rem}
+  .section p{color:var(--muted);margin:0 0 1.5rem}
+  .section a{display:inline-block;background:var(--primary);color:#fff;padding:1rem 2rem;border-radius:30px;text-decoration:none;font-weight:700}
+  .section a:hover{background:var(--primary-dark)}
+
+  .featured{max-width:1200px;margin:0 auto 3rem;padding:0 2rem}
+  .featured h3{color:#6D28D9;margin:0 0 1.5rem;text-align:center;font-size:2rem}
+  .professionals{display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:1.25rem;justify-items:center}
+  @media (max-width:1024px){ .professionals{grid-template-columns:repeat(2,minmax(260px,1fr));} }
+  @media (max-width:640px){ .professionals{grid-template-columns:1fr;} }
+
+  .professional-card{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:340px;width:100%;text-align:center}
+  .professional-card .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
+  .professional-card .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
+  .professional-card h4{margin:.5rem 0 .2rem;color:#6D28D9}
+  .professional-card p{color:#4B3869;font-size:.95rem;margin:.35rem 0}
+  .professional-card a{color:var(--primary);text-decoration:none;font-weight:600}
+  .professional-card a:hover{text-decoration:underline}
+
+  .strip{max-width:1200px;margin:0 auto 4rem;padding:0 2rem}
+  .strip h3{color:#6D28D9;margin:0 0 1rem;font-size:1.5rem}
+  .hscroll{display:flex;gap:1rem;overflow-x:auto;padding-bottom:.5rem;scroll-snap-type:x mandatory}
+  .hscroll::-webkit-scrollbar{height:8px}
+  .hscroll::-webkit-scrollbar-thumb{background:#d8cfff;border-radius:999px}
+  .card-mini{scroll-snap-align:start;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1rem;min-width:240px;max-width:240px;text-align:center;flex:0 0 auto}
+  .card-mini .avatar-box{width:84px;height:84px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .6rem}
+  .card-mini .avatar-img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .card-mini h4{margin:.4rem 0 .1rem;color:#6D28D9;font-size:1rem}
+  .card-mini p{margin:0;color:#4B3869;font-size:.9rem}
+
+  .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
+  .about-container{max-width:1200px;margin:0 auto;text-align:center}
+  .about-section h2{color:var(--primary);font-size:2.2rem;margin:0 0 1rem}
+  .about-section p{color:#4B3869;font-size:1.05rem;line-height:1.8;max-width:800px;margin:0 auto 1.25rem}
+
+  .services-section{padding:4rem 2rem;background:var(--bg)}
+  .services-container{max-width:1200px;margin:0 auto}
+  .services-section h2{color:var(--primary);font-size:2.2rem;text-align:center;margin:0 0 2rem}
+  .services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem}
+  .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);text-align:center}
+  .service-card h3{color:#6D28D9;margin:.25rem 0 1rem}
+  .service-card p{color:#4B3869;margin:0}
+
+  .contact-section{background:var(--primary);color:#fff;padding:4rem 2rem;text-align:center}
+  .contact-container{max-width:800px;margin:0 auto}
+  .contact-section h2{font-size:2rem;margin:0 0 1rem}
+  .contact-section p{font-size:1.05rem;margin:0 0 1.25rem;opacity:.95}
+  .contact-info{display:flex;justify-content:center;gap:2rem;flex-wrap:wrap}
+  .contact-item{display:flex;flex-direction:column;align-items:center;gap:.35rem}
+  .contact-item strong{font-size:1.05rem}
+  .contact-actions{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin-top:1.25rem}
+  .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#ffffff;color:#6D28D9;border:2px solid #ffffff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,0.18);transition:.2s}
+  .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
+  .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
+</style>
+{% endblock %}
+
+{% block content %}
+  <header id="top">
+    <h1>Tighri</h1>
+    <p>La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés</p>
+  </header>
+
+  <!-- SEARCH avec filtres -->
+  <div class="search-wrap">
+    <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
+      <!-- Champ libre -->
+      <input type="text" name="q" placeholder="Nom, mot-clé..." aria-label="Recherche libre">
+
+      <!-- Ville -->
+      {% if cities is defined and cities %}
+        <select name="city_id" aria-label="Ville">
+          <option value="">Ville</option>
+          {% for c in cities %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="city" placeholder="Ville" aria-label="Ville">
+      {% endif %}
+
+      <!-- Spécialité -->
+      {% if specialties is defined and specialties %}
+        <select name="specialty_id" aria-label="Spécialité">
+          <option value="">Spécialité</option>
+          {% for s in specialties %}
+            <option value="{{ s.id }}">{{ s.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="specialty" placeholder="Spécialité" aria-label="Spécialité">
+      {% endif %}
+
+      <!-- Mode -->
+      <select name="mode" aria-label="Mode de consultation">
+        <option value="">Mode</option>
+        <option value="cabinet">Cabinet</option>
+        <option value="visio">Visio</option>
+        <option value="domicile">Domicile</option>
+      </select>
+
+      <button type="submit">Rechercher</button>
+    </form>
+  </div>
+
+  <!-- 2 BLOCS -->
+  <div class="sections">
+    <div class="section">
+      <h2>Espace Patient</h2>
+      <p>Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.</p>
+      <a href="{{ url_for('register') }}">Je suis patient</a>
+    </div>
+    <div class="section">
+      <h2>Espace Professionnel</h2>
+      <p>Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.</p>
+      <a href="{{ url_for('professional_register') }}">Je suis professionnel</a>
+    </div>
+  </div>
+
+  <!-- PROFESSIONNELS EN VEDETTE -->
+  <div class="featured">
+    <h3>Professionnels en vedette</h3>
+    {% set grid = top_professionals if top_professionals is defined else professionals %}
+    <div class="professionals">
+      {% for professional in grid %}
+        <div class="professional-card">
+          <div class="avatar-box">
+            <img class="avatar-img js-zoom"
+                 src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+                 data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+                 alt="Photo de {{ professional.name|e }}"
+                 width="96" height="96" loading="lazy"
+                 onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
+          </div>
+          <h4>{{ professional.name }}</h4>
+          <p>
+            {% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}Professionnel{% endif %}
+          </p>
+          <p>
+            {% set d = professional.description or '' %}
+            {{ d[:80] }}{% if d|length > 80 %}…{% endif %}
+          </p>
+          <a href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# Autres professionnels : compatible other_professionals OU more_professionals #}
+  {% set other = (other_professionals if (other_professionals is defined and other_professionals) else (more_professionals if (more_professionals is defined and more_professionals) else [])) %}
+  {% if other %}
+  <section class="strip">
+    <h3>Autres professionnels</h3>
+    <div class="hscroll">
+      {% for professional in other %}
+      <div class="card-mini">
+        <div class="avatar-box">
+          <img class="avatar-img js-zoom"
+               src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               alt="Photo de {{ professional.name|e }}"
+               width="84" height="84" loading="lazy"
+               onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
+        </div>
+        <h4>{{ professional.name }}</h4>
+        <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}—{% endif %}</p>
+        <a href="{{ url_for('professional_detail', professional_id=professional.id) }}" style="color:var(--primary);font-weight:600;text-decoration:none">Voir</a>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- À PROPOS -->
+  <section id="about" class="about-section">
+    <div class="about-container">
+      <h2>À propos de Tighri</h2>
+      <p>Tighri est la première plateforme marocaine dédiée à la santé mentale et au bien-être. Nous connectons patients et professionnels pour faciliter l'accès à des soins psychologiques de qualité.</p>
+      <p>Notre mission est de démocratiser l'accès aux services de santé mentale au Maroc, dans un environnement de confiance et de sécurité.</p>
+    </div>
+  </section>
+
+  <!-- SERVICES -->
+  <section id="services" class="services-section">
+    <div class="services-container">
+      <h2>Nos Services</h2>
+      <div class="services-grid">
+        <div class="service-card"><h3>Consultations en Cabinet</h3><p>Rencontrez des professionnels en face à face.</p></div>
+        <div class="service-card"><h3>Consultations à Domicile</h3><p>Certains professionnels se déplacent chez vous.</p></div>
+        <div class="service-card"><h3>Consultations en Vidéo</h3><p>Consultez en ligne en toute sécurité.</p></div>
+        <div class="service-card"><h3>Gestion de Planning</h3><p>Réservez vos créneaux, rappel 24h avant.</p></div>
+        <div class="service-card"><h3>Profils Vérifiés</h3><p>Diplômes et identités vérifiés par Tighri.</p></div>
+        <div class="service-card"><h3>Support 24/7</h3><p>Nous vous accompagnons à chaque étape.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section id="contact" class="contact-section">
+    <div class="contact-container">
+      <h2>Nous contacter</h2>
+      <p><strong>Bienvenue au Centre d'écoute et de conseil Tighri.</strong><br>Besoin d'aide ou de conseils gratuits ? Contactez-nous.</p>
+      <div class="contact-info" style="margin-top:1rem;">
+        <div class="contact-item"><strong>Email</strong><span>contact@tighri.ma</span></div>
+        <div class="contact-item"><strong>Téléphone</strong><span>06 63 40 01 90</span></div>
+        <div class="contact-item"><strong>WhatsApp</strong><span class="contact-badge">Disponible</span></div>
+      </div>
+      <div class="contact-actions">
+        <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">✉️ Contacter par e-mail</a>
+        <a class="contact-btn" href="tel:+212663400190">📞 Appeler le <span>06 63 40 01 90</span></a>
+        <a class="contact-btn" target="_blank" rel="noopener"
+           href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">💬 WhatsApp direct</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lightbox -->
+  <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
+    <button class="lightbox-close" id="lbClose" aria-label="Fermer">✕</button>
+    <img id="lbImg" class="lightbox-img" alt="Agrandissement">
+  </div>
+  <script>
+    (function(){
+      const backdrop = document.getElementById('lbBackdrop');
+      const imgBig   = document.getElementById('lbImg');
+      const btnClose = document.getElementById('lbClose');
+      function open(src){ imgBig.src = src; backdrop.classList.add('is-open'); }
+      function close(){ backdrop.classList.remove('is-open'); imgBig.src=''; }
+      document.addEventListener('click', function(e){
+        const t = e.target.closest('.js-zoom'); if(!t) return; e.preventDefault();
+        const src = t.getAttribute('data-full') || t.src || t.getAttribute('src') || '';
+        if(src) open(src);
+      });
+      btnClose.addEventListener('click', close);
+      backdrop.addEventListener('click', function(e){ if(e.target === backdrop) close(); });
+      document.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+    })();
+  </script>
+{% endblock %}
+
+
