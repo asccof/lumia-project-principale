@@ -217,6 +217,27 @@ def _text_dir(lang):
 def inject_i18n():
     lang = getattr(g, "current_locale", DEFAULT_LANG)
     return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
+# ---- Compat i18n: préserver l'endpoint attendu par base.html ----
+from flask import request, redirect, url_for
+
+@app.route("/set_language/<lang_code>")
+def set_language(lang_code):
+    """
+    Endpoint de compatibilité pour les anciens liens:
+    redirige vers la route existante 'set_language_qs?lang=...'
+    sans toucher aux templates ni au reste.
+    """
+    nxt = request.args.get("next") or request.referrer or url_for("index")
+    return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
+
+# Optionnel (au cas où certains liens utilisent ?lang= sans segment):
+@app.route("/set_language")
+def set_language_fallback():
+    lang_code = request.args.get("lang")
+    nxt = request.args.get("next") or request.referrer or url_for("index")
+    if not lang_code:
+        return redirect(nxt)
+    return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
 
 # Routes pour changer de langue (cookie domaine = .tighri.ma / .tighri.com)
 @app.route("/set-language/<code>")
