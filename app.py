@@ -113,8 +113,11 @@ def _load_user(user_id: str):
 # =========================
 DEFAULT_LANG = "fr"
 SUPPORTED_LANGS = {"fr", "en", "ar"}
-LANG_COOKIE = "lang"
-LANG_MAX_AGE = 60 * 60 * 24 * 180  # 180 jours
+
+# --- Migration douce cookie de langue ---
+LEGACY_LANG_COOKIE = "lang"          # ancien nom (peut rester dans le navigateur)
+LANG_COOKIE = "tighri_lang"          # nouveau nom (évite les collisions)
+LANG_MAX_AGE = 60 * 60 * 24 * 180    # 180 jours
 
 def _normalize_lang(code: str | None):
     if not code:
@@ -137,15 +140,13 @@ def _cookie_domain_for(host: str | None):
 
 @app.before_request
 def _load_locale():
-    # Priorité: ?lang=  >  cookie  >  Accept-Language
-    lang = (
-        request.args.get("lang")  # <-- en premier !
-        or request.cookies.get(LANG_COOKIE)
-        or (request.accept_languages.best_match(SUPPORTED_LANGS) if request.accept_languages else None)
-    )
+    # Priorité: ?lang=  >  cookie nouveau  >  cookie legacy  >  Accept-Language
+    param = request.args.get("lang")
+    cookie_new = request.cookies.get(LANG_COOKIE)
+    cookie_old = request.cookies.get(LEGACY_LANG_COOKIE)
+    accept = request.accept_languages.best_match(SUPPORTED_LANGS) if request.accept_languages else None
+    lang = param or cookie_new or cookie_old or accept
     g.current_locale = _normalize_lang(lang)
-
-
 
 @app.after_request
 def _vary_on_cookie_for_lang(resp):
@@ -158,15 +159,13 @@ def _vary_on_cookie_for_lang(resp):
         resp.headers["Pragma"] = "no-cache"
         resp.headers["Expires"] = "0"
     return resp
+
 @app.route("/set-language/clear")
 def clear_language_cookie():
     resp = make_response(redirect(request.referrer or url_for("index")))
-    resp.delete_cookie(
-        LANG_COOKIE,
-        domain=_cookie_domain_for(request.host),
-        path="/",
-        samesite="Lax",
-    )
+    dom = _cookie_domain_for(request.host)
+    resp.delete_cookie(LANG_COOKIE, domain=dom, path="/", samesite="Lax")
+    resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
 # Mini-dico (tu peux étendre)
@@ -258,20 +257,20 @@ def set_language_fallback():
 def set_language_path(code):
     code = _normalize_lang(code)
     resp = make_response(redirect(request.referrer or url_for("index")))
-    resp.set_cookie(
-        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax",
-        domain=_cookie_domain_for(request.host), path="/",
-    )
+    dom = _cookie_domain_for(request.host)
+    # écrire le NOUVEAU cookie
+    resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
+    # nettoyer l'ANCIEN cookie s'il existe
+    resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
 @app.route("/set-language")
 def set_language_qs():
     code = _normalize_lang(request.args.get("lang"))
-    resp = make_response(redirect(request.referrer or url_for("index")))
-    resp.set_cookie(
-        LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax",
-        domain=_cookie_domain_for(request.host), path="/",
-    )
+    resp = make_response(redirect(request.args.get("next") or request.referrer or url_for("index")))
+    dom = _cookie_domain_for(request.host)
+    resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
+    resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
 # =========================
@@ -569,8 +568,15 @@ def professional_upload_photo():
             current_app.logger.exception("Erreur interne lors du traitement de l'image")
             flash("Erreur interne lors du traitement de l'image.", "danger")
 
-    # << FIX : passer l'objet au template pour éviter 'professional' undefined >>
+    # passer l'objet au template
     return render_template("upload_photo.html", professional=pro)
+
+# --- ALIAS attendu par le template (corrige BuildError Jinja) ---
+@app.route("/professional/profile/photos-upload", methods=["POST"], endpoint="professional_photos_upload")
+@login_required
+def professional_photos_upload_alias():
+    # On réutilise la même logique POST de la vue principale.
+    return professional_upload_photo()
 
 # =========================
 #   AUTH LOCAL
