@@ -242,6 +242,10 @@ def set_language(lang_code):
     """
     nxt = request.args.get("next") or request.referrer or url_for("index")
     return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
+from sqlalchemy import text as _t
+
+def _fetch_list(sql):
+    return [dict(r) for r in db.session.execute(_t(sql))]
 
 # Optionnel (au cas où certains liens utilisent ?lang= sans segment):
 @app.route("/set_language")
