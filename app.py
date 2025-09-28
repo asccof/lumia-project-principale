@@ -1,4 +1,4 @@
-# app.py — Tighri (cohérent + fix i18n multi-domaine + aucun appel externe)
+# app.py — Tighri (contrat fixe : ORM simple, familles/spécialités unifiées, multi-sélection + ajout-si-absent)
 
 from __future__ import annotations
 
@@ -230,9 +230,6 @@ def inject_i18n():
     lang = getattr(g, "current_locale", DEFAULT_LANG)
     return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
 
-# ---- Compat i18n (anciens liens)
-from flask import request, redirect, url_for
-
 @app.route("/set_language/<lang_code>")
 def set_language(lang_code):
     nxt = request.args.get("next") or request.referrer or url_for("index")
@@ -371,20 +368,39 @@ except Exception:
     ]
 
 def _ui_cities():
+    """Liste pour les selects/datalists (id, name)."""
     try:
-        return [{"id": c.id, "name": c.name} for c in City.query.order_by(City.name).all()]
+        return [{"id": c.id, "name": c.name} for c in City.query.order_by(City.name.asc()).all()]
     except Exception:
         return []
 
 def _ui_specialties():
+    """Liste pour les selects/datalists (id, name)."""
     try:
-        return [{"id": s.id, "name": s.name} for s in Specialty.query.order_by(Specialty.name).all()]
+        return [{"id": s.id, "name": s.name, "category": s.category} for s in Specialty.query.order_by(Specialty.name.asc()).all()]
+    except Exception:
+        return []
+
+def _ui_families_rows():
+    """Familles = valeurs distinctes de Specialty.category (retourne [{id, name}])."""
+    try:
+        rows = (
+            db.session.query(Specialty.category)
+            .filter(Specialty.category.isnot(None), Specialty.category != "")
+            .distinct()
+            .order_by(Specialty.category.asc())
+            .all()
+        )
+        out = []
+        for i, r in enumerate(rows, start=1):
+            out.append({"id": i, "name": r[0]})
+        return out
     except Exception:
         return []
 
 @app.context_processor
 def inject_taxonomies_for_forms():
-    # Datalists universelles pour tes templates (inscription/édition)
+    # Datalists universelles pour tes templates (inscription/édition) en fallback
     return {
         "ALL_CITIES": SEED_CITIES,
         "ALL_SPECIALTIES": SEED_SPECIALTIES,
@@ -448,12 +464,9 @@ def index():
         more_professionals = fb.filter(~Professional.id.in_(top_ids)).all() if top_ids else fb.offset(9).all()
 
     # Listes optionnelles pour la barre de recherche (ORM; aucun champ name_fr ici)
-    try:
-        cities = _ui_cities()
-        specialties = _ui_specialties()
-        families = []  # non utilisé en schéma simple
-    except Exception:
-        cities, specialties, families = [], [], []
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = _ui_families_rows()
 
     return render_template("index.html",
         top_professionals=top_professionals,
@@ -479,7 +492,10 @@ def professionals():
     q = (request.args.get("q") or "").strip()
     city = (request.args.get("city") or "").strip()
     city_id = request.args.get("city_id", type=int)
-    # family_id ignoré en schéma simple
+
+    # familles : schéma simple => string, pas d'ID
+    family = (request.args.get("family") or "").strip()
+
     specialty = (request.args.get("specialty") or "").strip()
     specialty_id = request.args.get("specialty_id", type=int)
     mode = (request.args.get("mode") or "").strip().lower()
@@ -511,6 +527,17 @@ def professionals():
     elif specialty and hasattr(Professional, "specialty"):
         qry = qry.filter(Professional.specialty.ilike(f"%{specialty}%"))
 
+    # Famille : par catégorie Specialty.category (FK principale, M2M secondaire) + fallback texte
+    if family:
+        like_family = family  # mets f"{family}%" si tu veux prefix
+        qry = qry.filter(
+            db.or_(
+                Professional.primary_specialty.has(Specialty.category.ilike(like_family)),
+                Professional.specialties.any(Specialty.category.ilike(like_family)),
+                Professional.specialty.ilike(f"%{family}%"),
+            )
+        )
+
     if mode and hasattr(Professional, "consultation_types"):
         qry = qry.filter(Professional.consultation_types.ilike(f"%{mode}%"))
 
@@ -519,7 +546,7 @@ def professionals():
     # Listes pour la barre de filtres (schéma simple)
     cities = _ui_cities()
     specialties = _ui_specialties()
-    families = []
+    families = _ui_families_rows()
 
     return render_template("professionals.html",
                            professionals=pros,
@@ -671,8 +698,8 @@ def professional_register():
         username = (request.form.get("username") or "").strip()
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password", "")
-        specialty = (request.form.get("specialty") or "").strip()
-        city = (request.form.get("city") or "").strip()
+        specialty = (request.form.get("specialty") or "").strip()  # legacy texte
+        city = (request.form.get("city") or "").strip()            # legacy texte
         description = (request.form.get("description") or "").strip()
         experience_raw = request.form.get("experience", "0")
         fee_raw = request.form.get("consultation_fee", "0")
@@ -719,8 +746,8 @@ def professional_register():
             professional = Professional(
                 name=username,
                 description=description or "Profil en cours de complétion.",
-                specialty=specialty or "Psychologue",
-                location=city or "Casablanca",
+                specialty=specialty or "Psychologue",     # legacy
+                location=city or "Casablanca",            # legacy
                 experience_years=experience,
                 consultation_fee=consultation_fee,
                 phone=phone or None,
@@ -738,6 +765,37 @@ def professional_register():
             if primary_specialty_id is not None and hasattr(professional, "primary_specialty_id"):
                 professional.primary_specialty_id = primary_specialty_id
 
+            # --- multi-sélection d'IDs ---
+            spec_ids = [int(x) for x in request.form.getlist("specialty_ids") if str(x).isdigit()]
+
+            # --- création "si absente" ---
+            new_name = (request.form.get("new_specialty_name") or "").strip()
+            new_family = (request.form.get("new_specialty_family") or "").strip()
+            if new_name:
+                existing = Specialty.query.filter(db.func.lower(Specialty.name) == new_name.lower()).first()
+                if not existing:
+                    existing = Specialty(name=new_name, category=(new_family or None))
+                    db.session.add(existing)
+                    db.session.flush()
+                spec_ids.append(existing.id)
+
+            # --- spécialité principale ---
+            primary_spec_id = request.form.get("primary_specialty_id", type=int)
+            if primary_spec_id:
+                professional.primary_specialty_id = primary_spec_id
+            elif not getattr(professional, "primary_specialty_id", None) and spec_ids:
+                professional.primary_specialty_id = spec_ids[0]
+
+            # --- spécialités secondaires (M2M) ---
+            if spec_ids:
+                professional.specialties = Specialty.query.filter(Specialty.id.in_(spec_ids)).all()
+
+            # --- synchronise le legacy texte si vide ---
+            if professional.primary_specialty_id and not (professional.specialty or "").strip():
+                ps = db.session.get(Specialty, professional.primary_specialty_id)
+                if ps:
+                    professional.specialty = ps.name
+
             db.session.add(professional)
             db.session.commit()
         except Exception:
@@ -751,7 +809,7 @@ def professional_register():
     # --- GET : listes via ORM (schéma simple) ---
     cities = _ui_cities()
     specialties = _ui_specialties()
-    families = []
+    families = _ui_families_rows()
     return render_template("professional_register.html",
                            cities=cities, families=families, specialties=specialties)
 
@@ -1084,9 +1142,9 @@ def professional_edit_profile():
     if request.method == "POST":
         f = request.form
         professional.name = f.get("name", "").strip() or professional.name
-        professional.specialty = f.get("specialty", "").strip() or professional.specialty
+        professional.specialty = f.get("specialty", "").strip() or professional.specialty   # legacy
         professional.description = f.get("description", "").strip() or professional.description
-        professional.location = f.get("location", "").strip() or professional.location
+        professional.location = f.get("location", "").strip() or professional.location       # legacy
         professional.address = f.get("address", "").strip() or professional.address
         professional.phone = f.get("phone", "").strip() or professional.phone
 
@@ -1097,6 +1155,33 @@ def professional_edit_profile():
         ps_id = f.get("primary_specialty_id", type=int) or f.get("specialty_id", type=int)
         if ps_id is not None and hasattr(professional, "primary_specialty_id"):
             professional.primary_specialty_id = ps_id
+
+        # multi-sélection & ajout-si-absent
+        spec_ids = [int(x) for x in f.getlist("specialty_ids") if str(x).isdigit()]
+
+        new_name = (f.get("new_specialty_name") or "").strip()
+        new_family = (f.get("new_specialty_family") or "").strip()
+        if new_name:
+            existing = Specialty.query.filter(db.func.lower(Specialty.name) == new_name.lower()).first()
+            if not existing:
+                existing = Specialty(name=new_name, category=(new_family or None))
+                db.session.add(existing)
+                db.session.flush()
+            spec_ids.append(existing.id)
+
+        primary_spec_id = f.get("primary_specialty_id", type=int)
+        if primary_spec_id:
+            professional.primary_specialty_id = primary_spec_id
+        elif not getattr(professional, "primary_specialty_id", None) and spec_ids:
+            professional.primary_specialty_id = spec_ids[0]
+
+        if spec_ids is not None:
+            professional.specialties = Specialty.query.filter(Specialty.id.in_(spec_ids)).all()
+
+        if professional.primary_specialty_id and not (professional.specialty or "").strip():
+            ps = db.session.get(Specialty, professional.primary_specialty_id)
+            if ps:
+                professional.specialty = ps.name
 
         def to_float(v):
             try:
@@ -1145,7 +1230,7 @@ def professional_edit_profile():
     # GET : listes pour selects (ORM)
     cities = _ui_cities()
     specialties = _ui_specialties()
-    families = []
+    families = _ui_families_rows()
 
     return render_template("professional_edit_profile.html",
                            professional=professional,
@@ -1346,7 +1431,7 @@ def server_error(e):
 #   BOOT (migrations légères + admin seed)
 # =========================
 with app.app_context():
-    db.create_all()  # crée tables selon models.py (users, professionals, cities, specialties, pivot, etc.)
+    db.create_all()  # crée tables selon models.py (users, professionals, cities(name), specialties(name, category), pivot, etc.)
     try:
         stmts = [
             # colonnes additionnelles (idempotent)
@@ -1384,6 +1469,19 @@ with app.app_context():
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
+
+    # seed minimal si vide (pour que les listes existent)
+    if Specialty.query.count() == 0:
+        for name in SEED_SPECIALTIES:
+            db.session.add(Specialty(name=name))
+        db.session.commit()
+    if City.query.count() == 0:
+        for name in SEED_CITIES:
+            try:
+                db.session.add(City(name=name))
+            except Exception:
+                pass
+        db.session.commit()
 
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
