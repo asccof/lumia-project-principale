@@ -12,27 +12,18 @@ class User(UserMixin, db.Model):
     __tablename__ = "users"
 
     id = db.Column(db.Integer, primary_key=True)
-
-    # Identité
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    # nullable=True pour autoriser les comptes créés via Google (sans mot de passe local)
     password_hash = db.Column(db.String(255), nullable=True)
-
-    # Téléphone utilisateur
     phone = db.Column(db.String(30))
-
-    # Rôle applicatif: 'patient' | 'professional'
     user_type = db.Column(db.String(20), default='patient')
-
-    # Admin global
     is_admin = db.Column(db.Boolean, default=False)
 
-    # --- Liaison OAuth (Google, etc.) ---
-    oauth_provider = db.Column(db.String(30))                 # ex: 'google'
-    oauth_sub = db.Column(db.String(255), unique=True, index=True)  # identifiant 'sub' Google
-    picture_url = db.Column(db.Text)                          # photo de profil Google
-    full_name = db.Column(db.String(120))                     # nom affiché Google
+    # OAuth
+    oauth_provider = db.Column(db.String(30))
+    oauth_sub = db.Column(db.String(255), unique=True, index=True)
+    picture_url = db.Column(db.Text)
+    full_name = db.Column(db.String(120))
 
     # Reset password
     reset_token_hash = db.Column(db.String(255))
@@ -46,16 +37,12 @@ class User(UserMixin, db.Model):
         db.Index('ix_users_created_at', 'created_at'),
     )
 
-    def get_id(self):
-        return str(self.id)
-
-    def __repr__(self):
-        return f"<User id={self.id} {self.username} type={self.user_type} admin={self.is_admin}>"
+    def get_id(self): return str(self.id)
+    def __repr__(self): return f"<User id={self.id} {self.username} type={self.user_type} admin={self.is_admin}>"
 
 # ======================
 # Référentiels (Phase 1)
 # ======================
-
 class City(db.Model):
     __tablename__ = "cities"
     id = db.Column(db.Integer, primary_key=True)
@@ -79,19 +66,6 @@ professional_specialties = db.Table(
 # ======================
 class Professional(db.Model):
     __tablename__ = "professionals"
-    __table_args__ = (
-        db.Index('ix_professionals_name', 'name'),
-        db.Index('ix_professionals_specialty', 'specialty'),
-        db.Index('ix_professionals_location', 'location'),
-        db.Index('ix_professionals_address', 'address'),
-        db.Index('ix_professionals_status', 'status'),
-        db.Index('ix_professionals_availability', 'availability'),
-        db.Index('ix_professionals_created_at', 'created_at'),
-        db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
-        db.Index('ix_professionals_is_featured', 'is_featured'),
-        db.Index('ix_professionals_featured_rank', 'featured_rank'),
-        {"extend_existing": True},  # tolérant si un Table('professionals', ...) a été créé ailleurs
-    )
 
     id = db.Column(db.Integer, primary_key=True)
 
@@ -117,7 +91,7 @@ class Professional(db.Model):
 
     # Images
     image_url = db.Column(db.Text)
-    image_url2 = db.Column(db.Text)  # Galerie optionnelle
+    image_url2 = db.Column(db.Text)
     image_url3 = db.Column(db.Text)
 
     # Dispo & types de consultation
@@ -125,39 +99,45 @@ class Professional(db.Model):
     # ex: "cabinet,domicile,en_ligne"
     consultation_types = db.Column(db.String(120))
 
-    # Localisation (ancienne colonne texte), adresse précise + géoloc
+    # Localisation et contact
     location = db.Column(db.String(120))
     address = db.Column(db.String(255))
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
-
-    # Téléphone du pro
     phone = db.Column(db.String(30))
 
-    # Réseaux sociaux (URLs) + approbation admin
+    # Réseaux sociaux + approbation admin
     facebook_url = db.Column(db.Text)
     instagram_url = db.Column(db.Text)
     tiktok_url = db.Column(db.Text)
     youtube_url = db.Column(db.Text)
     social_links_approved = db.Column(db.Boolean, default=False)
 
-    # Validation par l’admin: 'valide' | 'en_attente' | 'rejete'
+    # Validation / mise en avant
     status = db.Column(db.String(20), default='en_attente')
-
-    # Paramètres de RDV
-    consultation_duration_minutes = db.Column(db.Integer, default=45)
-    buffer_between_appointments_minutes = db.Column(db.Integer, default=15)
-
-    # Mise en avant locale
     is_featured = db.Column(db.Boolean, default=False)
-    featured_rank = db.Column(db.Integer)  # 1 = top
-
-    # Badges
+    featured_rank = db.Column(db.Integer)
     certified_tighri = db.Column(db.Boolean, default=False)
     approved_anthecc = db.Column(db.Boolean, default=False)
 
-    # Timestamps
+    # Paramètres RDV
+    consultation_duration_minutes = db.Column(db.Integer, default=45)
+    buffer_between_appointments_minutes = db.Column(db.Integer, default=15)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index('ix_professionals_name', 'name'),
+        db.Index('ix_professionals_specialty', 'specialty'),
+        db.Index('ix_professionals_location', 'location'),
+        db.Index('ix_professionals_address', 'address'),
+        db.Index('ix_professionals_status', 'status'),
+        db.Index('ix_professionals_availability', 'availability'),
+        db.Index('ix_professionals_created_at', 'created_at'),
+        db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
+        db.Index('ix_professionals_is_featured', 'is_featured'),
+        db.Index('ix_professionals_featured_rank', 'featured_rank'),
+    )
 
     def __repr__(self):
         return f"<Professional id={self.id} {self.name} [{self.specialty}] status={self.status}>"
@@ -167,36 +147,20 @@ class Professional(db.Model):
 # ======================
 class Appointment(db.Model):
     __tablename__ = "appointments"
-
     id = db.Column(db.Integer, primary_key=True)
 
-    # Historique conservé : nullable + SET NULL côté DB
-    patient_id = db.Column(
-        db.Integer,
-        db.ForeignKey('users.id', ondelete='SET NULL'),
-        nullable=True
-    )
+    patient_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
 
     appointment_date = db.Column(db.DateTime, nullable=False)
-
-    # 'cabinet' | 'domicile' | 'en_ligne'
-    consultation_type = db.Column(db.String(20), default='cabinet')
-
-    # 'en_attente' | 'confirme' | 'annule'
-    status = db.Column(db.String(20), default='en_attente')
-
+    consultation_type = db.Column(db.String(20), default='cabinet')  # 'cabinet' | 'domicile' | 'en_ligne'
+    status = db.Column(db.String(20), default='en_attente')           # 'en_attente' | 'confirme' | 'annule'
     notes = db.Column(db.Text)
-
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # passive_deletes sur le backref pour laisser la DB gérer le SET NULL
-    patient = db.relationship(
-        'User',
+    patient = db.relationship('User',
         backref=db.backref('appointments', passive_deletes=True),
-        lazy='joined',
-        passive_deletes=True,
-    )
+        lazy='joined', passive_deletes=True)
     professional = db.relationship('Professional', backref='appointments', lazy='joined')
 
     __table_args__ = (
