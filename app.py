@@ -78,7 +78,12 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-from models import db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot
+# ⬇️ Importe City / Specialty pour correspondre à ton models.py
+from models import (
+    db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
+    City, Specialty
+)
+
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
 if not uri:
     raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
@@ -109,21 +114,19 @@ def _load_user(user_id: str):
 
 # =========================
 #   I18N / LANG
-#   (cookie valable sur .tighri.ma / .tighri.com, Vary: Cookie, no-cache HTML)
 # =========================
 DEFAULT_LANG = "fr"
 SUPPORTED_LANGS = {"fr", "en", "ar"}
 
-# --- Migration douce cookie de langue ---
-LEGACY_LANG_COOKIE = "lang"          # ancien nom (peut rester dans le navigateur)
-LANG_COOKIE = "tighri_lang"          # nouveau nom (évite les collisions)
-LANG_MAX_AGE = 60 * 60 * 24 * 180    # 180 jours
+LEGACY_LANG_COOKIE = "lang"
+LANG_COOKIE = "tighri_lang"
+LANG_MAX_AGE = 60 * 60 * 24 * 180
 
 def _normalize_lang(code: str | None):
     if not code:
         return DEFAULT_LANG
     v = str(code).strip().lower()
-    if "-" in v:  # en-US -> en
+    if "-" in v:
         v = v.split("-", 1)[0]
     return v if v in SUPPORTED_LANGS else DEFAULT_LANG
 
@@ -135,12 +138,11 @@ def _cookie_domain_for(host: str | None):
         return None
     parts = host.split(".")
     if len(parts) >= 2:
-        return "." + ".".join(parts[-2:])   # .tighri.ma / .tighri.com
+        return "." + ".".join(parts[-2:])
     return None
 
 @app.before_request
 def _load_locale():
-    # Priorité: ?lang=  >  cookie nouveau  >  cookie legacy  >  Accept-Language
     param = request.args.get("lang")
     cookie_new = request.cookies.get(LANG_COOKIE)
     cookie_old = request.cookies.get(LEGACY_LANG_COOKIE)
@@ -154,7 +156,6 @@ def _vary_on_cookie_for_lang(resp):
     if "text/html" in ct:
         existing_vary = resp.headers.get("Vary")
         resp.headers["Vary"] = "Cookie" if not existing_vary else f"{existing_vary}, Cookie"
-        # Empêche les caches partagés de mélanger les langues
         resp.headers["Cache-Control"] = "private, no-store, no-cache, must-revalidate, max-age=0"
         resp.headers["Pragma"] = "no-cache"
         resp.headers["Expires"] = "0"
@@ -168,7 +169,6 @@ def clear_language_cookie():
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
-# Mini-dico (tu peux étendre)
 TRANSLATIONS = {
     "fr": {
         "nav": {"home": "Accueil", "professionals": "Professionnels", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact"},
@@ -230,25 +230,19 @@ def inject_i18n():
     lang = getattr(g, "current_locale", DEFAULT_LANG)
     return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
 
-# ---- Compat i18n: préserver l'endpoint attendu par base.html ----
+# ---- Compat i18n (anciens liens)
 from flask import request, redirect, url_for
 
 @app.route("/set_language/<lang_code>")
 def set_language(lang_code):
-    """
-    Endpoint de compatibilité pour les anciens liens:
-    redirige vers la route existante 'set_language_qs?lang=...'
-    sans toucher aux templates ni au reste.
-    """
     nxt = request.args.get("next") or request.referrer or url_for("index")
     return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
 
-# --- Helpers SQL utilitaires ---
+# --- Helpers SQL utilitaires (gardé si besoin ailleurs)
 from sqlalchemy import text as _t
 def _fetch_list(sql):
     return [dict(r) for r in db.session.execute(_t(sql))]
 
-# Optionnel (au cas où certains liens utilisent ?lang= sans segment):
 @app.route("/set_language")
 def set_language_fallback():
     lang_code = request.args.get("lang")
@@ -257,15 +251,12 @@ def set_language_fallback():
         return redirect(nxt)
     return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
 
-# Routes pour changer de langue (cookie domaine = .tighri.ma / .tighri.com)
 @app.route("/set-language/<code>")
 def set_language_path(code):
     code = _normalize_lang(code)
     resp = make_response(redirect(request.referrer or url_for("index")))
     dom = _cookie_domain_for(request.host)
-    # écrire le NOUVEAU cookie
     resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
-    # nettoyer l'ANCIEN cookie s'il existe
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
@@ -279,7 +270,7 @@ def set_language_qs():
     return resp
 
 # =========================
-#   ⚙️ CANONICAL HOST (fix chofochement langues)
+#   ⚙️ CANONICAL HOST
 # =========================
 PRIMARY_HOST = os.getenv("PRIMARY_HOST", "www.tighri.ma")
 
@@ -334,20 +325,16 @@ def _process_and_save_profile_image(file_storage) -> str:
     raw = file_storage.read()
     if not _PIL_OK:
         raise RuntimeError("Le traitement d'image nécessite Pillow (PIL).")
-
     try:
-        img = Image.open(io.BytesIO(raw))
-        img.verify()
+        img = Image.open(io.BytesIO(raw)); img.verify()
     except Exception:
         raise ValueError("Fichier image invalide ou corrompu")
-
     img = Image.open(io.BytesIO(raw))
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
     img_no_exif = Image.new(img.mode, img.size)
     img_no_exif.putdata(list(img.getdata()))
     img_square = ImageOps.fit(img_no_exif, (512, 512), Image.Resampling.LANCZOS)
-
     out_name = f"{uuid.uuid4().hex}.jpg"
     out_path = UPLOAD_FOLDER / out_name
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -370,6 +357,38 @@ def _avatar_fallback_response():
         resp.headers["Cache-Control"] = "public, max-age=86400"
         return resp
     return redirect(PHOTO_PLACEHOLDER)
+
+# =========================
+#   LISTES (ORM + seeds)
+# =========================
+try:
+    from seeds_taxonomy import ALL_CITIES as SEED_CITIES, ALL_SPECIALTIES as SEED_SPECIALTIES
+except Exception:
+    SEED_CITIES = ["Casablanca", "Rabat", "Marrakech", "Fès", "Tanger", "Agadir"]
+    SEED_SPECIALTIES = [
+        "Psychologue", "Psychiatre", "Psychothérapeute", "Coach",
+        "Orthophoniste", "Psychomotricien", "Kinésithérapeute"
+    ]
+
+def _ui_cities():
+    try:
+        return [{"id": c.id, "name": c.name} for c in City.query.order_by(City.name).all()]
+    except Exception:
+        return []
+
+def _ui_specialties():
+    try:
+        return [{"id": s.id, "name": s.name} for s in Specialty.query.order_by(Specialty.name).all()]
+    except Exception:
+        return []
+
+@app.context_processor
+def inject_taxonomies_for_forms():
+    # Datalists universelles pour tes templates (inscription/édition)
+    return {
+        "ALL_CITIES": SEED_CITIES,
+        "ALL_SPECIALTIES": SEED_SPECIALTIES,
+    }
 
 # =========================
 #   ROUTES TECH
@@ -428,10 +447,13 @@ def index():
         top_ids = [p.id for p in top_professionals]
         more_professionals = fb.filter(~Professional.id.in_(top_ids)).all() if top_ids else fb.offset(9).all()
 
-    # --- AJOUT : listes référentiels pour la recherche (optionnel en template)
-    cities = _fetch_list("SELECT id, name_fr AS name FROM cities WHERE is_active ORDER BY region, province, name_fr;")
-    families = _fetch_list("SELECT id, name_fr AS name FROM specialty_families WHERE is_active ORDER BY name_fr;")
-    specialties = _fetch_list("SELECT id, name_fr AS name, family_id FROM specialties WHERE is_active ORDER BY name_fr;")
+    # Listes optionnelles pour la barre de recherche (ORM; aucun champ name_fr ici)
+    try:
+        cities = _ui_cities()
+        specialties = _ui_specialties()
+        families = []  # non utilisé en schéma simple
+    except Exception:
+        cities, specialties, families = [], [], []
 
     return render_template("index.html",
         top_professionals=top_professionals,
@@ -457,10 +479,14 @@ def professionals():
     q = (request.args.get("q") or "").strip()
     city = (request.args.get("city") or "").strip()
     city_id = request.args.get("city_id", type=int)
-    family_id = request.args.get("family_id", type=int)
+    # family_id ignoré en schéma simple
     specialty = (request.args.get("specialty") or "").strip()
     specialty_id = request.args.get("specialty_id", type=int)
     mode = (request.args.get("mode") or "").strip().lower()
+
+    # Harmonise 'visio' -> 'en_ligne'
+    if mode == "visio":
+        mode = "en_ligne"
 
     qry = Professional.query.filter_by(status='valide')
 
@@ -473,36 +499,27 @@ def professionals():
         if conds:
             qry = qry.filter(or_(*conds))
 
-    # --- AJOUT : ville par ID prioritaire (sans casser l'existant)
-    if city_id and hasattr(Professional, "city_id"):
+    # Ville : ID prioritaire, sinon texte legacy
+    if city_id is not None and hasattr(Professional, "city_id"):
         qry = qry.filter(Professional.city_id == city_id)
     elif city and hasattr(Professional, "location"):
         qry = qry.filter(Professional.location.ilike(f"%{city}%"))
 
-    # --- AJOUT : spécialité par ID prioritaire (sinon texte existant)
-    if specialty_id and hasattr(Professional, "primary_specialty_id"):
+    # Spécialité : ID prioritaire, sinon texte legacy
+    if specialty_id is not None and hasattr(Professional, "primary_specialty_id"):
         qry = qry.filter(Professional.primary_specialty_id == specialty_id)
     elif specialty and hasattr(Professional, "specialty"):
         qry = qry.filter(Professional.specialty.ilike(f"%{specialty}%"))
-
-    # --- AJOUT : filtre famille (map -> specialties)
-    if family_id:
-        rows = db.session.execute(_t("SELECT id FROM specialties WHERE family_id = :fid AND is_active"), {"fid": family_id})
-        spec_ids = [r.id for r in rows]
-        if spec_ids and hasattr(Professional, "primary_specialty_id"):
-            qry = qry.filter(Professional.primary_specialty_id.in_(spec_ids))
-        elif not spec_ids:
-            qry = qry.filter(Professional.id == -1)  # aucun résultat
 
     if mode and hasattr(Professional, "consultation_types"):
         qry = qry.filter(Professional.consultation_types.ilike(f"%{mode}%"))
 
     pros = qry.order_by(Professional.is_featured.desc(), Professional.created_at.desc()).all()
 
-    # listes pour la barre de filtres (si template les utilise)
-    cities = _fetch_list("SELECT id, name_fr AS name FROM cities WHERE is_active ORDER BY region, province, name_fr;")
-    families = _fetch_list("SELECT id, name_fr AS name FROM specialty_families WHERE is_active ORDER BY name_fr;")
-    specialties = _fetch_list("SELECT id, name_fr AS name, family_id FROM specialties WHERE is_active ORDER BY name_fr;")
+    # Listes pour la barre de filtres (schéma simple)
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = []
 
     return render_template("professionals.html",
                            professionals=pros,
@@ -604,14 +621,11 @@ def professional_upload_photo():
             current_app.logger.exception("Erreur interne lors du traitement de l'image")
             flash("Erreur interne lors du traitement de l'image.", "danger")
 
-    # passer l'objet au template
     return render_template("upload_photo.html", professional=pro)
 
-# --- ALIAS attendu par le template (corrige BuildError Jinja) ---
 @app.route("/professional/profile/photos-upload", methods=["POST"], endpoint="professional_photos_upload")
 @login_required
 def professional_photos_upload_alias():
-    # On réutilise la même logique POST de la vue principale.
     return professional_upload_photo()
 
 # =========================
@@ -664,7 +678,6 @@ def professional_register():
         fee_raw = request.form.get("consultation_fee", "0")
         phone = (request.form.get("phone") or "").strip()
 
-        # --- AJOUT : lecture des IDs (si fournis par le form)
         city_id = request.form.get("city_id", type=int)
         primary_specialty_id = request.form.get("primary_specialty_id", type=int) or request.form.get("specialty_id", type=int)
 
@@ -720,7 +733,6 @@ def professional_register():
                 social_links_approved=False,
                 status='en_attente',
             )
-            # --- AJOUTS FK si le modèle les expose (contrat fix)
             if city_id is not None and hasattr(professional, "city_id"):
                 professional.city_id = city_id
             if primary_specialty_id is not None and hasattr(professional, "primary_specialty_id"):
@@ -736,10 +748,10 @@ def professional_register():
         flash("Compte professionnel créé avec succès! Un administrateur validera votre profil.")
         return redirect(url_for("login"))
 
-    # --- GET : passer les listes (facultatif côté template)
-    cities = _fetch_list("SELECT id, name_fr AS name FROM cities WHERE is_active ORDER BY region, province, name_fr;")
-    families = _fetch_list("SELECT id, name_fr AS name FROM specialty_families WHERE is_active ORDER BY name_fr;")
-    specialties = _fetch_list("SELECT id, name_fr AS name, family_id FROM specialties WHERE is_active ORDER BY name_fr;")
+    # --- GET : listes via ORM (schéma simple) ---
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = []
     return render_template("professional_register.html",
                            cities=cities, families=families, specialties=specialties)
 
@@ -1078,7 +1090,7 @@ def professional_edit_profile():
         professional.address = f.get("address", "").strip() or professional.address
         professional.phone = f.get("phone", "").strip() or professional.phone
 
-        # --- AJOUT : lecture et affectation des FK si dispo
+        # FK si dispo
         city_id = f.get("city_id", type=int)
         if city_id is not None and hasattr(professional, "city_id"):
             professional.city_id = city_id
@@ -1130,10 +1142,10 @@ def professional_edit_profile():
         flash("Profil mis à jour.", "success")
         return redirect(url_for("professional_dashboard"))
 
-    # --- GET : listes pour selects
-    cities = _fetch_list("SELECT id, name_fr AS name FROM cities WHERE is_active ORDER BY region, province, name_fr;")
-    families = _fetch_list("SELECT id, name_fr AS name FROM specialty_families WHERE is_active ORDER BY name_fr;")
-    specialties = _fetch_list("SELECT id, name_fr AS name, family_id FROM specialties WHERE is_active ORDER BY name_fr;")
+    # GET : listes pour selects (ORM)
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = []
 
     return render_template("professional_edit_profile.html",
                            professional=professional,
@@ -1334,10 +1346,10 @@ def server_error(e):
 #   BOOT (migrations légères + admin seed)
 # =========================
 with app.app_context():
-    db.create_all()
+    db.create_all()  # crée tables selon models.py (users, professionals, cities, specialties, pivot, etc.)
     try:
         stmts = [
-            # --- existants ---
+            # colonnes additionnelles (idempotent)
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;",
@@ -1349,6 +1361,11 @@ with app.app_context():
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS social_links_approved BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS consultation_duration_minutes INTEGER DEFAULT 45;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS buffer_between_appointments_minutes INTEGER DEFAULT 15;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS featured_rank INTEGER;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS certified_tighri BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS approved_anthecc BOOLEAN DEFAULT FALSE;",
+
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR(30);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_sub VARCHAR(255);",
@@ -1358,42 +1375,7 @@ with app.app_context():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;",
 
-            # --- NOUVEAUX référentiels ---
-            """
-            CREATE TABLE IF NOT EXISTS cities (
-              id SERIAL PRIMARY KEY,
-              name_fr VARCHAR(120) NOT NULL,
-              name_ar VARCHAR(120),
-              slug VARCHAR(140) UNIQUE,
-              region VARCHAR(120),
-              province VARCHAR(120),
-              kind VARCHAR(40),
-              is_active BOOLEAN DEFAULT TRUE
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS specialty_families (
-              id SERIAL PRIMARY KEY,
-              name_fr VARCHAR(140) NOT NULL,
-              name_ar VARCHAR(140),
-              slug VARCHAR(160) UNIQUE,
-              is_active BOOLEAN DEFAULT TRUE
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS specialties (
-              id SERIAL PRIMARY KEY,
-              family_id INTEGER REFERENCES specialty_families(id) ON DELETE SET NULL,
-              name_fr VARCHAR(160) NOT NULL,
-              name_ar VARCHAR(160),
-              slug VARCHAR(180) UNIQUE,
-              synonyms_fr TEXT,
-              synonyms_ar TEXT,
-              is_active BOOLEAN DEFAULT TRUE
-            );
-            """,
-
-            # --- Colonnes FK facultatives sur professionals (compat totale) ---
+            # FK facultatives (les tables cities / specialties existent via db.create_all)
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER REFERENCES cities(id) ON DELETE SET NULL;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER REFERENCES specialties(id) ON DELETE SET NULL;",
         ]
