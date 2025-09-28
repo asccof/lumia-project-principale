@@ -1,0 +1,75 @@
+{# templates/partials/_city_family_specialty.html #}
+<div class="form-row">
+  <label>{{ t('search.city','Ville') }}</label>
+  {% if cities %}
+    <select name="city_id">
+      <option value="">{{ t('search.city','Ville') }}</option>
+      {% for c in cities %}
+        <option value="{{ c.id }}"
+          {% if (professional is defined and professional.city_id==c.id)
+             or (request.args.get('city_id')==c.id|string)
+             or (request.form.get('city_id')==c.id|string) %}selected{% endif %}>
+          {{ c.name or c.name_fr }}
+        </option>
+      {% endfor %}
+    </select>
+  {% else %}
+    <input type="text"
+           name="{{ 'location' if professional is defined else 'city' }}"
+           value="{{ (professional.location if professional is defined else request.form.get('city','')) }}"
+           placeholder="{{ t('search.city','Ville') }}">
+  {% endif %}
+</div>
+
+<div class="form-row">
+  <label>{{ t('labels.family','Famille') }}</label>
+  {% if families %}
+    <select name="family_id" id="family_id">
+      <option value="">{{ t('labels.family','Famille') }}</option>
+      {% for f in families %}
+        <option value="{{ f.id }}"
+          {% if request.args.get('family_id')==f.id|string or request.form.get('family_id')==f.id|string %}selected{% endif %}>
+          {{ f.name or f.name_fr }}
+        </option>
+      {% endfor %}
+    </select>
+  {% endif %}
+</div>
+
+<div class="form-row">
+  <label>{{ t('search.specialty','Spécialité') }}</label>
+  {% if specialties %}
+    <select name="{{ 'primary_specialty_id' if professional is defined else 'specialty_id' }}"
+            id="specialty_id">
+      <option value="">{{ t('search.specialty','Spécialité') }}</option>
+      {% for s in specialties %}
+        <option value="{{ s.id }}" data-family="{{ s.family_id }}"
+          {% if (professional is defined and professional.primary_specialty_id==s.id)
+             or (request.args.get('specialty_id')==s.id|string)
+             or (request.form.get('specialty_id')==s.id|string) %}selected{% endif %}>
+          {{ s.name or s.name_fr }}
+        </option>
+      {% endfor %}
+    </select>
+    <script>
+    (function(){
+      const fam=document.getElementById('family_id');
+      const sp=document.getElementById('specialty_id');
+      if(!fam||!sp) return;
+      function filter(){
+        const fid=fam.value;
+        [...sp.options].forEach(o=>{
+          if(!o.value) return;
+          o.hidden = (!!fid && o.dataset.family !== fid);
+        });
+        if (sp.selectedOptions[0] && sp.selectedOptions[0].hidden) sp.value='';
+      }
+      fam.addEventListener('change', filter); filter();
+    })();
+    </script>
+  {% else %}
+    <input type="text" name="specialty"
+           value="{{ (professional.specialty if professional is defined else request.form.get('specialty','')) }}"
+           placeholder="{{ t('search.specialty','Spécialité') }}">
+  {% endif %}
+</div>
