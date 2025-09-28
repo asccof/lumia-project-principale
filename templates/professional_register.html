@@ -30,49 +30,66 @@
         <input name="phone" required class="form-control" placeholder="06 12 34 56 78">
       </div>
 
-      <!-- Spécialité -->
-      <div class="col-md-6">
-        <label class="form-label">Spécialité</label>
-        {% if specialties is defined and specialties %}
-          <!-- ta logique existante avec SELECT normalisé si la liste est fournie à la route -->
-          <select name="specialty_id" class="form-select" required>
-            <option value="">Choisir une spécialité</option>
-            {% for s in specialties %}
-              <option value="{{ s.id }}">{{ s.name }}</option>
+      <!-- Famille + Spécialité -->
+      {% if (families is defined and families) and (specialties is defined and specialties) %}
+        <div class="col-md-6">
+          <label class="form-label">Famille</label>
+          <select name="family_id" id="reg_family_id" class="form-select">
+            <option value="">Toutes les familles</option>
+            {% for f in families %}
+              <option value="{{ f.id }}">{{ f.name }}</option>
             {% endfor %}
           </select>
-        {% else %}
-          <!-- CONTRAT FIXE: on garde name="specialty" mais on propose une datalist dynamique -->
+          <div class="form-text">Optionnel : filtre la liste des spécialités.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Spécialité</label>
+          <select name="specialty_id" id="reg_specialty_id" class="form-select" required>
+            <option value="">Choisir une spécialité</option>
+            {% for s in specialties %}
+              <option value="{{ s.id }}" data-family="{{ s.family_id or '' }}">{{ s.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      {% else %}
+        <!-- CONTRAT FIXE: on garde name="specialty" mais on propose une datalist -->
+        <div class="col-md-6">
+          <label class="form-label">Spécialité</label>
           <input name="specialty" class="form-control" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
           <datalist id="specialties_list">
-            {% for s in ALL_SPECIALTIES %}
-              <option value="{{ s }}"></option>
-            {% endfor %}
+            {% if ALL_SPECIALTIES is defined %}
+              {% for s in ALL_SPECIALTIES %}
+                <option value="{{ s }}"></option>
+              {% endfor %}
+            {% endif %}
           </datalist>
-        {% endif %}
-      </div>
+        </div>
+      {% endif %}
 
       <!-- Ville -->
-      <div class="col-md-6">
-        <label class="form-label">Ville</label>
-        {% if cities is defined and cities %}
-          <!-- ta logique existante avec SELECT normalisé si la liste est fournie à la route -->
-          <select name="city_id" class="form-select" required>
+      {% if cities is defined and cities %}
+        <div class="col-md-6">
+          <label class="form-label">Ville</label>
+          <select name="city_id" id="reg_city_id" class="form-select" required>
             <option value="">Choisir une ville</option>
             {% for c in cities %}
               <option value="{{ c.id }}">{{ c.name }}</option>
             {% endfor %}
           </select>
-        {% else %}
-          <!-- CONTRAT FIXE: on garde name="city" mais datalist dynamique -->
+        </div>
+      {% else %}
+        <div class="col-md-6">
+          <label class="form-label">Ville</label>
           <input name="city" class="form-control" placeholder="Casablanca" list="cities_list">
           <datalist id="cities_list">
-            {% for c in ALL_CITIES %}
-              <option value="{{ c }}"></option>
-            {% endfor %}
+            {% if ALL_CITIES is defined %}
+              {% for c in ALL_CITIES %}
+                <option value="{{ c }}"></option>
+              {% endfor %}
+            {% endif %}
           </datalist>
-        {% endif %}
-      </div>
+        </div>
+      {% endif %}
 
       <div class="col-md-6">
         <label class="form-label">Années d’expérience</label>
@@ -83,7 +100,7 @@
         <input name="consultation_fee" type="number" step="0.01" class="form-control" placeholder="300">
       </div>
 
-      <!-- Types de consultation (inchangé) -->
+      <!-- Types de consultation -->
       <div class="col-12">
         <label class="form-label">Types de consultation</label>
         <div class="d-flex flex-wrap gap-3">
@@ -129,5 +146,32 @@
     <a class="btn btn-link mt-3" href="{{ url_for('login') }}">J'ai déjà un compte</a>
   </form>
 </div>
+
+<!-- Filtrage client famille -> spécialité, activé uniquement si les deux listes existent -->
+{% if (families is defined and families) and (specialties is defined and specialties) %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  var fam = document.getElementById('reg_family_id');
+  var spec = document.getElementById('reg_specialty_id');
+  if(!fam || !spec) return;
+  function filterSpecs(){
+    var fid = fam.value || '';
+    var firstVisible = null;
+    Array.from(spec.options).forEach(function(opt){
+      if(!opt.value) return; // garder l'option placeholder
+      var ok = !fid || (String(opt.dataset.family||'') === String(fid));
+      opt.hidden = !ok;
+      if(ok && !firstVisible) firstVisible = opt;
+    });
+    // si l'option sélectionnée est masquée, reset
+    if(spec.selectedOptions.length && spec.selectedOptions[0].hidden){
+      spec.value = '';
+    }
+  }
+  fam.addEventListener('change', filterSpecs);
+  filterSpecs();
+});
+</script>
+{% endif %}
 </body>
 </html>
