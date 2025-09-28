@@ -58,12 +58,24 @@
 
       <h1 class="name">{{ professional.name }}</h1>
       <div class="meta">
-        {% if professional.specialty %}{{ professional.specialty }}
-        {% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}
-        {% else %}Professionnel{% endif %}
-        {% if professional.location %} · {{ professional.location }}{% endif %}
+        {# spécialité : priorité à la FK -> fallback texte #}
+        {% if professional.primary_specialty %}
+          {{ professional.primary_specialty.name }}
+        {% elif professional.specialty %}
+          {{ professional.specialty }}
+        {% else %}
+          Professionnel
+        {% endif %}
+
+        {# ville : priorité à la FK -> fallback texte #}
+        {% if professional.city %}
+          · {{ professional.city.name }}
+        {% elif professional.location %}
+          · {{ professional.location }}
+        {% endif %}
+
         {% if professional.experience_years %} · {{ professional.experience_years }} ans d'expérience{% endif %}
-        {% if professional.consultation_fee %} · {{ professional.consultation_fee }} MAD{% endif %}
+        {% if professional.consultation_fee is not none %} · {{ professional.consultation_fee|int }} MAD{% endif %}
       </div>
 
       <div class="badges">
@@ -102,15 +114,40 @@
     <div class="box">
       <h2>Informations</h2>
       <div class="list" style="color:#4B3869">
+        {# Ville en pilule #}
+        {% if professional.city %}
+          <div class="pill">🏙️ {{ professional.city.name }}</div>
+        {% elif professional.location %}
+          <div class="pill">🏙️ {{ professional.location }}</div>
+        {% endif %}
+
         {% if professional.address %}<div class="pill">📍 {{ professional.address }}</div>{% endif %}
+
         {% if professional.consultation_types %}
           {% for ct in professional.consultation_types.split(',') %}
             {% if ct %}<div class="pill">{{ ct|capitalize }}</div>{% endif %}
           {% endfor %}
         {% endif %}
+
         {% if professional.consultation_duration_minutes %}<div class="pill">⏱ {{ professional.consultation_duration_minutes }} min</div>{% endif %}
         {% if professional.buffer_between_appointments_minutes %}<div class="pill">➕ Pause {{ professional.buffer_between_appointments_minutes }} min</div>{% endif %}
       </div>
+
+      {# Lien Google Maps si dispo (lat/lng prioritaire, sinon adresse) #}
+      {% set maps_q = None %}
+      {% if professional.latitude is not none and professional.longitude is not none %}
+        {% set maps_q = (professional.latitude|string) ~ ',' ~ (professional.longitude|string) %}
+      {% elif professional.address %}
+        {% set maps_q = professional.address %}
+      {% endif %}
+      {% if maps_q %}
+        <div class="mt-3">
+          <a class="btn btn-alt" target="_blank" rel="noopener"
+             href="https://www.google.com/maps?q={{ maps_q|replace(' ','+') }}">
+            Voir sur Google Maps
+          </a>
+        </div>
+      {% endif %}
     </div>
 
     <div class="box">
