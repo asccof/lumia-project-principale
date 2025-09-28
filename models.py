@@ -139,6 +139,16 @@ class Professional(db.Model):
     # Mise en avant locale
     is_featured = db.Column(db.Boolean, default=False)
     featured_rank = db.Column(db.Integer)  # 1 = top
+from sqlalchemy import Column, Integer, ForeignKey
+
+class Professional(db.Model):
+    __tablename__ = 'professionals'
+    # ... (champs existants inchangés)
+
+    city_id = Column(Integer, ForeignKey('cities.id'), nullable=True)
+    primary_specialty_id = Column(Integer, ForeignKey('specialties.id'), nullable=True)
+
+    # pas d'autres modifs
 
     # ✅ Badges (Phase 1)
     certified_tighri = db.Column(db.Boolean, default=False)
