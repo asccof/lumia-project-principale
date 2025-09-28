@@ -14,15 +14,57 @@
         <label class="form-label">Nom / Affichage public</label>
         <input name="name" class="form-control" value="{{ professional.name or '' }}" required>
       </div>
-      <div class="col-md-6">
-        <label class="form-label">Spécialité</label>
-        <input name="specialty" class="form-control" value="{{ professional.specialty or '' }}" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
-        <datalist id="specialties_list">
-          {% for s in ALL_SPECIALTIES %}
-            <option value="{{ s }}"></option>
-          {% endfor %}
-        </datalist>
-      </div>
+
+      <!-- Famille + Spécialité par ID si listes dispo, sinon fallback datalist texte -->
+      {% if (families is defined and families) and (specialties is defined and specialties) %}
+        <div class="col-md-6">
+          <label class="form-label">Famille</label>
+          <select name="family_id" id="edit_family_id" class="form-select">
+            <option value="">Toutes les familles</option>
+            {% for f in families %}
+              <option value="{{ f.id }}">{{ f.name }}</option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Optionnel : sert à filtrer la liste ci-dessous.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Spécialité</label>
+          <select name="primary_specialty_id" id="edit_specialty_id" class="form-select">
+            <option value="">Choisir une spécialité</option>
+            {% for s in specialties %}
+              <option value="{{ s.id }}"
+                      data-family="{{ s.family_id or '' }}"
+                      {% if professional.primary_specialty_id is defined and professional.primary_specialty_id == s.id %}selected{% endif %}>
+                {{ s.name }}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="form-text">Si vous choisissez dans cette liste, le texte libre ci-dessous peut rester vide.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Spécialité (texte libre — optionnel)</label>
+          <input name="specialty" class="form-control" value="{{ professional.specialty or '' }}" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
+          <datalist id="specialties_list">
+            {% if ALL_SPECIALTIES is defined %}
+              {% for s in ALL_SPECIALTIES %}
+                <option value="{{ s }}"></option>
+              {% endfor %}
+            {% endif %}
+          </datalist>
+        </div>
+      {% else %}
+        <div class="col-md-6">
+          <label class="form-label">Spécialité</label>
+          <input name="specialty" class="form-control" value="{{ professional.specialty or '' }}" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
+          <datalist id="specialties_list">
+            {% if ALL_SPECIALTIES is defined %}
+              {% for s in ALL_SPECIALTIES %}
+                <option value="{{ s }}"></option>
+              {% endfor %}
+            {% endif %}
+          </datalist>
+        </div>
+      {% endif %}
 
       <div class="col-12">
         <label class="form-label">Description</label>
@@ -30,15 +72,33 @@
       </div>
 
       <!-- Localisation -->
-      <div class="col-md-6">
-        <label class="form-label">Ville</label>
-        <input name="location" class="form-control" value="{{ professional.location or '' }}" placeholder="Casablanca" list="cities_list">
-        <datalist id="cities_list">
-          {% for c in ALL_CITIES %}
-            <option value="{{ c }}"></option>
-          {% endfor %}
-        </datalist>
-      </div>
+      {% if cities is defined and cities %}
+        <div class="col-md-6">
+          <label class="form-label">Ville</label>
+          <select name="city_id" id="edit_city_id" class="form-select">
+            <option value="">Choisir une ville</option>
+            {% for c in cities %}
+              <option value="{{ c.id }}"
+                      {% if professional.city_id is defined and professional.city_id == c.id %}selected{% endif %}>
+                {{ c.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      {% else %}
+        <div class="col-md-6">
+          <label class="form-label">Ville</label>
+          <input name="location" class="form-control" value="{{ professional.location or '' }}" placeholder="Casablanca" list="cities_list">
+          <datalist id="cities_list">
+            {% if ALL_CITIES is defined %}
+              {% for c in ALL_CITIES %}
+                <option value="{{ c }}"></option>
+              {% endfor %}
+            {% endif %}
+          </datalist>
+        </div>
+      {% endif %}
+
       <div class="col-md-6">
         <label class="form-label">Adresse précise</label>
         <input name="address" class="form-control" value="{{ professional.address or '' }}" placeholder="N°, rue, quartier…">
@@ -53,19 +113,19 @@
         <input name="longitude" class="form-control" value="{{ professional.longitude if professional.longitude is not none else '' }}" placeholder="-7.6">
       </div>
 
-      <!-- ✅ Téléphone -->
+      <!-- Téléphone -->
       <div class="col-md-6">
         <label class="form-label">Téléphone</label>
         <input name="phone" class="form-control" value="{{ professional.phone or '' }}" placeholder="06...">
       </div>
 
-      <!-- ✅ Prix -->
+      <!-- Prix -->
       <div class="col-md-6">
         <label class="form-label">Prix consultation (MAD)</label>
         <input name="consultation_fee" class="form-control" value="{{ professional.consultation_fee if professional.consultation_fee is not none else '' }}" placeholder="Ex: 300">
       </div>
 
-      <!-- ✅ Types de consultation -->
+      <!-- Types de consultation (valeurs cohérentes) -->
       {% set types = (professional.consultation_types or 'cabinet').split(',') %}
       <div class="col-12">
         <label class="form-label d-block">Types de consultation</label>
@@ -75,9 +135,9 @@
           <label class="form-check-label" for="t_cab">Cabinet</label>
         </div>
         <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" name="consultation_types" value="en_ligne" id="t_online"
-                 {% if 'en_ligne' in types %}checked{% endif %}>
-          <label class="form-check-label" for="t_online">En ligne</label>
+          <input class="form-check-input" type="checkbox" name="consultation_types" value="visio" id="t_visio"
+                 {% if 'visio' in types %}checked{% endif %}>
+          <label class="form-check-label" for="t_visio">Visio</label>
         </div>
         <div class="form-check form-check-inline">
           <input class="form-check-input" type="checkbox" name="consultation_types" value="domicile" id="t_home"
@@ -87,7 +147,7 @@
         <div class="form-text">Cochez un ou plusieurs types.</div>
       </div>
 
-      <!-- ✅ Liens sociaux (avec validation admin) -->
+      <!-- Liens sociaux -->
       <div class="col-12">
         <label class="form-label">Liens sociaux</label>
         <div class="row g-2">
@@ -130,7 +190,7 @@
         <div class="form-text">Par défaut 15 min.</div>
       </div>
 
-      <!-- ✅ Voir sur Maps (raccourci) -->
+      <!-- Voir sur Maps -->
       <div class="col-12">
         {% set maps_q = None %}
         {% if professional.latitude and professional.longitude %}
@@ -151,7 +211,8 @@
     <a href="{{ url_for('professional_dashboard') }}" class="btn btn-outline-secondary mt-3">Annuler</a>
   </form>
 </div>
-<!-- Galerie (optionnel) : 2 URLs supplémentaires -->
+
+<!-- Galerie (optionnel) : hors formulaire tel que fourni) -->
 <div class="col-12">
   <label class="form-label">Galerie (photos supplémentaires)</label>
   <div class="row g-2">
@@ -169,4 +230,35 @@
   <div class="form-text">Laissez vide si vous n’utilisez pas ces emplacements.</div>
 </div>
 
+<!-- Filtrage client famille -> spécialité + pré-sélection auto de la famille -->
+{% if (families is defined and families) and (specialties is defined and specialties) %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  var fam = document.getElementById('edit_family_id');
+  var spec = document.getElementById('edit_specialty_id');
+  if(!fam || !spec) return;
+
+  function filterSpecs(){
+    var fid = fam.value || '';
+    var hadSelection = spec.value;
+    Array.from(spec.options).forEach(function(opt){
+      if(!opt.value) return;
+      var ok = !fid || (String(opt.dataset.family||'') === String(fid));
+      opt.hidden = !ok;
+    });
+    if(spec.selectedOptions.length && spec.selectedOptions[0].hidden){
+      spec.value = '';
+    }
+  }
+
+  // si une spécialité est déjà sélectionnée, on positionne la famille correspondante
+  var selected = spec.selectedOptions.length ? spec.selectedOptions[0] : null;
+  if(selected && selected.dataset.family){
+    fam.value = selected.dataset.family;
+  }
+  filterSpecs();
+  fam.addEventListener('change', filterSpecs);
+});
+</script>
+{% endif %}
 {% endblock %}
