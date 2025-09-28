@@ -5,8 +5,11 @@
 <div class="container py-4">
   <h1 class="h4 mb-3">Mon profil professionnel</h1>
 
-  <form method="post">
+  <form id="pro-edit-form" method="post">
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+
+    <!-- pour “Autre ville” quand la liste existe -->
+    <input type="hidden" name="location" id="location_hidden">
 
     <div class="row g-3">
       <!-- Identité -->
@@ -27,8 +30,9 @@
           </select>
           <div class="form-text">Optionnel : sert à filtrer la liste ci-dessous.</div>
         </div>
+
         <div class="col-md-6">
-          <label class="form-label">Spécialité</label>
+          <label class="form-label">Spécialité (sélection ou texte libre)</label>
           <select name="primary_specialty_id" id="edit_specialty_id" class="form-select">
             <option value="">Choisir une spécialité</option>
             {% for s in specialties %}
@@ -41,6 +45,7 @@
           </select>
           <div class="form-text">Si vous choisissez dans cette liste, le texte libre ci-dessous peut rester vide.</div>
         </div>
+
         <div class="col-md-6">
           <label class="form-label">Spécialité (texte libre — optionnel)</label>
           <input name="specialty" class="form-control" value="{{ professional.specialty or '' }}" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
@@ -71,19 +76,20 @@
         <textarea name="description" rows="3" class="form-control" placeholder="Présentation…">{{ professional.description or '' }}</textarea>
       </div>
 
-      <!-- Localisation -->
+      <!-- Localisation (contrat fix : city_id OU “autre ville” -> location) -->
       {% if cities is defined and cities %}
         <div class="col-md-6">
-          <label class="form-label">Ville</label>
-          <select name="city_id" id="edit_city_id" class="form-select">
-            <option value="">Choisir une ville</option>
-            {% for c in cities %}
-              <option value="{{ c.id }}"
-                      {% if professional.city_id is defined and professional.city_id == c.id %}selected{% endif %}>
-                {{ c.name }}
-              </option>
-            {% endfor %}
-          </select>
+          <label class="form-label">Ville (sélection ou “Autre”)</label>
+          <div class="input-group">
+            <select name="city_id" id="edit_city_id" class="form-select">
+              <option value="">Choisir une ville</option>
+              {% for c in cities %}
+                <option value="{{ c.id }}" {% if professional.city_id is defined and professional.city_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+            <input id="city_other" class="form-control" placeholder="Autre ville (si non listée)">
+          </div>
+          <div class="form-text">Si vous entrez une ville “Autre”, laissez le menu vide.</div>
         </div>
       {% else %}
         <div class="col-md-6">
@@ -125,23 +131,20 @@
         <input name="consultation_fee" class="form-control" value="{{ professional.consultation_fee if professional.consultation_fee is not none else '' }}" placeholder="Ex: 300">
       </div>
 
-      <!-- Types de consultation (valeurs cohérentes) -->
+      <!-- Types de consultation -->
       {% set types = (professional.consultation_types or 'cabinet').split(',') %}
       <div class="col-12">
         <label class="form-label d-block">Types de consultation</label>
         <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" name="consultation_types" value="cabinet" id="t_cab"
-                 {% if 'cabinet' in types %}checked{% endif %}>
+          <input class="form-check-input" type="checkbox" name="consultation_types" value="cabinet" id="t_cab" {% if 'cabinet' in types %}checked{% endif %}>
           <label class="form-check-label" for="t_cab">Cabinet</label>
         </div>
         <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" name="consultation_types" value="visio" id="t_visio"
-                 {% if 'visio' in types %}checked{% endif %}>
+          <input class="form-check-input" type="checkbox" name="consultation_types" value="visio" id="t_visio" {% if 'visio' in types %}checked{% endif %}>
           <label class="form-check-label" for="t_visio">Visio</label>
         </div>
         <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" name="consultation_types" value="domicile" id="t_home"
-                 {% if 'domicile' in types %}checked{% endif %}>
+          <input class="form-check-input" type="checkbox" name="consultation_types" value="domicile" id="t_home" {% if 'domicile' in types %}checked{% endif %}>
           <label class="form-check-label" for="t_home">À domicile</label>
         </div>
         <div class="form-text">Cochez un ou plusieurs types.</div>
@@ -152,25 +155,22 @@
         <label class="form-label">Liens sociaux</label>
         <div class="row g-2">
           <div class="col-md-6">
-            <input name="facebook_url" class="form-control" placeholder="Facebook (URL complète)"
-                   value="{{ professional.facebook_url or '' }}">
+            <input name="facebook_url" class="form-control" placeholder="Facebook (URL complète)" value="{{ professional.facebook_url or '' }}">
           </div>
           <div class="col-md-6">
-            <input name="instagram_url" class="form-control" placeholder="Instagram (URL complète)"
-                   value="{{ professional.instagram_url or '' }}">
+            <input name="instagram_url" class="form-control" placeholder="Instagram (URL complète)" value="{{ professional.instagram_url or '' }}">
           </div>
           <div class="col-md-6">
-            <input name="tiktok_url" class="form-control" placeholder="TikTok (URL complète)"
-                   value="{{ professional.tiktok_url or '' }}">
+            <input name="tiktok_url" class="form-control" placeholder="TikTok (URL complète)" value="{{ professional.tiktok_url or '' }}">
           </div>
           <div class="col-md-6">
-            <input name="youtube_url" class="form-control" placeholder="YouTube (URL complète)"
-                   value="{{ professional.youtube_url or '' }}">
+            <input name="youtube_url" class="form-control" placeholder="YouTube (URL complète)" value="{{ professional.youtube_url or '' }}">
           </div>
         </div>
         <div class="form-text">
           Toute modification des liens sociaux nécessite une <strong>ré-approbation</strong> par l’administrateur.
-          Statut actuel : <span class="badge bg-{{ 'success' if professional.social_links_approved else 'secondary' }}">
+          Statut actuel :
+          <span class="badge bg-{{ 'success' if professional.social_links_approved else 'secondary' }}">
             {{ 'approuvé' if professional.social_links_approved else 'en attente / non approuvé' }}
           </span>
         </div>
@@ -212,7 +212,7 @@
   </form>
 </div>
 
-<!-- Galerie (optionnel) : hors formulaire tel que fourni) -->
+<!-- Galerie (optionnel) : en dehors du formulaire (pas traitée côté backend) -->
 <div class="col-12">
   <label class="form-label">Galerie (photos supplémentaires)</label>
   <div class="row g-2">
@@ -240,7 +240,6 @@ document.addEventListener('DOMContentLoaded', function(){
 
   function filterSpecs(){
     var fid = fam.value || '';
-    var hadSelection = spec.value;
     Array.from(spec.options).forEach(function(opt){
       if(!opt.value) return;
       var ok = !fid || (String(opt.dataset.family||'') === String(fid));
@@ -251,13 +250,35 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   }
 
-  // si une spécialité est déjà sélectionnée, on positionne la famille correspondante
+  // pré-sélection famille depuis la spécialité existante
   var selected = spec.selectedOptions.length ? spec.selectedOptions[0] : null;
   if(selected && selected.dataset.family){
     fam.value = selected.dataset.family;
   }
   filterSpecs();
   fam.addEventListener('change', filterSpecs);
+});
+</script>
+{% endif %}
+
+<!-- “Autre ville” -> envoi dans name=location si aucune city_id -->
+{% if cities is defined and cities %}
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  var form = document.getElementById('pro-edit-form');
+  var citySelect = document.getElementById('edit_city_id');
+  var cityOther  = document.getElementById('city_other');
+  var locHidden  = document.getElementById('location_hidden');
+
+  if(form && citySelect && cityOther && locHidden){
+    form.addEventListener('submit', function(){
+      if(!citySelect.value && cityOther.value.trim()){
+        locHidden.value = cityOther.value.trim();
+      }else{
+        locHidden.value = '';
+      }
+    });
+  }
 });
 </script>
 {% endif %}
