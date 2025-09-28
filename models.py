@@ -79,6 +79,19 @@ professional_specialties = db.Table(
 # ======================
 class Professional(db.Model):
     __tablename__ = "professionals"
+    __table_args__ = (
+        db.Index('ix_professionals_name', 'name'),
+        db.Index('ix_professionals_specialty', 'specialty'),
+        db.Index('ix_professionals_location', 'location'),
+        db.Index('ix_professionals_address', 'address'),
+        db.Index('ix_professionals_status', 'status'),
+        db.Index('ix_professionals_availability', 'availability'),
+        db.Index('ix_professionals_created_at', 'created_at'),
+        db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
+        db.Index('ix_professionals_is_featured', 'is_featured'),
+        db.Index('ix_professionals_featured_rank', 'featured_rank'),
+        {"extend_existing": True},  # tolérant si un Table('professionals', ...) a été créé ailleurs
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
@@ -90,10 +103,10 @@ class Professional(db.Model):
     specialty = db.Column(db.String(120))
 
     # Normalisation (Phase 1)
-    city_id = db.Column(db.Integer, db.ForeignKey("cities.id"))
+    city_id = db.Column(db.Integer, db.ForeignKey("cities.id"), nullable=True)
     city = db.relationship("City", lazy="joined")
 
-    primary_specialty_id = db.Column(db.Integer, db.ForeignKey("specialties.id"))
+    primary_specialty_id = db.Column(db.Integer, db.ForeignKey("specialties.id"), nullable=True)
     primary_specialty = db.relationship("Specialty", foreign_keys=[primary_specialty_id], lazy="joined")
 
     specialties = db.relationship("Specialty", secondary=professional_specialties, lazy="subquery")
@@ -104,8 +117,7 @@ class Professional(db.Model):
 
     # Images
     image_url = db.Column(db.Text)
-    # Option B (galerie 3 images)
-    image_url2 = db.Column(db.Text)
+    image_url2 = db.Column(db.Text)  # Galerie optionnelle
     image_url3 = db.Column(db.Text)
 
     # Dispo & types de consultation
@@ -132,42 +144,20 @@ class Professional(db.Model):
     # Validation par l’admin: 'valide' | 'en_attente' | 'rejete'
     status = db.Column(db.String(20), default='en_attente')
 
-    # Durée par défaut 45 min et buffer 15 min
+    # Paramètres de RDV
     consultation_duration_minutes = db.Column(db.Integer, default=45)
     buffer_between_appointments_minutes = db.Column(db.Integer, default=15)
 
     # Mise en avant locale
     is_featured = db.Column(db.Boolean, default=False)
     featured_rank = db.Column(db.Integer)  # 1 = top
-from sqlalchemy import Column, Integer, ForeignKey
 
-class Professional(db.Model):
-    __tablename__ = 'professionals'
-    # ... (champs existants inchangés)
-
-    city_id = Column(Integer, ForeignKey('cities.id'), nullable=True)
-    primary_specialty_id = Column(Integer, ForeignKey('specialties.id'), nullable=True)
-
-    # pas d'autres modifs
-
-    # ✅ Badges (Phase 1)
+    # Badges
     certified_tighri = db.Column(db.Boolean, default=False)
     approved_anthecc = db.Column(db.Boolean, default=False)
 
+    # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    __table_args__ = (
-        db.Index('ix_professionals_name', 'name'),
-        db.Index('ix_professionals_specialty', 'specialty'),
-        db.Index('ix_professionals_location', 'location'),
-        db.Index('ix_professionals_address', 'address'),
-        db.Index('ix_professionals_status', 'status'),
-        db.Index('ix_professionals_availability', 'availability'),
-        db.Index('ix_professionals_created_at', 'created_at'),
-        db.Index('ix_professionals_search', 'name', 'specialty', 'location', 'address'),
-        db.Index('ix_professionals_is_featured', 'is_featured'),
-        db.Index('ix_professionals_featured_rank', 'featured_rank'),
-    )
 
     def __repr__(self):
         return f"<Professional id={self.id} {self.name} [{self.specialty}] status={self.status}>"
