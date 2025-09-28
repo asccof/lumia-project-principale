@@ -10,8 +10,8 @@
   header p{margin:0 auto 1.5rem;max-width:700px;font-size:1.15rem;opacity:.95}
   .search-wrap{max-width:1100px;margin:-2.5rem auto 1rem;padding:0 1rem}
 
-  /* Desktop: barre intacte */
-  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
+  /* Desktop: barre intacte (ajout d'une colonne pour Famille) */
+  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
   .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
   .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
   .search-bar button:hover{background:var(--primary-dark)}
@@ -26,7 +26,7 @@
   .btn-icon{display:inline-flex;align-items:center;gap:.4rem}
   .btn-icon svg{width:16px;height:16px}
 
-  /* Panneau avancé MOBILE-ONLY (contient q + ville + spécialité + mode) */
+  /* Panneau avancé MOBILE-ONLY (contient q + ville + famille + spécialité + mode) */
   @media (max-width:640px){
     #mobile-advanced-filters{
       overflow:hidden;max-height:0;opacity:0;transform:translateY(-4px);
@@ -34,7 +34,7 @@
       background:#fff;border-radius:16px;padding:0 .5rem;box-shadow:var(--shadow)
     }
     #mobile-advanced-filters.is-open{
-      max-height:520px;opacity:1;transform:translateY(0);padding:.5rem
+      max-height:600px;opacity:1;transform:translateY(0);padding:.5rem
     }
     #mobile-advanced-filters .adv-stack{display:grid;grid-template-columns:1fr;gap:.5rem}
     /* bouton fermer mobile */
@@ -111,14 +111,14 @@
   </header>
 
   <div class="search-wrap">
-    {# Formulaire (desktop = inchangé ; mobile = panneau) #}
+    {# Formulaire (desktop = inline ; mobile = panneau) #}
     <form id="tighri-search-form" class="search-bar" method="get" action="{{ url_for('professionals') }}">
       {# ==== Champ q (de base) — version desktop ==== #}
       <input class="desktop-only" type="text" name="q" id="q-desktop"
              placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}"
              value="{{ request.args.get('q','') }}">
 
-      {# ==== PANNEAU MOBILE : contient q + Ville + Spécialité + Mode ==== #}
+      {# ==== PANNEAU MOBILE/DESKTOP (contents) : q + Ville + Famille + Spécialité + Mode ==== #}
       <div id="mobile-advanced-filters" aria-hidden="true">
         <div class="adv-head"><button type="button" class="adv-close" id="advClose" aria-label="Fermer">✕</button></div>
         <div class="adv-stack">
@@ -131,17 +131,41 @@
           {% if cities is defined and cities %}
             <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
               <option value="">{{ t('search.city','Ville') }}</option>
-              {% for c in cities %}<option value="{{ c.id }}" {% if request.args.get('city_id')==c.id|string %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+              {% for c in cities %}
+                <option value="{{ c.id }}" {% if request.args.get('city_id')==c.id|string %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
             </select>
           {% else %}
             <input type="text" name="city" placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}" value="{{ request.args.get('city','') }}">
+          {% endif %}
+
+          <!-- Famille (catégorie de spécialité) -->
+          {% if families is defined and families %}
+            <select name="family" aria-label="{{ t('search.family','Famille') }}">
+              <option value="">{{ t('search.family','Famille') }}</option>
+              {% for f in families %}
+                <option value="{{ f.name }}"
+                        {% if request.args.get('family','')==f.name %}selected{% endif %}>
+                  {{ f.name }}
+                </option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="text" name="family" placeholder="{{ t('search.family','Famille') }}"
+                   aria-label="{{ t('search.family','Famille') }}"
+                   value="{{ request.args.get('family','') }}">
           {% endif %}
 
           <!-- Spécialité -->
           {% if specialties is defined and specialties %}
             <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
               <option value="">{{ t('search.specialty','Spécialité') }}</option>
-              {% for s in specialties %}<option value="{{ s.id }}" {% if request.args.get('specialty_id')==s.id|string %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+              {% for s in specialties %}
+                <option value="{{ s.id }}"
+                        {% if request.args.get('specialty_id')==s.id|string %}selected{% endif %}>
+                  {{ s.name }}
+                </option>
+              {% endfor %}
             </select>
           {% else %}
             <input type="text" name="specialty" placeholder="{{ t('search.specialty','Spécialité') }}" aria-label="{{ t('search.specialty','Spécialité') }}" value="{{ request.args.get('specialty','') }}">
@@ -170,7 +194,7 @@
         <div class="form-check form-switch" style="margin:0 .25rem;">
           <input class="form-check-input" type="checkbox" id="switch-advanced"
                  aria-controls="mobile-advanced-filters" aria-label="Afficher les filtres"
-                 {% if request.args.get('q') or request.args.get('city') or request.args.get('city_id') or request.args.get('specialty') or request.args.get('specialty_id') or request.args.get('mode') %}checked{% endif %}>
+                 {% if request.args.get('q') or request.args.get('city') or request.args.get('city_id') or request.args.get('family') or request.args.get('specialty') or request.args.get('specialty_id') or request.args.get('mode') %}checked{% endif %}>
           <label class="form-check-label" for="switch-advanced" style="font-size:.85rem;">Plus</label>
         </div>
       </div>
@@ -331,9 +355,9 @@
         if (sw) sw.checked = false;
       };
 
-      // État initial selon URL
+      // État initial selon URL (ajout 'family')
       const qs = new URLSearchParams(window.location.search);
-      const hasFilters = ['q','city','city_id','specialty','specialty_id','mode'].some(k=>qs.get(k));
+      const hasFilters = ['q','city','city_id','family','specialty','specialty_id','mode'].some(k=>qs.get(k));
       if (isMobile() && hasFilters) openPanel(); else closePanel();
       syncQState();
 
