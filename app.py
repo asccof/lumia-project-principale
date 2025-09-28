@@ -1291,6 +1291,45 @@ with app.app_context():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;",
         ]:
+            # --- Référentiels (nouveaux) ---
+"""
+CREATE TABLE IF NOT EXISTS cities (
+  id SERIAL PRIMARY KEY,
+  name_fr VARCHAR(120) NOT NULL,
+  name_ar VARCHAR(120),
+  slug VARCHAR(140) UNIQUE,
+  region VARCHAR(120),
+  province VARCHAR(120),
+  kind VARCHAR(40),
+  is_active BOOLEAN DEFAULT TRUE
+);
+""",
+"""
+CREATE TABLE IF NOT EXISTS specialty_families (
+  id SERIAL PRIMARY KEY,
+  name_fr VARCHAR(140) NOT NULL,
+  name_ar VARCHAR(140),
+  slug VARCHAR(160) UNIQUE,
+  is_active BOOLEAN DEFAULT TRUE
+);
+""",
+"""
+CREATE TABLE IF NOT EXISTS specialties (
+  id SERIAL PRIMARY KEY,
+  family_id INTEGER REFERENCES specialty_families(id) ON DELETE SET NULL,
+  name_fr VARCHAR(160) NOT NULL,
+  name_ar VARCHAR(160),
+  slug VARCHAR(180) UNIQUE,
+  synonyms_fr TEXT,
+  synonyms_ar TEXT,
+  is_active BOOLEAN DEFAULT TRUE
+);
+""",
+
+# --- Colonnes facultatives sur professionals (compat totale) ---
+"ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER REFERENCES cities(id) ON DELETE SET NULL;",
+"ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER REFERENCES specialties(id) ON DELETE SET NULL;",
+
             db.session.execute(text(sql))
         db.session.commit()
     except Exception as e:
