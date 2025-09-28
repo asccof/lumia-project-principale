@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Trouver un professionnel – Tighri{% endblock %}
+{% block title %}{{ t('search.page_title','Trouver un professionnel – Tighri') }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -14,7 +14,8 @@
   .page-head p{margin:0;color:#6b5a82}
 
   .search-wrap{max-width:1100px;margin:0 auto 1.25rem;padding:0 1rem}
-  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
+  /* +1 colonne pour Famille */
+  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
   .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
   .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
   .search-bar button:hover{background:var(--primary-dark)}
@@ -45,65 +46,98 @@
 
 {% block content %}
   <div class="page-head">
-    <h1>Professionnels</h1>
-    <p>Recherchez par nom, ville, spécialité ou mode de consultation.</p>
+    <h1>{{ t('search.results_title','Professionnels') }}</h1>
+    <p>{{ t('search.results_sub','Recherchez par nom, ville, famille, spécialité ou mode de consultation.') }}</p>
   </div>
 
   <div class="search-wrap">
     <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
-      <input type="text" name="q" value="{{ request.args.get('q','') }}" placeholder="Nom, mot-clé..." aria-label="Recherche libre">
+      <!-- q -->
+      <input type="text" name="q"
+             value="{{ request.args.get('q','') }}"
+             placeholder="{{ t('search.q','Nom, mot-clé...') }}"
+             aria-label="{{ t('search.q','Nom, mot-clé...') }}">
 
+      <!-- Ville -->
       {% if cities is defined and cities %}
-        <select name="city_id" aria-label="Ville">
-          <option value="">Ville</option>
+        <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
+          <option value="">{{ t('search.city','Ville') }}</option>
           {% for c in cities %}
             <option value="{{ c.id }}" {{ 'selected' if request.args.get('city_id')==c.id|string else '' }}>{{ c.name }}</option>
           {% endfor %}
         </select>
       {% else %}
-        <input type="text" name="city" value="{{ request.args.get('city','') }}" placeholder="Ville" aria-label="Ville">
+        <input type="text" name="city"
+               value="{{ request.args.get('city','') }}"
+               placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}">
       {% endif %}
 
+      <!-- Famille (ID si dispo, sinon texte libre) -->
+      {% if families is defined and families %}
+        <select name="family_id" aria-label="{{ t('search.family','Famille') }}">
+          <option value="">{{ t('search.family','Famille') }}</option>
+          {% for f in families %}
+            {# attend f.id / f.name #}
+            <option value="{{ f.id }}" {{ 'selected' if request.args.get('family_id')==f.id|string else '' }}>{{ f.name }}</option>
+          {% endfor %}
+        </select>
+      {% else %}
+        <input type="text" name="family"
+               value="{{ request.args.get('family','') }}"
+               placeholder="{{ t('search.family','Famille') }}" aria-label="{{ t('search.family','Famille') }}">
+      {% endif %}
+
+      <!-- Spécialité -->
       {% if specialties is defined and specialties %}
-        <select name="specialty_id" aria-label="Spécialité">
-          <option value="">Spécialité</option>
+        <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
+          <option value="">{{ t('search.specialty','Spécialité') }}</option>
           {% for s in specialties %}
             <option value="{{ s.id }}" {{ 'selected' if request.args.get('specialty_id')==s.id|string else '' }}>{{ s.name }}</option>
           {% endfor %}
         </select>
       {% else %}
-        <input type="text" name="specialty" value="{{ request.args.get('specialty','') }}" placeholder="Spécialité" aria-label="Spécialité">
+        <input type="text" name="specialty"
+               value="{{ request.args.get('specialty','') }}"
+               placeholder="{{ t('search.specialty','Spécialité') }}" aria-label="{{ t('search.specialty','Spécialité') }}">
       {% endif %}
 
-      <select name="mode" aria-label="Mode de consultation">
-        {% set _mode = request.args.get('mode','') %}
-        <option value="" {{ 'selected' if _mode=='' else '' }}>Mode</option>
-        <option value="cabinet" {{ 'selected' if _mode=='cabinet' else '' }}>Cabinet</option>
-        <option value="visio" {{ 'selected' if _mode=='visio' else '' }}>Visio</option>
-        <option value="domicile" {{ 'selected' if _mode=='domicile' else '' }}>Domicile</option>
+      <!-- Mode -->
+      {% set _mode = request.args.get('mode','') %}
+      <select name="mode" aria-label="{{ t('search.mode','Mode') }}">
+        <option value="" {{ 'selected' if _mode=='' else '' }}>{{ t('search.mode','Mode') }}</option>
+        <option value="cabinet"  {{ 'selected' if _mode=='cabinet' else '' }}>{{ t('mode.cabinet','Cabinet') }}</option>
+        <option value="visio"    {{ 'selected' if _mode=='visio' else '' }}>{{ t('mode.visio','Visio') }}</option>
+        <option value="domicile" {{ 'selected' if _mode=='domicile' else '' }}>{{ t('mode.domicile','Domicile') }}</option>
       </select>
 
-      <button type="submit">Rechercher</button>
+      <button type="submit">{{ t('search.cta','Rechercher') }}</button>
     </form>
   </div>
 
   <section class="grid">
     {% for professional in professionals %}
-      {% set tighri  = professional.is_certified_tighri|default(professional.tighri_certified|default(false)) %}
-      {% set anthecc = professional.is_certified_anthecc|default(professional.anthecc_certified|default(false)) %}
+      {# badges robustes (différents noms possibles selon modèle) #}
+      {% set tighri  = professional.certified_tighri
+                       |default(professional.tighri_certified
+                       |default(professional.is_certified_tighri
+                       |default(professional.certified_tighri|default(false)))) %}
+      {% set anthecc = professional.approved_anthecc
+                       |default(professional.anthecc_certified
+                       |default(professional.is_certified_anthecc
+                       |default(false))) %}
 
       <article class="card">
         <div class="badges">
           {% if tighri %}
-            <span class="b b-tighri" title="Certifié Tighri">
+            <span class="b b-tighri" title="{{ t('badges.tighri','Certifié Tighri') }}">
               <svg viewBox="0 0 24 24" fill="none"><path d="M20 7l-9 9-5-5" stroke="#8B5CF6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              Tighri
+              {{ t('badges.tighri_short','Tighri') }}
             </span>
           {% endif %}
           {% if anthecc %}
-            <span class="b b-anthecc" title="Certifié ANTHECC">
+            <span class="b b-anthecc" title="{{ t('badges.anthecc','Certifié ANTHECC') }}">
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.5L12 17l-5.6 3.7 1.1-6.5L3 9.9 9 9z" stroke="#10b981" stroke-width="1.6" stroke-linejoin="round"/></svg>
-              ANTHECC
+              {{ t('badges.anthecc_short','ANTHECC') }}
             </span>
           {% endif %}
         </div>
@@ -112,7 +146,7 @@
           <img class="avatar-img js-zoom"
                src="{{ url_for('profile_photo', professional_id=professional.id) }}"
                data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
-               alt="Photo de {{ professional.name|e }}"
+               alt="{{ t('alt.profile_photo','Photo de') }} {{ professional.name|e }}"
                width="96" height="96" loading="lazy"
                onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
         </div>
@@ -121,7 +155,7 @@
         <div class="meta">
           {% if professional.specialty %}{{ professional.specialty }}
           {% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}
-          {% else %}Professionnel{% endif %}
+          {% else %}{{ t('labels.professional','Professionnel') }}{% endif %}
           {% if professional.location %} · {{ professional.location }}{% endif %}
         </div>
         <div class="desc">
@@ -129,10 +163,10 @@
           {{ d[:110] }}{% if d|length > 110 %}…{% endif %}
         </div>
 
-        <a class="link" href="{{ url_for('professional_detail', professional_id=professional.id) }}">Voir le profil</a>
+        <a class="link" href="{{ url_for('professional_detail', professional_id=professional.id) }}">{{ t('btn.view_profile','Voir le profil') }}</a>
       </article>
     {% else %}
-      <div style="grid-column:1/-1;text-align:center;color:#6b5a82">Aucun résultat.</div>
+      <div style="grid-column:1/-1;text-align:center;color:#6b5a82">{{ t('results.empty','Aucun résultat.') }}</div>
     {% endfor %}
   </section>
 {% endblock %}
