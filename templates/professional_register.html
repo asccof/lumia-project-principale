@@ -5,173 +5,221 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Inscription professionnel — Tighri</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body{background:#f7f5fa}
+    .card{box-shadow:0 2px 12px rgba(139,92,246,.08);border-radius:14px}
+  </style>
 </head>
 <body class="bg-light">
 <div class="container py-4">
   <h1 class="h3 mb-3">Créer un compte professionnel</h1>
 
-  <form method="post">
+  <form id="pro-register-form" method="post" novalidate>
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-    <div class="row g-3">
-      <div class="col-md-6">
-        <label class="form-label">Nom d'utilisateur</label>
-        <input name="username" required class="form-control" placeholder="Ex: dr_amine">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Email</label>
-        <input name="email" type="email" required class="form-control" placeholder="vous@exemple.com">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Mot de passe</label>
-        <input name="password" type="password" required class="form-control">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Téléphone</label>
-        <input name="phone" required class="form-control" placeholder="06 12 34 56 78">
-      </div>
+    <!-- champs "autre" -> champs attendus par le backend (hidden) -->
+    <input type="hidden" name="specialty" id="specialty_hidden">
+    <input type="hidden" name="city" id="city_hidden">
 
-      <!-- Famille + Spécialité -->
-      {% if (families is defined and families) and (specialties is defined and specialties) %}
+    <div class="card p-3 p-md-4">
+      <div class="row g-3">
         <div class="col-md-6">
-          <label class="form-label">Famille</label>
-          <select name="family_id" id="reg_family_id" class="form-select">
-            <option value="">Toutes les familles</option>
-            {% for f in families %}
-              <option value="{{ f.id }}">{{ f.name }}</option>
-            {% endfor %}
-          </select>
-          <div class="form-text">Optionnel : filtre la liste des spécialités.</div>
+          <label class="form-label">Nom d'utilisateur</label>
+          <input name="username" required class="form-control" placeholder="Ex: dr_amine">
         </div>
         <div class="col-md-6">
-          <label class="form-label">Spécialité</label>
-          <select name="specialty_id" id="reg_specialty_id" class="form-select" required>
-            <option value="">Choisir une spécialité</option>
-            {% for s in specialties %}
-              <option value="{{ s.id }}" data-family="{{ s.family_id or '' }}">{{ s.name }}</option>
-            {% endfor %}
-          </select>
+          <label class="form-label">Email</label>
+          <input name="email" type="email" required class="form-control" placeholder="vous@exemple.com">
         </div>
-      {% else %}
-        <!-- CONTRAT FIXE: on garde name="specialty" mais on propose une datalist -->
         <div class="col-md-6">
-          <label class="form-label">Spécialité</label>
-          <input name="specialty" class="form-control" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
-          <datalist id="specialties_list">
-            {% if ALL_SPECIALTIES is defined %}
-              {% for s in ALL_SPECIALTIES %}
-                <option value="{{ s }}"></option>
+          <label class="form-label">Mot de passe</label>
+          <input name="password" type="password" required class="form-control">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Téléphone</label>
+          <input name="phone" required class="form-control" placeholder="06 12 34 56 78">
+        </div>
+
+        <!-- ===== Famille + Spécialité (contrat fix) ===== -->
+        {% if (families is defined and families) and (specialties is defined and specialties) %}
+          <div class="col-md-6">
+            <label class="form-label">Famille</label>
+            <select name="family_id" id="reg_family_id" class="form-select">
+              <option value="">Toutes les familles</option>
+              {% for f in families %}
+                <option value="{{ f.id }}">{{ f.name }}</option>
               {% endfor %}
-            {% endif %}
-          </datalist>
-        </div>
-      {% endif %}
+            </select>
+            <div class="form-text">Optionnel : filtre la liste des spécialités.</div>
+          </div>
 
-      <!-- Ville -->
-      {% if cities is defined and cities %}
+          <div class="col-md-6">
+            <label class="form-label">Spécialité (sélection ou “Autre”)</label>
+            <div class="input-group">
+              <select name="specialty_id" id="reg_specialty_id" class="form-select">
+                <option value="">Choisir dans la liste…</option>
+                {% for s in specialties %}
+                  <option value="{{ s.id }}" data-family="{{ s.family_id or '' }}">{{ s.name }}</option>
+                {% endfor %}
+              </select>
+              <input id="spec_other" class="form-control" placeholder="Autre spécialité (si non listée)">
+            </div>
+            <div class="form-text">Si vous tapez une spécialité “Autre”, laissez le menu vide.</div>
+          </div>
+        {% else %}
+          <!-- Fallback simple : saisie libre + datalist (backend lira name="specialty") -->
+          <div class="col-md-6">
+            <label class="form-label">Spécialité</label>
+            <input name="specialty" class="form-control" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
+            <datalist id="specialties_list">
+              {% if ALL_SPECIALTIES is defined %}
+                {% for s in ALL_SPECIALTIES %}
+                  <option value="{{ s }}"></option>
+                {% endfor %}
+              {% endif %}
+            </datalist>
+          </div>
+        {% endif %}
+
+        <!-- ===== Ville (contrat fix) ===== -->
+        {% if cities is defined and cities %}
+          <div class="col-md-6">
+            <label class="form-label">Ville (sélection ou “Autre”)</label>
+            <div class="input-group">
+              <select name="city_id" id="reg_city_id" class="form-select">
+                <option value="">Choisir une ville…</option>
+                {% for c in cities %}
+                  <option value="{{ c.id }}">{{ c.name }}</option>
+                {% endfor %}
+              </select>
+              <input id="city_other" class="form-control" placeholder="Autre ville (si non listée)">
+            </div>
+            <div class="form-text">Si vous tapez une ville “Autre”, laissez le menu vide.</div>
+          </div>
+        {% else %}
+          <div class="col-md-6">
+            <label class="form-label">Ville</label>
+            <input name="city" class="form-control" placeholder="Casablanca" list="cities_list">
+            <datalist id="cities_list">
+              {% if ALL_CITIES is defined %}
+                {% for c in ALL_CITIES %}
+                  <option value="{{ c }}"></option>
+                {% endfor %}
+              {% endif %}
+            </datalist>
+          </div>
+        {% endif %}
+
         <div class="col-md-6">
-          <label class="form-label">Ville</label>
-          <select name="city_id" id="reg_city_id" class="form-select" required>
-            <option value="">Choisir une ville</option>
-            {% for c in cities %}
-              <option value="{{ c.id }}">{{ c.name }}</option>
-            {% endfor %}
-          </select>
+          <label class="form-label">Années d’expérience</label>
+          <input name="experience" type="number" min="0" class="form-control" placeholder="0">
         </div>
-      {% else %}
         <div class="col-md-6">
-          <label class="form-label">Ville</label>
-          <input name="city" class="form-control" placeholder="Casablanca" list="cities_list">
-          <datalist id="cities_list">
-            {% if ALL_CITIES is defined %}
-              {% for c in ALL_CITIES %}
-                <option value="{{ c }}"></option>
-              {% endfor %}
-            {% endif %}
-          </datalist>
+          <label class="form-label">Tarif consultation (MAD)</label>
+          <input name="consultation_fee" type="number" step="0.01" class="form-control" placeholder="300">
         </div>
-      {% endif %}
 
-      <div class="col-md-6">
-        <label class="form-label">Années d’expérience</label>
-        <input name="experience" type="number" min="0" class="form-control" placeholder="0">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Tarif consultation (MAD)</label>
-        <input name="consultation_fee" type="number" step="0.01" class="form-control" placeholder="300">
-      </div>
+        <!-- Types de consultation (le backend mettra “cabinet” par défaut si ignoré) -->
+        <div class="col-12">
+          <label class="form-label">Types de consultation</label>
+          <div class="d-flex flex-wrap gap-3">
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="consultation_types" value="cabinet"> <span class="ms-1">Cabinet</span>
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="consultation_types" value="visio"> <span class="ms-1">Visio</span>
+            </label>
+            <label class="form-check">
+              <input class="form-check-input" type="checkbox" name="consultation_types" value="domicile"> <span class="ms-1">Domicile</span>
+            </label>
+          </div>
+          <div class="form-text">Astuce : vous pourrez préciser ces options dans votre espace pro.</div>
+        </div>
 
-      <!-- Types de consultation -->
-      <div class="col-12">
-        <label class="form-label">Types de consultation</label>
-        <div class="d-flex flex-wrap gap-3">
-          <label class="form-check">
-            <input class="form-check-input" type="checkbox" name="consultation_types" value="cabinet"> <span class="ms-1">Cabinet</span>
-          </label>
-          <label class="form-check">
-            <input class="form-check-input" type="checkbox" name="consultation_types" value="visio"> <span class="ms-1">Visio</span>
-          </label>
-          <label class="form-check">
-            <input class="form-check-input" type="checkbox" name="consultation_types" value="domicile"> <span class="ms-1">Domicile</span>
-          </label>
+        <div class="col-12">
+          <label class="form-label">Description</label>
+          <textarea name="description" rows="3" class="form-control" placeholder="Décrivez votre pratique…"></textarea>
+        </div>
+
+        <div class="col-12">
+          <h6 class="mt-3">Réseaux sociaux (facultatif)</h6>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Facebook</label>
+          <input name="facebook_url" type="url" class="form-control" placeholder="https://facebook.com/...">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Instagram</label>
+          <input name="instagram_url" type="url" class="form-control" placeholder="https://instagram.com/...">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">TikTok</label>
+          <input name="tiktok_url" type="url" class="form-control" placeholder="https://tiktok.com/@...">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">YouTube</label>
+          <input name="youtube_url" type="url" class="form-control" placeholder="https://youtube.com/@...">
         </div>
       </div>
 
-      <div class="col-12">
-        <label class="form-label">Description</label>
-        <textarea name="description" rows="3" class="form-control" placeholder="Décrivez votre pratique…"></textarea>
-      </div>
-
-      <div class="col-12">
-        <h6 class="mt-3">Réseaux sociaux (facultatif)</h6>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Facebook</label>
-        <input name="facebook_url" type="url" class="form-control" placeholder="https://facebook.com/...">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Instagram</label>
-        <input name="instagram_url" type="url" class="form-control" placeholder="https://instagram.com/...">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">TikTok</label>
-        <input name="tiktok_url" type="url" class="form-control" placeholder="https://tiktok.com/@...">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">YouTube</label>
-        <input name="youtube_url" type="url" class="form-control" placeholder="https://youtube.com/@...">
+      <div class="d-flex align-items-center gap-3 mt-3">
+        <button class="btn btn-primary">Créer mon compte</button>
+        <a class="btn btn-link" href="{{ url_for('login') }}">J'ai déjà un compte</a>
       </div>
     </div>
-
-    <button class="btn btn-primary mt-3">Créer mon compte</button>
-    <a class="btn btn-link mt-3" href="{{ url_for('login') }}">J'ai déjà un compte</a>
   </form>
 </div>
 
-<!-- Filtrage client famille -> spécialité, activé uniquement si les deux listes existent -->
+<!-- Filtrage client famille -> spécialité + “Autre” vers champs backend -->
 {% if (families is defined and families) and (specialties is defined and specialties) %}
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-  var fam = document.getElementById('reg_family_id');
+  var fam  = document.getElementById('reg_family_id');
   var spec = document.getElementById('reg_specialty_id');
-  if(!fam || !spec) return;
+
   function filterSpecs(){
-    var fid = fam.value || '';
+    var fid = fam ? fam.value : '';
     var firstVisible = null;
+    if (!spec) return;
     Array.from(spec.options).forEach(function(opt){
-      if(!opt.value) return; // garder l'option placeholder
+      if(!opt.value) return; // garder placeholder
       var ok = !fid || (String(opt.dataset.family||'') === String(fid));
       opt.hidden = !ok;
       if(ok && !firstVisible) firstVisible = opt;
     });
-    // si l'option sélectionnée est masquée, reset
+    // Si la sélection est masquée, reset
     if(spec.selectedOptions.length && spec.selectedOptions[0].hidden){
       spec.value = '';
     }
   }
-  fam.addEventListener('change', filterSpecs);
+  fam && fam.addEventListener('change', filterSpecs);
   filterSpecs();
 });
 </script>
 {% endif %}
+
+<script>
+/* Gestion “Autre spécialité / Autre ville” -> champs lus par le backend */
+document.addEventListener('DOMContentLoaded', function(){
+  var form  = document.getElementById('pro-register-form');
+  var specSelect = document.getElementById('reg_specialty_id');
+  var specOther  = document.getElementById('spec_other');
+  var specHidden = document.getElementById('specialty_hidden');
+
+  var citySelect = document.getElementById('reg_city_id');
+  var cityOther  = document.getElementById('city_other');
+  var cityHidden = document.getElementById('city_hidden');
+
+  form && form.addEventListener('submit', function(e){
+    // spécialité : si pas d'ID mais texte autre => envoyer name="specialty"
+    if (specOther && specHidden && specSelect && !specSelect.value && specOther.value.trim()){
+      specHidden.value = specOther.value.trim();
+    }
+    // ville : si pas d'ID mais texte autre => envoyer name="city"
+    if (cityOther && cityHidden && citySelect && !citySelect.value && cityOther.value.trim()){
+      cityHidden.value = cityOther.value.trim();
+    }
+  });
+});
+</script>
 </body>
 </html>
