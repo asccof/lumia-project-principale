@@ -242,8 +242,9 @@ def set_language(lang_code):
     """
     nxt = request.args.get("next") or request.referrer or url_for("index")
     return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
-from sqlalchemy import text as _t
 
+# --- Helpers SQL utilitaires ---
+from sqlalchemy import text as _t
 def _fetch_list(sql):
     return [dict(r) for r in db.session.execute(_t(sql))]
 
@@ -427,9 +428,15 @@ def index():
         top_ids = [p.id for p in top_professionals]
         more_professionals = fb.filter(~Professional.id.in_(top_ids)).all() if top_ids else fb.offset(9).all()
 
+    # --- AJOUT : listes référentiels pour la recherche (optionnel en template)
+    cities = _fetch_list("SELECT id, name_fr AS name FROM cities WHERE is_active ORDER BY region, province, name_fr;")
+    families = _fetch_list("SELECT id, name_fr AS name FROM specialty_families WHERE is_active ORDER BY name_fr;")
+    specialties = _fetch_list("SELECT id, name_fr AS name, family_id FROM specialties WHERE is_active ORDER BY name_fr;")
+
     return render_template("index.html",
         top_professionals=top_professionals,
-        more_professionals=more_professionals
+        more_professionals=more_professionals,
+        cities=cities, families=families, specialties=specialties
     )
 
 @app.route("/anthecc", endpoint="anthecc")
@@ -449,7 +456,10 @@ def contact():
 def professionals():
     q = (request.args.get("q") or "").strip()
     city = (request.args.get("city") or "").strip()
+    city_id = request.args.get("city_id", type=int)
+    family_id = request.args.get("family_id", type=int)
     specialty = (request.args.get("specialty") or "").strip()
+    specialty_id = request.args.get("specialty_id", type=int)
     mode = (request.args.get("mode") or "").strip().lower()
 
     qry = Professional.query.filter_by(status='valide')
@@ -463,19 +473,41 @@ def professionals():
         if conds:
             qry = qry.filter(or_(*conds))
 
-    if city and hasattr(Professional, "location"):
+    # --- AJOUT : ville par ID prioritaire (sans casser l'existant)
+    if city_id and hasattr(Professional, "city_id"):
+        qry = qry.filter(Professional.city_id == city_id)
+    elif city and hasattr(Professional, "location"):
         qry = qry.filter(Professional.location.ilike(f"%{city}%"))
 
-    if specialty:
-        like = f"%{specialty}%"
-        if hasattr(Professional, "specialty"):
-            qry = qry.filter(Professional.specialty.ilike(like))
+    # --- AJOUT : spécialité par ID prioritaire (sinon texte existant)
+    if specialty_id and hasattr(Professional, "primary_specialty_id"):
+        qry = qry.filter(Professional.primary_specialty_id == specialty_id)
+    elif specialty and hasattr(Professional, "specialty"):
+        qry = qry.filter(Professional.specialty.ilike(f"%{specialty}%"))
+
+    # --- AJOUT : filtre famille (map -> specialties)
+    if family_id:
+        rows = db.session.execute(_t("SELECT id FROM specialties WHERE family_id = :fid AND is_active"), {"fid": family_id})
+        spec_ids = [r.id for r in rows]
+        if spec_ids and hasattr(Professional, "primary_specialty_id"):
+            qry = qry.filter(Professional.primary_specialty_id.in_(spec_ids))
+        elif not spec_ids:
+            qry = qry.filter(Professional.id == -1)  # aucun résultat
 
     if mode and hasattr(Professional, "consultation_types"):
         qry = qry.filter(Professional.consultation_types.ilike(f"%{mode}%"))
 
     pros = qry.order_by(Professional.is_featured.desc(), Professional.created_at.desc()).all()
-    return render_template("professionals.html", professionals=pros, specialty=specialty, search_query=q)
+
+    # listes pour la barre de filtres (si template les utilise)
+    cities = _fetch_list("SELECT id, name_fr AS name FROM cities WHERE is_active ORDER BY region, province, name_fr;")
+    families = _fetch_list("SELECT id, name_fr AS name FROM specialty_families WHERE is_active ORDER BY name_fr;")
+    specialties = _fetch_list("SELECT id, name_fr AS name, family_id FROM specialties WHERE is_active ORDER BY name_fr;")
+
+    return render_template("professionals.html",
+                           professionals=pros,
+                           specialty=specialty, search_query=q,
+                           cities=cities, families=families, specialties=specialties)
 
 @app.route("/professional/<int:professional_id>", endpoint="professional_detail")
 def professional_detail(professional_id: int):
@@ -632,6 +664,10 @@ def professional_register():
         fee_raw = request.form.get("consultation_fee", "0")
         phone = (request.form.get("phone") or "").strip()
 
+        # --- AJOUT : lecture des IDs (si fournis par le form)
+        city_id = request.form.get("city_id", type=int)
+        primary_specialty_id = request.form.get("primary_specialty_id", type=int) or request.form.get("specialty_id", type=int)
+
         facebook_url  = (request.form.get('facebook_url')  or '').strip() or None
         instagram_url = (request.form.get('instagram_url') or '').strip() or None
         tiktok_url    = (request.form.get('tiktok_url')    or '').strip() or None
@@ -684,6 +720,12 @@ def professional_register():
                 social_links_approved=False,
                 status='en_attente',
             )
+            # --- AJOUTS FK si le modèle les expose (contrat fix)
+            if city_id is not None and hasattr(professional, "city_id"):
+                professional.city_id = city_id
+            if primary_specialty_id is not None and hasattr(professional, "primary_specialty_id"):
+                professional.primary_specialty_id = primary_specialty_id
+
             db.session.add(professional)
             db.session.commit()
         except Exception:
@@ -694,7 +736,12 @@ def professional_register():
         flash("Compte professionnel créé avec succès! Un administrateur validera votre profil.")
         return redirect(url_for("login"))
 
-    return render_template("professional_register.html")
+    # --- GET : passer les listes (facultatif côté template)
+    cities = _fetch_list("SELECT id, name_fr AS name FROM cities WHERE is_active ORDER BY region, province, name_fr;")
+    families = _fetch_list("SELECT id, name_fr AS name FROM specialty_families WHERE is_active ORDER BY name_fr;")
+    specialties = _fetch_list("SELECT id, name_fr AS name, family_id FROM specialties WHERE is_active ORDER BY name_fr;")
+    return render_template("professional_register.html",
+                           cities=cities, families=families, specialties=specialties)
 
 @app.route("/login", methods=["GET","POST"], endpoint="login")
 def login():
@@ -1031,6 +1078,14 @@ def professional_edit_profile():
         professional.address = f.get("address", "").strip() or professional.address
         professional.phone = f.get("phone", "").strip() or professional.phone
 
+        # --- AJOUT : lecture et affectation des FK si dispo
+        city_id = f.get("city_id", type=int)
+        if city_id is not None and hasattr(professional, "city_id"):
+            professional.city_id = city_id
+        ps_id = f.get("primary_specialty_id", type=int) or f.get("specialty_id", type=int)
+        if ps_id is not None and hasattr(professional, "primary_specialty_id"):
+            professional.primary_specialty_id = ps_id
+
         def to_float(v):
             try:
                 return float(v) if v not in (None, "",) else None
@@ -1075,7 +1130,14 @@ def professional_edit_profile():
         flash("Profil mis à jour.", "success")
         return redirect(url_for("professional_dashboard"))
 
-    return render_template("professional_edit_profile.html", professional=professional)
+    # --- GET : listes pour selects
+    cities = _fetch_list("SELECT id, name_fr AS name FROM cities WHERE is_active ORDER BY region, province, name_fr;")
+    families = _fetch_list("SELECT id, name_fr AS name FROM specialty_families WHERE is_active ORDER BY name_fr;")
+    specialties = _fetch_list("SELECT id, name_fr AS name, family_id FROM specialties WHERE is_active ORDER BY name_fr;")
+
+    return render_template("professional_edit_profile.html",
+                           professional=professional,
+                           cities=cities, families=families, specialties=specialties)
 
 # Alias rendez-vous
 @app.route("/professional/appointments", endpoint="professional_appointments")
@@ -1274,7 +1336,8 @@ def server_error(e):
 with app.app_context():
     db.create_all()
     try:
-        for sql in [
+        stmts = [
+            # --- existants ---
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;",
@@ -1294,46 +1357,47 @@ with app.app_context():
             "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;",
-        ]:
-            # --- Référentiels (nouveaux) ---
-"""
-CREATE TABLE IF NOT EXISTS cities (
-  id SERIAL PRIMARY KEY,
-  name_fr VARCHAR(120) NOT NULL,
-  name_ar VARCHAR(120),
-  slug VARCHAR(140) UNIQUE,
-  region VARCHAR(120),
-  province VARCHAR(120),
-  kind VARCHAR(40),
-  is_active BOOLEAN DEFAULT TRUE
-);
-""",
-"""
-CREATE TABLE IF NOT EXISTS specialty_families (
-  id SERIAL PRIMARY KEY,
-  name_fr VARCHAR(140) NOT NULL,
-  name_ar VARCHAR(140),
-  slug VARCHAR(160) UNIQUE,
-  is_active BOOLEAN DEFAULT TRUE
-);
-""",
-"""
-CREATE TABLE IF NOT EXISTS specialties (
-  id SERIAL PRIMARY KEY,
-  family_id INTEGER REFERENCES specialty_families(id) ON DELETE SET NULL,
-  name_fr VARCHAR(160) NOT NULL,
-  name_ar VARCHAR(160),
-  slug VARCHAR(180) UNIQUE,
-  synonyms_fr TEXT,
-  synonyms_ar TEXT,
-  is_active BOOLEAN DEFAULT TRUE
-);
-""",
 
-# --- Colonnes facultatives sur professionals (compat totale) ---
-"ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER REFERENCES cities(id) ON DELETE SET NULL;",
-"ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER REFERENCES specialties(id) ON DELETE SET NULL;",
+            # --- NOUVEAUX référentiels ---
+            """
+            CREATE TABLE IF NOT EXISTS cities (
+              id SERIAL PRIMARY KEY,
+              name_fr VARCHAR(120) NOT NULL,
+              name_ar VARCHAR(120),
+              slug VARCHAR(140) UNIQUE,
+              region VARCHAR(120),
+              province VARCHAR(120),
+              kind VARCHAR(40),
+              is_active BOOLEAN DEFAULT TRUE
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS specialty_families (
+              id SERIAL PRIMARY KEY,
+              name_fr VARCHAR(140) NOT NULL,
+              name_ar VARCHAR(140),
+              slug VARCHAR(160) UNIQUE,
+              is_active BOOLEAN DEFAULT TRUE
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS specialties (
+              id SERIAL PRIMARY KEY,
+              family_id INTEGER REFERENCES specialty_families(id) ON DELETE SET NULL,
+              name_fr VARCHAR(160) NOT NULL,
+              name_ar VARCHAR(160),
+              slug VARCHAR(180) UNIQUE,
+              synonyms_fr TEXT,
+              synonyms_ar TEXT,
+              is_active BOOLEAN DEFAULT TRUE
+            );
+            """,
 
+            # --- Colonnes FK facultatives sur professionals (compat totale) ---
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER REFERENCES cities(id) ON DELETE SET NULL;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER REFERENCES specialties(id) ON DELETE SET NULL;",
+        ]
+        for sql in stmts:
             db.session.execute(text(sql))
         db.session.commit()
     except Exception as e:
