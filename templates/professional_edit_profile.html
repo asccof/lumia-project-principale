@@ -5,11 +5,14 @@
 <div class="container py-4">
   <h1 class="h4 mb-3">Mon profil professionnel</h1>
 
-  <form id="pro-edit-form" method="post">
+  <form id="pro-edit-form" method="post" novalidate>
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
 
-    <!-- pour “Autre ville” quand la liste existe -->
+    <!-- Legacy / « autre ville » -->
     <input type="hidden" name="location" id="location_hidden">
+    <!-- Création si absente (contrat fix) -->
+    <input type="hidden" name="new_specialty_name" id="new_specialty_name">
+    <input type="hidden" name="new_specialty_family" id="new_specialty_family">
 
     <div class="row g-3">
       <!-- Identité -->
@@ -18,32 +21,52 @@
         <input name="name" class="form-control" value="{{ professional.name or '' }}" required>
       </div>
 
-      <!-- Famille + Spécialité par ID si listes dispo, sinon fallback datalist texte -->
+      <!-- ===== Famille + Spécialités (via category) ===== -->
       {% if (families is defined and families) and (specialties is defined and specialties) %}
         <div class="col-md-6">
-          <label class="form-label">Famille</label>
-          <select name="family_id" id="edit_family_id" class="form-select">
+          <label class="form-label">Famille (catégorie)</label>
+          <!-- Valeur = nom de catégorie (backend ne lit pas ce champ, sert au filtrage JS) -->
+          <select name="family" id="edit_family_name" class="form-select">
             <option value="">Toutes les familles</option>
             {% for f in families %}
-              <option value="{{ f.id }}">{{ f.name }}</option>
+              <option value="{{ f.name }}">{{ f.name }}</option>
             {% endfor %}
           </select>
-          <div class="form-text">Optionnel : sert à filtrer la liste ci-dessous.</div>
+          <div class="form-text">Optionnel : filtre la/les spécialité(s) ci-dessous.</div>
         </div>
 
         <div class="col-md-6">
-          <label class="form-label">Spécialité (sélection ou texte libre)</label>
-          <select name="primary_specialty_id" id="edit_specialty_id" class="form-select">
-            <option value="">Choisir une spécialité</option>
+          <label class="form-label">Spécialité principale</label>
+          <div class="input-group">
+            <!-- ID lue par le backend: primary_specialty_id -->
+            <select name="primary_specialty_id" id="edit_primary_specialty_id" class="form-select">
+              <option value="">Choisir une spécialité</option>
+              {% for s in specialties %}
+                <option value="{{ s.id }}"
+                        data-category="{{ s.category or '' }}"
+                        {% if professional.primary_specialty_id is defined and professional.primary_specialty_id == s.id %}selected{% endif %}>
+                  {{ s.name }}
+                </option>
+              {% endfor %}
+            </select>
+            <input id="spec_other" class="form-control" placeholder="Autre spécialité (si non listée)">
+          </div>
+          <div class="form-text">Si vous saisissez “Autre spécialité”, laissez le menu vide : elle sera créée.</div>
+        </div>
+
+        <div class="col-12">
+          {% set _sec_ids = (professional.specialties | map(attribute='id') | list) if professional.specialties else [] %}
+          <label class="form-label">Spécialités secondaires (optionnel)</label>
+          <select name="specialty_ids" id="edit_secondary_specialty_ids" class="form-select" multiple size="6">
             {% for s in specialties %}
               <option value="{{ s.id }}"
-                      data-family="{{ s.family_id or '' }}"
-                      {% if professional.primary_specialty_id is defined and professional.primary_specialty_id == s.id %}selected{% endif %}>
+                      data-category="{{ s.category or '' }}"
+                      {% if s.id in _sec_ids %}selected{% endif %}>
                 {{ s.name }}
               </option>
             {% endfor %}
           </select>
-          <div class="form-text">Si vous choisissez dans cette liste, le texte libre ci-dessous peut rester vide.</div>
+          <div class="form-text">Maintenez Ctrl (Windows) ou ⌘ (Mac) pour choisir plusieurs éléments.</div>
         </div>
 
         <div class="col-md-6">
@@ -56,8 +79,10 @@
               {% endfor %}
             {% endif %}
           </datalist>
+          <div class="form-text">Texte affiché; sinon, nous afficherons la spécialité principale.</div>
         </div>
       {% else %}
+        <!-- Fallback: pas de listes ORM -->
         <div class="col-md-6">
           <label class="form-label">Spécialité</label>
           <input name="specialty" class="form-control" value="{{ professional.specialty or '' }}" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
@@ -76,7 +101,7 @@
         <textarea name="description" rows="3" class="form-control" placeholder="Présentation…">{{ professional.description or '' }}</textarea>
       </div>
 
-      <!-- Localisation (contrat fix : city_id OU “autre ville” -> location) -->
+      <!-- ===== Ville ===== -->
       {% if cities is defined and cities %}
         <div class="col-md-6">
           <label class="form-label">Ville (sélection ou “Autre”)</label>
@@ -147,25 +172,16 @@
           <input class="form-check-input" type="checkbox" name="consultation_types" value="domicile" id="t_home" {% if 'domicile' in types %}checked{% endif %}>
           <label class="form-check-label" for="t_home">À domicile</label>
         </div>
-        <div class="form-text">Cochez un ou plusieurs types.</div>
       </div>
 
       <!-- Liens sociaux -->
       <div class="col-12">
         <label class="form-label">Liens sociaux</label>
         <div class="row g-2">
-          <div class="col-md-6">
-            <input name="facebook_url" class="form-control" placeholder="Facebook (URL complète)" value="{{ professional.facebook_url or '' }}">
-          </div>
-          <div class="col-md-6">
-            <input name="instagram_url" class="form-control" placeholder="Instagram (URL complète)" value="{{ professional.instagram_url or '' }}">
-          </div>
-          <div class="col-md-6">
-            <input name="tiktok_url" class="form-control" placeholder="TikTok (URL complète)" value="{{ professional.tiktok_url or '' }}">
-          </div>
-          <div class="col-md-6">
-            <input name="youtube_url" class="form-control" placeholder="YouTube (URL complète)" value="{{ professional.youtube_url or '' }}">
-          </div>
+          <div class="col-md-6"><input name="facebook_url"  class="form-control" placeholder="Facebook (URL complète)"  value="{{ professional.facebook_url  or '' }}"></div>
+          <div class="col-md-6"><input name="instagram_url" class="form-control" placeholder="Instagram (URL complète)" value="{{ professional.instagram_url or '' }}"></div>
+          <div class="col-md-6"><input name="tiktok_url"    class="form-control" placeholder="TikTok (URL complète)"    value="{{ professional.tiktok_url    or '' }}"></div>
+          <div class="col-md-6"><input name="youtube_url"   class="form-control" placeholder="YouTube (URL complète)"   value="{{ professional.youtube_url   or '' }}"></div>
         </div>
         <div class="form-text">
           Toute modification des liens sociaux nécessite une <strong>ré-approbation</strong> par l’administrateur.
@@ -181,22 +197,24 @@
         <label class="form-label">Durée d’une séance (minutes)</label>
         <input name="consultation_duration_minutes" type="number" min="5" max="240" step="5" class="form-control"
                value="{{ professional.consultation_duration_minutes if professional.consultation_duration_minutes is not none else 45 }}">
-        <div class="form-text">Par défaut 45 min. Sert au calcul des créneaux.</div>
       </div>
       <div class="col-md-6">
         <label class="form-label">Délai entre deux séances (minutes)</label>
         <input name="buffer_between_appointments_minutes" type="number" min="0" max="120" step="5" class="form-control"
                value="{{ professional.buffer_between_appointments_minutes if professional.buffer_between_appointments_minutes is not none else 15 }}">
-        <div class="form-text">Par défaut 15 min.</div>
       </div>
 
-      <!-- Voir sur Maps -->
+      <!-- Lien Maps -->
       <div class="col-12">
         {% set maps_q = None %}
-        {% if professional.latitude and professional.longitude %}
+        {% if professional.latitude is not none and professional.longitude is not none %}
           {% set maps_q = (professional.latitude|string) ~ ',' ~ (professional.longitude|string) %}
         {% elif professional.address %}
           {% set maps_q = professional.address %}
+        {% elif professional.city %}
+          {% set maps_q = professional.city.name %}
+        {% elif professional.location %}
+          {% set maps_q = professional.location %}
         {% endif %}
         {% if maps_q %}
           <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener"
@@ -212,74 +230,76 @@
   </form>
 </div>
 
-<!-- Galerie (optionnel) : en dehors du formulaire (pas traitée côté backend) -->
-<div class="col-12">
-  <label class="form-label">Galerie (photos supplémentaires)</label>
-  <div class="row g-2">
-    <div class="col-md-6">
-      <input name="image_url2" class="form-control" type="url"
-             placeholder="https://... (Photo 2)"
-             value="{{ professional.image_url2 if professional.image_url2 is defined and professional.image_url2 else '' }}">
-    </div>
-    <div class="col-md-6">
-      <input name="image_url3" class="form-control" type="url"
-             placeholder="https://... (Photo 3)"
-             value="{{ professional.image_url3 if professional.image_url3 is defined and professional.image_url3 else '' }}">
-    </div>
-  </div>
-  <div class="form-text">Laissez vide si vous n’utilisez pas ces emplacements.</div>
-</div>
-
-<!-- Filtrage client famille -> spécialité + pré-sélection auto de la famille -->
 {% if (families is defined and families) and (specialties is defined and specialties) %}
 <script>
 document.addEventListener('DOMContentLoaded', function(){
-  var fam = document.getElementById('edit_family_id');
-  var spec = document.getElementById('edit_specialty_id');
-  if(!fam || !spec) return;
+  const famSel    = document.getElementById('edit_family_name');
+  const primary   = document.getElementById('edit_primary_specialty_id');
+  const secondary = document.getElementById('edit_secondary_specialty_ids');
 
-  function filterSpecs(){
-    var fid = fam.value || '';
-    Array.from(spec.options).forEach(function(opt){
-      if(!opt.value) return;
-      var ok = !fid || (String(opt.dataset.family||'') === String(fid));
-      opt.hidden = !ok;
-    });
-    if(spec.selectedOptions.length && spec.selectedOptions[0].hidden){
-      spec.value = '';
-    }
-  }
-
-  // pré-sélection famille depuis la spécialité existante
-  var selected = spec.selectedOptions.length ? spec.selectedOptions[0] : null;
-  if(selected && selected.dataset.family){
-    fam.value = selected.dataset.family;
-  }
-  filterSpecs();
-  fam.addEventListener('change', filterSpecs);
-});
-</script>
-{% endif %}
-
-<!-- “Autre ville” -> envoi dans name=location si aucune city_id -->
-{% if cities is defined and cities %}
-<script>
-document.addEventListener('DOMContentLoaded', function(){
-  var form = document.getElementById('pro-edit-form');
-  var citySelect = document.getElementById('edit_city_id');
-  var cityOther  = document.getElementById('city_other');
-  var locHidden  = document.getElementById('location_hidden');
-
-  if(form && citySelect && cityOther && locHidden){
-    form.addEventListener('submit', function(){
-      if(!citySelect.value && cityOther.value.trim()){
-        locHidden.value = cityOther.value.trim();
-      }else{
-        locHidden.value = '';
+  function filterByFamily(){
+    const cat = (famSel?.value || '').trim();
+    [primary, secondary].forEach(function(sel){
+      if(!sel) return;
+      let firstVisible = null;
+      Array.from(sel.options).forEach(function(opt){
+        if(!opt.value) return; // garder placeholder
+        const ok = !cat || (String(opt.dataset.category||'') === cat);
+        opt.hidden = !ok;
+        if(ok && !firstVisible) firstVisible = opt;
+      });
+      if(sel.selectedOptions.length){
+        const anyVisibleSelected = Array.from(sel.selectedOptions).some(o => !o.hidden);
+        if(!anyVisibleSelected) sel.value = '';
       }
     });
   }
+
+  // pré-sélection famille depuis la spécialité principale existante
+  const selected = primary?.selectedOptions?.[0];
+  if(selected && selected.dataset.category){
+    famSel.value = selected.dataset.category;
+  }
+  filterByFamily();
+  famSel?.addEventListener('change', filterByFamily);
 });
 </script>
 {% endif %}
+
+<!-- « Autre spécialité » & « Autre ville » -->
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  const form       = document.getElementById('pro-edit-form');
+
+  const primarySel = document.getElementById('edit_primary_specialty_id');
+  const specOther  = document.getElementById('spec_other');
+  const famSelName = document.getElementById('edit_family_name');
+  const newName    = document.getElementById('new_specialty_name');
+  const newFamily  = document.getElementById('new_specialty_family');
+
+  const citySelect = document.getElementById('edit_city_id');
+  const cityOther  = document.getElementById('city_other');
+  const locHidden  = document.getElementById('location_hidden');
+
+  form && form.addEventListener('submit', function(){
+    // Si pas d'ID principal mais un texte « autre » => création
+    const other = (specOther?.value || '').trim();
+    if (primarySel && !primarySel.value && other){
+      newName  && (newName.value   = other);
+      newFamily&& (newFamily.value = (famSelName?.value || '').trim());
+    } else {
+      newName  && (newName.value   = '');
+      newFamily&& (newFamily.value = '');
+    }
+
+    // Ville "autre" -> legacy location
+    const otherCity = (cityOther?.value || '').trim();
+    if (citySelect && !citySelect.value && otherCity){
+      locHidden && (locHidden.value = otherCity);
+    } else {
+      locHidden && (locHidden.value = '');
+    }
+  });
+});
+</script>
 {% endblock %}
