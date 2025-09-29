@@ -18,7 +18,6 @@ from models import db, User, Professional, Appointment, ProfessionalAvailability
 admin_bp = Blueprint('admin', __name__, template_folder='templates', static_folder=None)
 
 # ===== Helpers image (admin) =================================================
-# ===== Helpers image (admin) ===============================================
 ALLOWED_IMAGE_EXT = {'.jpg', '.jpeg', '.png', '.gif'}
 
 def _ext_ok(filename: str) -> bool:
@@ -45,8 +44,6 @@ def _admin_upload_dir() -> Path:
             up = Path(current_app.root_path).parent / "uploads" / "profiles"
     up.mkdir(parents=True, exist_ok=True)
     return up
-# ============================================================================
-
 
 def _admin_process_and_save_profile_image(file_storage) -> str:
     filename = getattr(file_storage, "filename", None)
@@ -67,6 +64,7 @@ def _admin_process_and_save_profile_image(file_storage) -> str:
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
 
+    # strip exif
     img_no_exif = Image.new(img.mode, img.size)
     img_no_exif.putdata(list(img.getdata()))
 
@@ -469,10 +467,15 @@ def admin_edit_product(product_id):
     professional = Professional.query.get_or_404(product_id)
 
     if request.method == 'POST':
+        # Champs basiques
         professional.name = (request.form.get('name') or professional.name).strip()
         professional.description = (request.form.get('description') or professional.description).strip()
+        professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
+        professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
+        professional.location = (request.form.get('location') or professional.location or '').strip()
+        professional.phone = (request.form.get('phone') or professional.phone or '').strip()
 
-        # tarif
+        # Tarif
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.')
         if fee_raw:
             try:
@@ -480,7 +483,7 @@ def admin_edit_product(product_id):
             except ValueError:
                 flash("Tarif invalide.", "error")
 
-        # ✅ expérience (AJOUT)
+        # Expérience
         exp_raw = (request.form.get('experience_years') or request.form.get('experience') or '').strip()
         if exp_raw != '':
             try:
@@ -488,33 +491,25 @@ def admin_edit_product(product_id):
             except ValueError:
                 flash("Années d'expérience invalide.", "error")
 
-        professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
-        professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
-        professional.location = (request.form.get('location') or professional.location or '').strip()
-        professional.phone = (request.form.get('phone') or professional.phone or '').strip()
-
-        address = (request.form.get('address') or '').strip()
+        # Adresse / géoloc
+        professional.address = (request.form.get('address') or '').strip() or None
         lat_raw = (request.form.get('latitude') or '').strip()
         lng_raw = (request.form.get('longitude') or '').strip()
         try:
-            latitude = float(lat_raw) if lat_raw else getattr(professional, 'latitude', None)
+            professional.latitude = float(lat_raw) if lat_raw else professional.latitude
         except ValueError:
-            latitude = getattr(professional, 'latitude', None)
             flash("Latitude invalide", "error")
         try:
-            longitude = float(lng_raw) if lng_raw else getattr(professional, 'longitude', None)
+            professional.longitude = float(lng_raw) if lng_raw else professional.longitude
         except ValueError:
-            longitude = getattr(professional, 'longitude', None)
             flash("Longitude invalide", "error")
 
-        professional.address = address or None
-        professional.latitude = latitude
-        professional.longitude = longitude
-
+        # Statut & disponibilité
         status_val = (request.form.get('status') or '').strip()
-        if status_val:
+        if status_val in ('valide', 'en_attente', 'rejete'):
             professional.status = status_val
 
+        # disponibilité (compat stock)
         stock = request.form.get('stock')
         if stock is not None:
             professional.availability = 'disponible' if stock in ('1', 'true', 'on', 'yes') else 'indisponible'
@@ -523,6 +518,7 @@ def admin_edit_product(product_id):
             if availability:
                 professional.availability = availability
 
+        # Types de consultation
         types_list = request.form.getlist('consultation_types')
         if types_list or any(request.form.get(k) for k in ['home_consultation', 'office_consultation', 'online_consultation']):
             t = []
@@ -533,6 +529,14 @@ def admin_edit_product(product_id):
                 t = types_list
             if t:
                 professional.consultation_types = ','.join(t)
+
+        # Badges + mise en avant
+        professional.certified_tighri   = bool(request.form.get('certified_tighri'))
+        professional.approved_anthecc   = bool(request.form.get('approved_anthecc'))
+        is_featured_val = (request.form.get('is_featured') or '').lower()
+        professional.is_featured = True if is_featured_val in ('on', '1', 'true', 'yes') else False
+        fr_raw = (request.form.get('featured_rank') or '').strip()
+        professional.featured_rank = int(fr_raw) if fr_raw.isdigit() else None
 
         # Réseaux sociaux
         professional.facebook_url  = (request.form.get('facebook_url')  or '').strip() or None
@@ -601,12 +605,13 @@ def edit_professional(professional_id):
     professional = Professional.query.get_or_404(professional_id)
 
     if request.method == 'POST':
+        # Champs basiques
         professional.name = (request.form.get('name') or professional.name).strip()
         professional.description = (request.form.get('description') or professional.description).strip()
         professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
         professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
 
-        # tarif
+        # Tarif
         fee_raw = (request.form.get('consultation_fee') or request.form.get('price') or '').replace(',', '.').strip()
         if fee_raw != '':
             try:
@@ -615,7 +620,7 @@ def edit_professional(professional_id):
                 flash("Le tarif est invalide.", "error")
                 return redirect(url_for('admin.edit_professional', professional_id=professional_id))
 
-        # ✅ expérience (AJOUT)
+        # Expérience
         exp_raw = (request.form.get('experience_years') or request.form.get('experience') or '').strip()
         if exp_raw != '':
             try:
@@ -624,6 +629,7 @@ def edit_professional(professional_id):
                 flash("Années d'expérience invalide.", "error")
                 return redirect(url_for('admin.edit_professional', professional_id=professional_id))
 
+        # Statut
         status = (request.form.get('status') or '').strip()
         if status in ('valide', 'en_attente', 'rejete'):
             professional.status = status
@@ -643,6 +649,24 @@ def edit_professional(professional_id):
             professional.longitude = float(lng_raw) if lng_raw else professional.longitude
         except ValueError:
             flash("Longitude invalide", "error")
+
+        # Disponibilité
+        availability = (request.form.get('availability') or '').strip()
+        if availability in ('disponible', 'indisponible'):
+            professional.availability = availability
+
+        # Types de consultation (checkboxes multiples)
+        types_list = request.form.getlist('consultation_types')
+        if types_list:
+            professional.consultation_types = ','.join(types_list)
+
+        # Badges + mise en avant
+        professional.certified_tighri   = bool(request.form.get('certified_tighri'))
+        professional.approved_anthecc   = bool(request.form.get('approved_anthecc'))
+        is_featured_val = (request.form.get('is_featured') or '').lower()
+        professional.is_featured = True if is_featured_val in ('on', '1', 'true', 'yes') else False
+        fr_raw = (request.form.get('featured_rank') or '').strip()
+        professional.featured_rank = int(fr_raw) if fr_raw.isdigit() else None
 
         # Réseaux sociaux
         professional.facebook_url  = (request.form.get('facebook_url')  or '').strip() or None
@@ -681,15 +705,22 @@ def edit_professional(professional_id):
 
     return render_template('edit_product.html', professional=professional)
 
-@admin_bp.route('/professionals/delete/<int:professional_id>', endpoint='delete_professional')
+@admin_bp.route('/professionals/delete/<int:professional_id>', methods=['GET', 'POST'], endpoint='delete_professional')
 @login_required
 def delete_professional(professional_id):
     if not current_user.is_admin:
+        if request.method == 'POST' or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'success': False, 'message': 'Accès refusé'}), 403
         flash('Accès refusé')
         return redirect(url_for('admin.admin_login'))
+
     professional = Professional.query.get_or_404(professional_id)
     db.session.delete(professional)
     db.session.commit()
+
+    # Réponse selon le contexte (XHR vs navigation)
+    if request.method == 'POST' or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({'success': True, 'message': 'Professionnel supprimé avec succès'})
     flash('Professionnel supprimé avec succès!')
     return redirect(url_for('admin.admin_professionals'))
 
@@ -809,7 +840,6 @@ def admin_delete_unavailable_slot(professional_id, slot_id):
     return redirect(url_for('admin.admin_professional_unavailable_slots', professional_id=professional_id))
 
 # --------------------- UTILISATEURS ---------------------
-
 def _get_or_create_archived_user():
     placeholder_username = "[deleted]"
     placeholder_email = "deleted@tighri.local"
