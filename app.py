@@ -356,6 +356,92 @@ def _avatar_fallback_response():
     return redirect(PHOTO_PLACEHOLDER)
 
 # =========================
+#   SERVICE FICHIERS (Render Disk) — NOUVEAU
+# =========================
+@app.route("/u/profiles/<path:filename>", endpoint="u_profiles")
+def u_profiles(filename: str):
+    # sécurité basique
+    if not filename or ".." in filename or filename.startswith("/"):
+        abort(404)
+    fpath = UPLOAD_FOLDER / os.path.basename(filename)
+    if not fpath.exists():
+        return _avatar_fallback_response()
+    resp = send_from_directory(str(UPLOAD_FOLDER), os.path.basename(filename), conditional=True)
+    resp.headers["Cache-Control"] = "public, max-age=31536000"
+    return resp
+
+def _normalize_disk_url(value: str | None) -> Optional[str]:
+    """
+    Accepte :
+      - '/media/profiles/abc.jpg'
+      - 'abc.jpg'
+      - URL http(s)
+    Retourne une URL servie par l’app si possible.
+    """
+    if not value:
+        return None
+    v = value.strip()
+    # déjà une URL http(s) → laisser tel quel
+    if v.startswith("http://") or v.startswith("https://"):
+        # upgrade http -> https
+        if v.startswith("http://"):
+            v = "https://" + v[len("http://"):]
+        return v
+    # ancien format '/media/profiles/<name>'
+    if v.startswith("/media/profiles/"):
+        v = v.split("/media/profiles/", 1)[-1]
+    # sinon on considère que c'est un nom de fichier sur disque
+    return url_for("u_profiles", filename=os.path.basename(v))
+
+def _pro_photo_field(pro: Professional, index: int) -> Optional[str]:
+    """
+    Essaie différentes conventions possibles pour les champs photo secondaires
+    sans casser le modèle (contrat fixe).
+    index = 1 (principale), 2 et 3 (secondaires)
+    """
+    candidates_by_index = {
+        1: ("image_url", "photo_main", "avatar_url"),
+        2: ("image_url2", "photo_alt1", "gallery1", "gallery_1", "photo2", "photo_secondaire1"),
+        3: ("image_url3", "photo_alt2", "gallery2", "gallery_2", "photo3", "photo_secondaire2"),
+    }
+    for field in candidates_by_index.get(index, ()):
+        if hasattr(pro, field):
+            val = getattr(pro, field)
+            if val:
+                return str(val)
+    # si rien trouvé pour secondaire: None
+    return None
+
+def professional_photo_url(pro: Professional, index: int) -> Optional[str]:
+    """Retourne l’URL résolue pour la photo n (1..3) d’un pro."""
+    raw = _pro_photo_field(pro, index)
+    if raw:
+        return _normalize_disk_url(raw)
+    # fallback avatar pour la principale
+    if index == 1 and not raw:
+        return url_for("profile_photo", professional_id=pro.id)
+    return None
+
+def professional_gallery_urls(pro: Professional) -> list[str]:
+    """Liste ordonnée [principale, secondaire1, secondaire2] (URLs quand présentes)."""
+    urls = []
+    for i in (1, 2, 3):
+        u = professional_photo_url(pro, i)
+        if u:
+            urls.append(u)
+    return urls
+
+@app.context_processor
+def inject_gallery_helpers():
+    # Helpers disponibles dans Jinja:
+    # - professional_photo_url(pro, 1..3)
+    # - professional_gallery_urls(pro)
+    return {
+        "professional_photo_url": professional_photo_url,
+        "professional_gallery_urls": professional_gallery_urls,
+    }
+
+# =========================
 #   LISTES (ORM + seeds)
 # =========================
 # → on lit les vraies données étendues depuis seeds_taxonomy (contrat-fix)
@@ -612,6 +698,46 @@ def profile_photo(professional_id: int):
     resp = Response(r.content, mimetype=content_type)
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
+
+# --- NOUVEAU : servir la photo n (1..3) d’un pro, en résolvant les champs secondaires ---
+@app.route("/media/profile/<int:professional_id>/<int:index>", endpoint="profile_photo_n")
+def profile_photo_n(professional_id: int, index: int):
+    if index not in (1, 2, 3):
+        abort(404)
+    pro = Professional.query.get_or_404(professional_id)
+    raw = _pro_photo_field(pro, index)
+    # si index==1 et pas de champ dédié, réutiliser la route existante
+    if index == 1 and not raw:
+        return redirect(url_for("profile_photo", professional_id=professional_id))
+
+    # normaliser (gère /media/profiles/<name> et simple nom de fichier)
+    url = _normalize_disk_url(raw) if raw else None
+
+    # si c’est une URL http(s), on la proxy comme pour la principale
+    if url and (url.startswith("http://") or url.startswith("https://")):
+        if url.startswith("http://"):
+            url = "https://" + url[len("http://"):]
+        try:
+            r = requests.get(url, timeout=8, stream=True)
+            r.raise_for_status()
+        except Exception:
+            return _avatar_fallback_response()
+        resp = Response(r.content, mimetype=r.headers.get("Content-Type", "image/jpeg"))
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
+
+    # sinon, c’est un fichier sur disque servi par /u/profiles/<name>
+    if url:
+        # on renvoie directement le fichier depuis UPLOAD_FOLDER
+        fname = url.split("/u/profiles/")[-1]
+        fpath = UPLOAD_FOLDER / os.path.basename(fname)
+        if fpath.exists():
+            resp = send_from_directory(str(UPLOAD_FOLDER), os.path.basename(fname), conditional=True)
+            resp.headers["Cache-Control"] = "public, max-age=31536000"
+            return resp
+
+    # fallback avatar si introuvable
+    return _avatar_fallback_response()
 
 @app.route("/avatar")
 def avatar_alias_qs():
