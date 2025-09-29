@@ -9,12 +9,11 @@
     --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;
   }
   body{background:var(--bg);color:var(--ink)}
-  .page-head{padding:3.5rem 1rem 1.25rem;text-align:center}
+  .page-head{padding:3.5rem 1.25rem 1.25rem;text-align:center}
   .page-head h1{margin:0 0 .35rem;font-weight:800}
   .page-head p{margin:0;color:#6b5a82}
 
   .search-wrap{max-width:1100px;margin:0 auto 1.25rem;padding:0 1rem}
-  /* +1 colonne pour Famille */
   .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
   .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
   .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
@@ -27,12 +26,8 @@
   @media (max-width:640px){ .grid{grid-template-columns:1fr;} }
 
   .card{position:relative;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:360px;width:100%;text-align:center}
-  .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .65rem}
+  .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
   .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
-  .thumbs{display:flex;gap:.35rem;justify-content:center;align-items:center;margin:.35rem 0 .2rem}
-  .thumb{width:40px;height:40px;border-radius:8px;overflow:hidden;background:#eee;box-shadow:0 1px 4px rgba(0,0,0,.06)}
-  .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
-
   h3{margin:.4rem 0 .2rem;color:#6D28D9}
   .meta{color:#4B3869;font-size:.95rem;margin:.2rem 0}
   .desc{color:#4B3869;font-size:.95rem;margin:.35rem 0}
@@ -45,6 +40,11 @@
   .b svg{width:14px;height:14px}
   .b-tighri{border:1.5px solid #8B5CF6}
   .b-anthecc{border:1.5px solid #10b981}
+
+  /* Thumbs 2/3 */
+  .thumbs{display:flex;gap:.35rem;justify-content:center;margin:.35rem 0 .2rem}
+  .thumb{width:40px;height:40px;border-radius:8px;overflow:hidden;background:#eee}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
 
   /* Lightbox */
   .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
@@ -82,7 +82,7 @@
                placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}">
       {% endif %}
 
-      <!-- Famille (⚠️ contrat-fix : valeur = nom de catégorie) -->
+      <!-- Famille -->
       {% if families is defined and families %}
         <select name="family" id="f_family" aria-label="{{ t('search.family','Famille') }}">
           <option value="">{{ t('search.family','Famille') }}</option>
@@ -96,7 +96,7 @@
                placeholder="{{ t('search.family','Famille') }}" aria-label="{{ t('search.family','Famille') }}">
       {% endif %}
 
-      <!-- Spécialité (ID si dispo) -->
+      <!-- Spécialité -->
       {% if specialties is defined and specialties %}
         <select name="specialty_id" id="f_specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
           <option value="">{{ t('search.specialty','Spécialité') }}</option>
@@ -129,7 +129,6 @@
 
   <section class="grid">
     {% for professional in professionals %}
-      {# Badges robustes #}
       {% set tighri  = professional.certified_tighri
                        |default(professional.tighri_certified
                        |default(professional.is_certified_tighri
@@ -138,9 +137,6 @@
                        |default(professional.anthecc_certified
                        |default(professional.is_certified_anthecc
                        |default(false))) %}
-
-      {% set sec1 = professional.image_url2 %}
-      {% set sec2 = professional.image_url3 %}
 
       <article class="card">
         <div class="badges">
@@ -167,20 +163,30 @@
                onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
         </div>
 
-        {# Miniatures secondaires sous l'avatar (si présentes) #}
-        {% if sec1 or sec2 %}
-        <div class="thumbs" aria-label="Galerie">
-          {% if sec1 %}
-            <div class="thumb">
-              <img class="js-zoom" src="{{ sec1 }}" data-full="{{ sec1 }}" alt="{{ professional.name|e }} — photo 2" loading="lazy" onerror="this.style.display='none'">
-            </div>
-          {% endif %}
-          {% if sec2 %}
-            <div class="thumb">
-              <img class="js-zoom" src="{{ sec2 }}" data-full="{{ sec2 }}" alt="{{ professional.name|e }} — photo 3" loading="lazy" onerror="this.style.display='none'">
-            </div>
-          {% endif %}
-        </div>
+        {# ⇩ miniatures secondaires comme la principale ⇩ #}
+        {% set has2 = professional.image_url2 %}
+        {% set has3 = professional.image_url3 %}
+        {% if has2 or has3 %}
+          <div class="thumbs" aria-label="Galerie">
+            {% if has2 %}
+              <div class="thumb">
+                <img class="js-zoom"
+                     src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
+                     data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
+                     alt="{{ professional.name|e }} — photo 2" loading="lazy"
+                     onerror="this.style.display='none'">
+              </div>
+            {% endif %}
+            {% if has3 %}
+              <div class="thumb">
+                <img class="js-zoom"
+                     src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
+                     data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
+                     alt="{{ professional.name|e }} — photo 3" loading="lazy"
+                     onerror="this.style.display='none'">
+              </div>
+            {% endif %}
+          </div>
         {% endif %}
 
         <h3>{{ professional.name }}</h3>
@@ -204,33 +210,31 @@
 
   {% if specialties is defined and specialties and families is defined and families %}
   <script>
-    // Filtrage client: Famille -> Spécialités (par s.category)
+    // Filtrage client Famille -> Spécialités (inchangé)
     document.addEventListener('DOMContentLoaded', function(){
       var fam = document.getElementById('f_family');
       var spec = document.getElementById('f_specialty_id');
       if(!fam || !spec) return;
-
       function filterSpecs(){
         var cat = (fam.value || '').trim();
         var firstVisible = null;
         Array.from(spec.options).forEach(function(opt){
-          if(!opt.value) return; // garder placeholder
+          if(!opt.value) return;
           var ok = !cat || (String(opt.dataset.category||'') === cat);
           opt.hidden = !ok;
           if(ok && !firstVisible) firstVisible = opt;
         });
-        // Si la sélection actuelle est masquée, reset
         if(spec.selectedOptions.length && spec.selectedOptions[0].hidden){
           spec.value = '';
         }
       }
       fam.addEventListener('change', filterSpecs);
-      filterSpecs(); // pré-filtre si "family" est déjà dans l’URL
+      filterSpecs();
     });
   </script>
   {% endif %}
 
-  {# ===== Lightbox pour le zoom (même UX que la home / profil) ===== #}
+  <!-- Lightbox réutilisé ici -->
   <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
     <button class="lightbox-close" id="lbClose" aria-label="{{ t('lightbox.close','Fermer') }}">✕</button>
     <img id="lbImg" class="lightbox-img" alt="{{ t('lightbox.zoom_alt','Agrandissement') }}">
