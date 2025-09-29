@@ -1,292 +1,142 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mes rendez-vous - Lumia</title>
-    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Montserrat', Arial, sans-serif;
-            background: #f7f5fa;
-            margin: 0;
-            color: #2d1a47;
-        }
-        .navbar {
-            background: rgba(255,255,255,0.95);
-            backdrop-filter: blur(10px);
-            position: fixed;
-            top: 0;
-            width: 100%;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(139,92,246,0.1);
-        }
-        .nav-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 2rem;
-        }
-        .nav-logo {
-            color: #8B5CF6;
-            font-size: 1.8rem;
-            font-weight: 700;
-            text-decoration: none;
-        }
-        .nav-back {
-            color: #8B5CF6;
-            text-decoration: none;
-            font-weight: 600;
-        }
-        .container {
-            max-width: 1000px;
-            margin: 100px auto 2rem auto;
-            padding: 0 2rem;
-        }
-        .page-header {
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
-            padding: 2rem;
-            margin-bottom: 2rem;
-            text-align: center;
-        }
-        .page-header h1 {
-            color: #8B5CF6;
-            margin-bottom: 0.5rem;
-        }
-        .appointments-list {
-            display: grid;
-            gap: 1.5rem;
-        }
-        .appointment-card {
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
-            padding: 1.5rem;
-            transition: transform 0.2s;
-        }
-        .appointment-card:hover {
-            transform: translateY(-2px);
-        }
-        .appointment-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-        .appointment-date {
-            background: #8B5CF6;
-            color: #fff;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-        .appointment-status {
-            padding: 0.3rem 0.8rem;
-            border-radius: 15px;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
-        .status-en_attente {
-            background: #fef3c7;
-            color: #92400e;
-        }
-        .status-confirme {
-            background: #dcfce7;
-            color: #166534;
-        }
-        .status-annule {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-        .appointment-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-        .detail-item {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .detail-icon {
-            width: 20px;
-            height: 20px;
-            background: #8B5CF6;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #fff;
-            font-size: 0.7rem;
-        }
-        .professional-info {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            padding: 1rem;
-            background: #f7f5fa;
-            border-radius: 12px;
-        }
-        .professional-image {
-            width: 50px;
-            height: 50px;
-            border-radius: 50%;
-            object-fit: cover;
-        }
-        .professional-details h4 {
-            margin: 0 0 0.2rem 0;
-            color: #6D28D9;
-        }
-        .professional-details p {
-            margin: 0;
-            color: #4B3869;
-            font-size: 0.9rem;
-        }
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            background: #fff;
-            border-radius: 18px;
-            box-shadow: 0 2px 12px rgba(139,92,246,0.08);
-        }
-        .empty-state h3 {
-            color: #8B5CF6;
-            margin-bottom: 1rem;
-        }
-        .empty-state p {
-            color: #4B3869;
-            margin-bottom: 2rem;
-        }
-        .btn-primary {
-            background: #8B5CF6;
-            color: #fff;
-            padding: 0.8rem 1.5rem;
-            border: none;
-            border-radius: 8px;
-            text-decoration: none;
-            font-weight: 600;
-            display: inline-block;
-        }
-        .btn-primary:hover {
-            background: #6D28D9;
-        }
-        @media (max-width: 768px) {
-            .appointment-details {
-                grid-template-columns: 1fr;
-            }
-            .appointment-header {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: flex-start;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mes rendez-vous — Tighri</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body{font-family:'Montserrat',Arial,sans-serif;background:#f7f5fa;margin:0;color:#2d1a47}
+    .navbar{background:rgba(255,255,255,.95);backdrop-filter:blur(10px);position:fixed;top:0;width:100%;z-index:1000;box-shadow:0 2px 10px rgba(139,92,246,.1)}
+    .nav-container{max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;padding:1rem 2rem}
+    .nav-logo{color:#8B5CF6;font-size:1.8rem;font-weight:700;text-decoration:none}
+    .nav-back{color:#8B5CF6;text-decoration:none;font-weight:600}
+    .container{max-width:1000px;margin:100px auto 2rem;padding:0 2rem}
+    .page-header{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08);padding:2rem;margin-bottom:2rem;text-align:center}
+    .page-header h1{color:#8B5CF6;margin-bottom:.5rem}
+    .appointments-list{display:grid;gap:1.5rem}
+    .appointment-card{background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08);padding:1.5rem;transition:transform .2s}
+    .appointment-card:hover{transform:translateY(-2px)}
+    .appointment-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem}
+    .appointment-date{background:#8B5CF6;color:#fff;padding:.5rem 1rem;border-radius:20px;font-weight:600;font-size:.9rem}
+    .appointment-status{padding:.3rem .8rem;border-radius:15px;font-size:.8rem;font-weight:600;text-transform:none}
+    .status-en_attente{background:#fef3c7;color:#92400e}
+    .status-confirme{background:#dcfce7;color:#166534}
+    .status-annule{background:#fee2e2;color:#991b1b}
+    .appointment-details{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+    .detail-item{display:flex;align-items:center;gap:.5rem}
+    .detail-icon{width:20px;height:20px;background:#8B5CF6;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.7rem}
+    .info-box{display:flex;align-items:center;gap:1rem;padding:1rem;background:#f7f5fa;border-radius:12px}
+    .avatar{width:50px;height:50px;border-radius:50%;object-fit:cover;background:#eee}
+    .info h4{margin:0 0 .2rem;color:#6D28D9}
+    .info p{margin:0;color:#4B3869;font-size:.9rem}
+    .muted{color:#4B3869}
+    .empty-state{text-align:center;padding:3rem;background:#fff;border-radius:18px;box-shadow:0 2px 12px rgba(139,92,246,.08)}
+    .empty-state h3{color:#8B5CF6;margin-bottom:1rem}
+    .empty-state p{color:#4B3869;margin-bottom:2rem}
+    .btn-primary{background:#8B5CF6;color:#fff;padding:.8rem 1.5rem;border:none;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block}
+    .btn-primary:hover{background:#6D28D9}
+    @media (max-width:768px){.appointment-details{grid-template-columns:1fr}.appointment-header{flex-direction:column;gap:1rem;align-items:flex-start}}
+  </style>
 </head>
 <body>
-    <nav class="navbar">
-        <div class="nav-container">
-            <a href="/" class="nav-logo">Lumia</a>
-            <a href="/" class="nav-back">← Retour à l'accueil</a>
-        </div>
-    </nav>
-
-    <div class="container">
-        <div class="page-header">
-            <h1>Mes rendez-vous</h1>
-            <p>Gérez vos consultations et suivez vos rendez-vous</p>
-        </div>
-
-        {% if appointments %}
-            <div class="appointments-list">
-                {% for appointment in appointments %}
-                    <div class="appointment-card">
-                        <div class="appointment-header">
-                            <div class="appointment-date">
-                                {{ appointment.appointment_date.strftime('%d/%m/%Y à %H:%M') }}
-                            </div>
-                            <div class="appointment-status status-{{ appointment.status }}">
-                                {% if appointment.status == 'en_attente' %}
-                                    En attente
-                                {% elif appointment.status == 'confirme' %}
-                                    Confirmé
-                                {% elif appointment.status == 'annule' %}
-                                    Annulé
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <div class="appointment-details">
-                            <div class="detail-item">
-                                <div class="detail-icon">📅</div>
-                                <span>{{ appointment.appointment_date.strftime('%A %d %B %Y') }}</span>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-icon">🕐</div>
-                                <span>{{ appointment.appointment_date.strftime('%H:%M') }}</span>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-icon">
-                                    {% if appointment.consultation_type == 'cabinet' %}🏥
-                                    {% elif appointment.consultation_type == 'domicile' %}🏠
-                                    {% elif appointment.consultation_type == 'video' %}📹
-                                    {% endif %}
-                                </div>
-                                <span>
-                                    {% if appointment.consultation_type == 'cabinet' %}Cabinet
-                                    {% elif appointment.consultation_type == 'domicile' %}Domicile
-                                    {% elif appointment.consultation_type == 'video' %}Vidéo
-                                    {% endif %}
-                                </span>
-                            </div>
-                            <div class="detail-item">
-                                <div class="detail-icon">💰</div>
-                                <span>{{ appointment.professional.consultation_fee }} MAD</span>
-                            </div>
-                        </div>
-
-                        {% if current_user.user_type == 'patient' %}
-                            <div class="professional-info">
-                                <img src="{{ appointment.professional.image_url or 'https://via.placeholder.com/50x50/8B5CF6/FFFFFF?text=Pro' }}" 
-                                     alt="{{ appointment.professional.name }}" class="professional-image">
-                                <div class="professional-details">
-                                    <h4>{{ appointment.professional.name }}</h4>
-                                    <p>{{ appointment.professional.specialty }} • {{ appointment.professional.location }}</p>
-                                </div>
-                            </div>
-                        {% else %}
-                            <div class="professional-info">
-                                <img src="{{ appointment.patient.image_url or 'https://via.placeholder.com/50x50/8B5CF6/FFFFFF?text=Patient' }}" 
-                                     alt="{{ appointment.patient.name }}" class="professional-image">
-                                <div class="professional-details">
-                                    <h4>{{ appointment.patient.name }}</h4>
-                                    <p>Patient</p>
-                                </div>
-                            </div>
-                        {% endif %}
-
-                        {% if appointment.notes %}
-                            <div style="margin-top: 1rem; padding: 1rem; background: #f7f5fa; border-radius: 8px;">
-                                <strong>Notes:</strong> {{ appointment.notes }}
-                            </div>
-                        {% endif %}
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <div class="empty-state">
-                <h3>Aucun rendez-vous pour le moment</h3>
-                <p>Vous n'avez pas encore de rendez-vous programmés.</p>
-                {% if current_user.user_type == 'patient' %}
-                    <a href="/professionals" class="btn-primary">Trouver un professionnel</a>
-                {% endif %}
-            </div>
-        {% endif %}
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="{{ url_for('index') }}" class="nav-logo">Tighri</a>
+      <a href="{{ url_for('index') }}" class="nav-back">← Retour à l'accueil</a>
     </div>
+  </nav>
+
+  <div class="container">
+    <div class="page-header">
+      <h1>Mes rendez-vous</h1>
+      <p>Gérez vos consultations et suivez vos rendez-vous</p>
+    </div>
+
+    {# tri: plus récents en haut #}
+    {% set _sorted = appointments|sort(attribute='appointment_date', reverse=true) %}
+
+    {% if _sorted %}
+      <div class="appointments-list">
+        {% for appointment in _sorted %}
+          {% set pro = appointment.professional %}
+          {% set patient = appointment.patient %}
+          {% set ctype = appointment.consultation_type or 'cabinet' %}
+          {% set c_label = 'Cabinet' if ctype=='cabinet' else ('Domicile' if ctype=='domicile' else 'Vidéo') %}
+          <div class="appointment-card">
+            <div class="appointment-header">
+              <div class="appointment-date">
+                {{ appointment.appointment_date.strftime('%d/%m/%Y à %H:%M') if appointment.appointment_date }}
+              </div>
+              <div class="appointment-status status-{{ appointment.status }}">
+                {% if appointment.status == 'en_attente' %}En attente
+                {% elif appointment.status == 'confirme' %}Confirmé
+                {% elif appointment.status == 'annule' %}Annulé
+                {% else %}—
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="appointment-details">
+              <div class="detail-item"><div class="detail-icon">📅</div>
+                <span>{{ appointment.appointment_date.strftime('%A %d %B %Y') if appointment.appointment_date }}</span>
+              </div>
+              <div class="detail-item"><div class="detail-icon">🕐</div>
+                <span>{{ appointment.appointment_date.strftime('%H:%M') if appointment.appointment_date }}</span>
+              </div>
+              <div class="detail-item"><div class="detail-icon">
+                {% if ctype=='cabinet' %}🏥{% elif ctype=='domicile' %}🏠{% else %}📹{% endif %}
+              </div><span>{{ c_label }}</span></div>
+              <div class="detail-item"><div class="detail-icon">💰</div>
+                <span>{{ pro.consultation_fee or 0 }} MAD</span>
+              </div>
+            </div>
+
+            {% if current_user.user_type == 'patient' %}
+              <div class="info-box">
+                <img class="avatar"
+                     src="{{ pro.image_url or url_for('profile_photo', professional_id=pro.id) if pro else 'https://placehold.co/50x50?text=Pro' }}"
+                     onerror="this.onerror=null;this.src='https://placehold.co/50x50?text=Pro';"
+                     alt="{{ pro.name if pro else 'Professionnel' }}">
+                <div class="info">
+                  <h4>{{ pro.name if pro else 'Professionnel' }}</h4>
+                  <p class="muted">
+                    {% if pro and pro.specialty %}{{ pro.specialty }}{% elif pro and pro.primary_specialty %}{{ pro.primary_specialty.name }}{% else %}—{% endif %}
+                    {% if pro and (pro.location or pro.city) %} • {{ pro.city.name if pro.city else pro.location }}{% endif %}
+                  </p>
+                  {% if pro and pro.phone %}<p class="muted">📞 {{ pro.phone }}</p>{% endif %}
+                </div>
+              </div>
+            {% else %}
+              <div class="info-box">
+                <img class="avatar" src="https://placehold.co/50x50?text=Pt" alt="Patient">
+                <div class="info">
+                  <h4>{{ patient.username if patient else 'Patient #' ~ appointment.patient_id }}</h4>
+                  <p class="muted">
+                    {% if patient and patient.phone %}📞 {{ patient.phone }}{% endif %}
+                    {% if patient and patient.email %}{% if patient.phone %} • {% endif %}✉️ {{ patient.email }}{% endif %}
+                  </p>
+                </div>
+              </div>
+            {% endif %}
+
+            {% if appointment.notes %}
+              <div style="margin-top:1rem;padding:1rem;background:#f7f5fa;border-radius:8px">
+                <strong>Notes :</strong> {{ appointment.notes }}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="empty-state">
+        <h3>Aucun rendez-vous pour le moment</h3>
+        <p>Vous n'avez pas encore de rendez-vous programmés.</p>
+        {% if current_user.user_type == 'patient' %}
+          <a href="{{ url_for('professionals') }}" class="btn-primary">Trouver un professionnel</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
 </body>
-</html> 
+</html>
