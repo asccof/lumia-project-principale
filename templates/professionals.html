@@ -35,7 +35,7 @@
   .link{color:var(--primary);text-decoration:none;font-weight:600}
   .link:hover{text-decoration:underline}
 
-  /* Badges (facultatifs) */
+  /* Badges */
   .badges{position:absolute;top:.6rem;right:.6rem;display:flex;gap:.35rem}
   .b{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .45rem;border-radius:999px;font-size:.72rem;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.08);background:#fff}
   .b svg{width:14px;height:14px}
@@ -58,7 +58,7 @@
              placeholder="{{ t('search.q','Nom, mot-clé...') }}"
              aria-label="{{ t('search.q','Nom, mot-clé...') }}">
 
-      <!-- Ville -->
+      <!-- Ville (ID si dispo) -->
       {% if cities is defined and cities %}
         <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
           <option value="">{{ t('search.city','Ville') }}</option>
@@ -72,13 +72,12 @@
                placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}">
       {% endif %}
 
-      <!-- Famille (ID si dispo, sinon texte libre) -->
+      <!-- Famille (⚠️ contrat-fix : valeur = nom de catégorie) -->
       {% if families is defined and families %}
-        <select name="family_id" aria-label="{{ t('search.family','Famille') }}">
+        <select name="family" id="f_family" aria-label="{{ t('search.family','Famille') }}">
           <option value="">{{ t('search.family','Famille') }}</option>
           {% for f in families %}
-            {# attend f.id / f.name #}
-            <option value="{{ f.id }}" {{ 'selected' if request.args.get('family_id')==f.id|string else '' }}>{{ f.name }}</option>
+            <option value="{{ f.name }}" {{ 'selected' if request.args.get('family','')==f.name else '' }}>{{ f.name }}</option>
           {% endfor %}
         </select>
       {% else %}
@@ -87,12 +86,16 @@
                placeholder="{{ t('search.family','Famille') }}" aria-label="{{ t('search.family','Famille') }}">
       {% endif %}
 
-      <!-- Spécialité -->
+      <!-- Spécialité (ID si dispo) -->
       {% if specialties is defined and specialties %}
-        <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
+        <select name="specialty_id" id="f_specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
           <option value="">{{ t('search.specialty','Spécialité') }}</option>
           {% for s in specialties %}
-            <option value="{{ s.id }}" {{ 'selected' if request.args.get('specialty_id')==s.id|string else '' }}>{{ s.name }}</option>
+            <option value="{{ s.id }}"
+                    data-category="{{ s.category or '' }}"
+                    {{ 'selected' if request.args.get('specialty_id')==s.id|string else '' }}>
+              {{ s.name }}
+            </option>
           {% endfor %}
         </select>
       {% else %}
@@ -116,11 +119,11 @@
 
   <section class="grid">
     {% for professional in professionals %}
-      {# badges robustes (différents noms possibles selon modèle) #}
+      {# Badges robustes #}
       {% set tighri  = professional.certified_tighri
                        |default(professional.tighri_certified
                        |default(professional.is_certified_tighri
-                       |default(professional.certified_tighri|default(false)))) %}
+                       |default(false))) %}
       {% set anthecc = professional.approved_anthecc
                        |default(professional.anthecc_certified
                        |default(professional.is_certified_anthecc
@@ -169,4 +172,32 @@
       <div style="grid-column:1/-1;text-align:center;color:#6b5a82">{{ t('results.empty','Aucun résultat.') }}</div>
     {% endfor %}
   </section>
+
+  {% if specialties is defined and specialties and families is defined and families %}
+  <script>
+    // Filtrage client: Famille -> Spécialités (par s.category)
+    document.addEventListener('DOMContentLoaded', function(){
+      var fam = document.getElementById('f_family');
+      var spec = document.getElementById('f_specialty_id');
+      if(!fam || !spec) return;
+
+      function filterSpecs(){
+        var cat = (fam.value || '').trim();
+        var firstVisible = null;
+        Array.from(spec.options).forEach(function(opt){
+          if(!opt.value) return; // garder placeholder
+          var ok = !cat || (String(opt.dataset.category||'') === cat);
+          opt.hidden = !ok;
+          if(ok && !firstVisible) firstVisible = opt;
+        });
+        // Si la sélection actuelle est masquée, reset
+        if(spec.selectedOptions.length && spec.selectedOptions[0].hidden){
+          spec.value = '';
+        }
+      }
+      fam.addEventListener('change', filterSpecs);
+      filterSpecs(); // pré-filtre si "family" est déjà dans l’URL
+    });
+  </script>
+  {% endif %}
 {% endblock %}
