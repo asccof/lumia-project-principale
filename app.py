@@ -230,7 +230,7 @@ def inject_i18n():
     lang = getattr(g, "current_locale", DEFAULT_LANG)
     return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
 
-@app.route("/set_language/<lang_code>")
+@app.route("/set-language/<lang_code>")
 def set_language(lang_code):
     nxt = request.args.get("next") or request.referrer or url_for("index")
     return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
@@ -1244,12 +1244,97 @@ def professional_edit_profile():
                            professional=professional,
                            cities=cities, families=families, specialties=specialties)
 
-# Alias rendez-vous
-@app.route("/professional/appointments", endpoint="professional_appointments")
+# ===== RDV côté PRO : liste + filtres =====
+@app.route("/professional/appointments", methods=["GET"], endpoint="professional_appointments")
 @login_required
 def professional_appointments():
-    return redirect(url_for("my_appointments"))
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé")
+        return redirect(url_for("index"))
 
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé")
+        return redirect(url_for("professional_dashboard"))
+
+    status = (request.args.get("status") or "all").strip()
+    scope  = (request.args.get("scope")  or "upcoming").strip()
+
+    q = Appointment.query.filter_by(professional_id=pro.id)
+    now = datetime.utcnow()
+
+    if scope == "upcoming":
+        q = q.filter(Appointment.appointment_date >= now)
+    elif scope == "past":
+        q = q.filter(Appointment.appointment_date < now)
+
+    if status in ("en_attente", "confirme", "annule"):
+        q = q.filter_by(status=status)
+
+    appointments = q.order_by(Appointment.appointment_date.desc()).all()
+
+    return render_template(
+        "professional_appointments.html",
+        appointments=appointments,
+        status=status,
+        scope=scope
+    )
+
+# ===== Actions côté PRO sur un RDV =====
+@app.route("/professional/appointments/<int:appointment_id>/<action>", methods=["POST"], endpoint="professional_appointment_action")
+@login_required
+def professional_appointment_action(appointment_id, action):
+    if current_user.user_type != "professional":
+        abort(403)
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        abort(403)
+
+    ap = Appointment.query.get_or_404(appointment_id)
+    if ap.professional_id != pro.id:
+        abort(403)
+
+    if action == "accept":
+        ap.status = "confirme"
+        flash("Rendez-vous confirmé.", "success")
+    elif action in ("reject", "cancel"):
+        ap.status = "annule"
+        flash("Rendez-vous annulé.", "warning")
+    elif action == "ask-reschedule":
+        ap.status = "en_attente"
+        flash("Demande de report envoyée (statut repassé en attente).", "info")
+    else:
+        abort(400)
+
+    db.session.commit()
+
+    try:
+        subj, txt = _build_notif(
+            "accepted" if ap.status == "confirme" else ("refused" if ap.status == "annule" else "pending"),
+            ap, role="patient"
+        )
+        patient = User.query.get(ap.patient_id)
+        if patient and patient.email:
+            safe_send_email(patient.email, subj, txt)
+
+        pro_user = User.query.filter_by(username=pro.name).first()
+        if pro_user and pro_user.email:
+            subj2, txt2 = _build_notif(
+                "accepted" if ap.status == "confirme" else ("refused" if ap.status == "annule" else "pending"),
+                ap, role="pro"
+            )
+            safe_send_email(pro_user.email, subj2, txt2)
+    except Exception:
+        pass
+
+    return redirect(url_for(
+        "professional_appointments",
+        status=request.args.get("status", "all"),
+        scope=request.args.get("scope", "upcoming")
+    ))
+
+# Alias rendez-vous (PATIENT & fallback)
 @app.route("/my_appointments", endpoint="my_appointments")
 @login_required
 def my_appointments():
