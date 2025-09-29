@@ -137,11 +137,18 @@
 
           {% block content %}{% endblock %}
 
-          {% block footer %}
-          <div class="mt-4 text-center text-muted small">
-            © {{  now().year if now is defined else (loop.cycle('', '') and  '' )  }} Tighri — Admin
-          </div>
-          {% endblock %}
+         {% block footer %}
+  <div class="mt-4 text-center text-muted small">
+    © <span id="adminYear"></span> Tighri — Admin
+  </div>
+  <script>
+    (function(){
+      var el = document.getElementById('adminYear');
+      if (el) el.textContent = new Date().getFullYear();
+    })();
+  </script>
+{% endblock %}
+
         </div>
       </div>
     </div>
