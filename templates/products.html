@@ -1,203 +1,207 @@
 {% extends "base.html" %}
 
-{% block title %}Lumia - Produits{% endblock %}
+{% block title %}Tighri – Professionnels{% endblock %}
 
 {% block content %}
 <!-- Page Header -->
-<section class="py-5" style="background: linear-gradient(135deg, var(--primary-color), var(--accent-color));">
-    <div class="container">
-        <div class="row">
-            <div class="col-lg-8 mx-auto text-center">
-                <h1 class="text-white mb-3">Nos Professionnels</h1>
-                <p class="text-white-50">Découvrez notre réseau de psychologues et thérapeutes qualifiés au Maroc</p>
-            </div>
-        </div>
+<section class="py-5" style="background: linear-gradient(135deg, var(--primary,#8B5CF6), var(--primary-dark,#6D28D9));">
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-8 mx-auto text-center">
+        <h1 class="text-white mb-3">Nos Professionnels</h1>
+        <p class="text-white-50">Découvrez notre réseau de psychologues, thérapeutes et coachs qualifiés au Maroc</p>
+      </div>
     </div>
+  </div>
 </section>
 
-<!-- Filters Section -->
+<!-- Filtres rapides par spécialité (texte libre via ?specialty=...) -->
 <section class="py-4 bg-light">
-    <div class="container">
-        <div class="row">
-            <div class="col-lg-12">
-                <div class="d-flex justify-content-center gap-3">
-                    <a href="{{ url_for('professionals', specialty='all') }}" 
-                       class="btn {% if category == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-                        <i class="fas fa-users me-2"></i>Tous les professionnels
-                    </a>
-                    <a href="{{ url_for('professionals', specialty='Psychologue') }}" 
-                       class="btn {% if category == 'psychologues' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-                        <i class="fas fa-user-md me-2"></i>Psychologues
-                    </a>
-
-                    <a href="{{ url_for('professionals', specialty='Thérapeute') }}" 
-                       class="btn {% if category == 'therapeutes' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-                        <i class="fas fa-heart me-2"></i>Thérapeutes
-                    </a>
-                </div>
-            </div>
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-12">
+        {% set sel = request.args.get('specialty','') %}
+        <div class="d-flex justify-content-center gap-3 flex-wrap">
+          <a href="{{ url_for('professionals') }}"
+             class="btn {{ 'btn-primary' if not sel else 'btn-outline-primary' }}">
+            <i class="fas fa-users me-2"></i>Tous les professionnels
+          </a>
+          <a href="{{ url_for('professionals', specialty='Psychologue') }}"
+             class="btn {{ 'btn-primary' if sel|lower=='psychologue' else 'btn-outline-primary' }}">
+            <i class="fas fa-user-md me-2"></i>Psychologues
+          </a>
+          <a href="{{ url_for('professionals', specialty='Psychothérapeute') }}"
+             class="btn {{ 'btn-primary' if sel|lower=='psychothérapeute' else 'btn-outline-primary' }}">
+            <i class="fas fa-heart me-2"></i>Psychothérapeutes
+          </a>
+          <a href="{{ url_for('professionals', specialty='Coach') }}"
+             class="btn {{ 'btn-primary' if sel|lower=='coach' else 'btn-outline-primary' }}">
+            <i class="fas fa-chalkboard-teacher me-2"></i>Coach
+          </a>
         </div>
+      </div>
     </div>
+  </div>
 </section>
 
-<!-- Products Grid -->
+<!-- Grille des professionnels -->
 <section class="py-5">
-    <div class="container">
-        {% if products %}
-        <div class="row g-4">
-            {% for product in products %}
-            <div class="col-lg-4 col-md-6">
-                <div class="card product-card h-100">
-                    <div class="position-relative">
-                        <img src="{{ product.image_url }}" class="card-img-top" alt="{{ product.name }}" style="height: 250px; object-fit: cover;">
-                        <div class="position-absolute top-0 end-0 m-2">
-                            {% if product.stock > 0 %}
-                                <span class="badge bg-success">{{ product.stock }} en stock</span>
-                            {% else %}
-                                <span class="badge bg-danger">Rupture de stock</span>
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="card-body d-flex flex-column">
-                        <div class="mb-2">
-                            <span class="badge bg-primary">{{ product.category|title }}</span>
-                        </div>
-                        <h5 class="card-title">{{ product.name }}</h5>
-                        <p class="card-text text-muted">{{ product.description[:120] }}{% if product.description|length > 120 %}...{% endif %}</p>
-                        <div class="mt-auto">
-                            <div class="mb-3">
-                                <p class="text-muted mb-2"><strong>Types de consultation:</strong></p>
-                                <div class="d-flex flex-wrap gap-2 mb-3">
-                                    <span class="badge bg-success"><i class="fas fa-home me-1"></i>À domicile</span>
-                                    <span class="badge bg-info"><i class="fas fa-building me-1"></i>En cabinet</span>
-                                    <span class="badge bg-warning"><i class="fas fa-video me-1"></i>En ligne</span>
-                                </div>
-                            </div>
-                            <div class="d-grid gap-2">
-                                <a href="{{ url_for('product_detail', product_id=product.id) }}" class="btn btn-primary">
-                                    <i class="fas fa-calendar-check me-2"></i>Prendre RDV
-                                </a>
-                                {% if product.stock > 0 %}
-                                <button class="btn btn-outline-primary" onclick="contactProfessional({{ product.id }})">
-                                    <i class="fas fa-envelope me-2"></i>Contacter
-                                </button>
-                                {% else %}
-                                <button class="btn btn-outline-secondary" disabled>
-                                    <i class="fas fa-times me-2"></i>Indisponible
-                                </button>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
+  <div class="container">
+    {% if professionals %}
+      <div class="row g-4">
+        {% for p in professionals %}
+          {% set types = (p.consultation_types or '') %}
+          {% set has_home   = 'domicile' in types %}
+          {% set has_cab    = 'cabinet' in types %}
+          {% set has_online = ('en_ligne' in types) or ('visio' in types) %}
+          <div class="col-lg-4 col-md-6">
+            <div class="card product-card h-100">
+              <div class="position-relative">
+                <img src="{{ url_for('profile_photo', professional_id=p.id) }}"
+                     class="card-img-top"
+                     alt="Photo de {{ p.name }}"
+                     style="height:250px; object-fit:cover;"
+                     onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Photo';">
+                <div class="position-absolute top-0 end-0 m-2 d-flex gap-2">
+                  {% if p.certified_tighri %}<span class="badge bg-success">Certifié Tighri</span>{% endif %}
+                  {% if p.approved_anthecc %}<span class="badge bg-warning text-dark">ANTHECC</span>{% endif %}
                 </div>
-            </div>
-            {% endfor %}
-        </div>
-        
-        <!-- Pagination -->
-        <div class="row mt-5">
-            <div class="col-12">
-                <nav aria-label="Navigation des produits">
-                    <ul class="pagination justify-content-center">
-                        <li class="page-item disabled">
-                            <a class="page-link" href="#" tabindex="-1">Précédent</a>
-                        </li>
-                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                        <li class="page-item"><a class="page-link" href="#">2</a></li>
-                        <li class="page-item"><a class="page-link" href="#">3</a></li>
-                        <li class="page-item">
-                            <a class="page-link" href="#">Suivant</a>
-                        </li>
-                    </ul>
-                </nav>
-            </div>
-        </div>
-        
-        {% else %}
-        <!-- No Products Found -->
-        <div class="row">
-            <div class="col-lg-8 mx-auto text-center">
-                <div class="py-5">
-                    <i class="fas fa-search fa-4x text-muted mb-4"></i>
-                    <h3>Aucun professionnel trouvé</h3>
-                    <p class="text-muted mb-4">Aucun professionnel ne correspond à votre recherche dans cette catégorie.</p>
-                    <a href="{{ url_for('professionals', specialty='all') }}" class="btn btn-primary">
-                        <i class="fas fa-arrow-left me-2"></i>Voir tous les professionnels
+              </div>
+
+              <div class="card-body d-flex flex-column">
+                <div class="mb-2">
+                  {% if p.primary_specialty %}<span class="badge bg-primary">{{ p.primary_specialty.name }}</span>
+                  {% elif p.specialty %}<span class="badge bg-primary">{{ p.specialty }}</span>
+                  {% else %}<span class="badge bg-secondary">Professionnel</span>{% endif %}
+                  {% if p.city %}<span class="badge bg-light text-muted border ms-1">{{ p.city.name }}</span>
+                  {% elif p.location %}<span class="badge bg-light text-muted border ms-1">{{ p.location }}</span>{% endif %}
+                </div>
+
+                <h5 class="card-title mb-1">{{ p.name }}</h5>
+                <p class="card-text text-muted">
+                  {% set d = p.description or '' %}
+                  {{ d[:160] }}{% if d|length>160 %}…{% endif %}
+                </p>
+
+                <div class="mt-auto">
+                  <div class="mb-3">
+                    <p class="text-muted mb-2"><strong>Types de consultation :</strong></p>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                      {% if has_home %}<span class="badge bg-success"><i class="fas fa-home me-1"></i>À domicile</span>{% endif %}
+                      {% if has_cab %}<span class="badge bg-info"><i class="fas fa-building me-1"></i>En cabinet</span>{% endif %}
+                      {% if has_online %}<span class="badge bg-warning text-dark"><i class="fas fa-video me-1"></i>En ligne</span>{% endif %}
+                      {% if not (has_home or has_cab or has_online) %}<span class="badge bg-secondary">À préciser</span>{% endif %}
+                    </div>
+                  </div>
+
+                  <div class="d-grid gap-2">
+                    <a href="{{ url_for('professional_detail', professional_id=p.id) }}" class="btn btn-outline-primary">
+                      <i class="fas fa-user me-2"></i>Voir le profil
                     </a>
+                    <a href="{{ url_for('book_appointment', professional_id=p.id) }}" class="btn btn-primary">
+                      <i class="fas fa-calendar-check me-2"></i>Prendre RDV
+                    </a>
+                    {% if p.phone %}
+                      <a class="btn btn-outline-secondary" href="tel:{{ p.phone|replace(' ','') }}">
+                        <i class="fas fa-phone me-2"></i>Appeler
+                      </a>
+                    {% else %}
+                      <button class="btn btn-outline-secondary" onclick="contactProfessional('{{ p.name|e }}')" type="button">
+                        <i class="fas fa-envelope me-2"></i>Contacter
+                      </button>
+                    {% endif %}
+                  </div>
                 </div>
+              </div>
             </div>
+          </div>
+        {% endfor %}
+      </div>
+
+      {# Pagination : si besoin, branche ici ton paginateur serveur #}
+      {# <nav class="mt-5" aria-label="Navigation">
+           … 
+         </nav> #}
+
+    {% else %}
+      <!-- Aucun résultat -->
+      <div class="row">
+        <div class="col-lg-8 mx-auto text-center">
+          <div class="py-5">
+            <i class="fas fa-search fa-4x text-muted mb-4"></i>
+            <h3>Aucun professionnel trouvé</h3>
+            <p class="text-muted mb-4">Aucun profil ne correspond à votre recherche.</p>
+            <a href="{{ url_for('professionals') }}" class="btn btn-primary">
+              <i class="fas fa-arrow-left me-2"></i>Voir tous les professionnels
+            </a>
+          </div>
         </div>
-        {% endif %}
-    </div>
+      </div>
+    {% endif %}
+  </div>
 </section>
 
 <!-- Features Section -->
 <section class="py-5 bg-light">
-    <div class="container">
-        <div class="row g-4">
-            <div class="col-lg-3 col-md-6">
-                <div class="text-center">
-                    <i class="fas fa-home fa-3x text-primary mb-3"></i>
-                    <h5>Consultations à domicile</h5>
-                    <p class="text-muted">Nos professionnels se déplacent chez vous</p>
-                </div>
-            </div>
-            
-            <div class="col-lg-3 col-md-6">
-                <div class="text-center">
-                    <i class="fas fa-building fa-3x text-primary mb-3"></i>
-                    <h5>Consultations en cabinet</h5>
-                    <p class="text-muted">Dans nos centres spécialisés</p>
-                </div>
-            </div>
-            
-            <div class="col-lg-3 col-md-6">
-                <div class="text-center">
-                    <i class="fas fa-video fa-3x text-primary mb-3"></i>
-                    <h5>Consultations en ligne</h5>
-                    <p class="text-muted">Visioconférence sécurisée</p>
-                </div>
-            </div>
-            
-            <div class="col-lg-3 col-md-6">
-                <div class="text-center">
-                    <i class="fas fa-shield-alt fa-3x text-primary mb-3"></i>
-                    <h5>Confidentialité garantie</h5>
-                    <p class="text-muted">Vos données sont protégées</p>
-                </div>
-            </div>
+  <div class="container">
+    <div class="row g-4">
+      <div class="col-lg-3 col-md-6">
+        <div class="text-center">
+          <i class="fas fa-home fa-3x text-primary mb-3"></i>
+          <h5>Consultations à domicile</h5>
+          <p class="text-muted">Nos professionnels se déplacent chez vous</p>
         </div>
+      </div>
+      <div class="col-lg-3 col-md-6">
+        <div class="text-center">
+          <i class="fas fa-building fa-3x text-primary mb-3"></i>
+          <h5>Consultations en cabinet</h5>
+          <p class="text-muted">Dans nos centres spécialisés</p>
+        </div>
+      </div>
+      <div class="col-lg-3 col-md-6">
+        <div class="text-center">
+          <i class="fas fa-video fa-3x text-primary mb-3"></i>
+          <h5>Consultations en ligne</h5>
+          <p class="text-muted">Visioconférence sécurisée</p>
+        </div>
+      </div>
+      <div class="col-lg-3 col-md-6">
+        <div class="text-center">
+          <i class="fas fa-shield-alt fa-3x text-primary mb-3"></i>
+          <h5>Confidentialité garantie</h5>
+          <p class="text-muted">Vos données sont protégées</p>
+        </div>
+      </div>
     </div>
+  </div>
 </section>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-function contactProfessional(professionalId) {
-    // Simulation de contact avec le professionnel
-    alert('Demande de contact envoyée au professionnel !');
-    // Ici vous pourriez implémenter la logique de contact
+function contactProfessional(name){
+  alert('Demande de contact envoyée pour « ' + name + ' ».');
 }
 
 // Animation au scroll
 document.addEventListener('DOMContentLoaded', function() {
-    const cards = document.querySelectorAll('.product-card');
-    
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.style.opacity = '1';
-                entry.target.style.transform = 'translateY(0)';
-            }
-        });
+  const cards = document.querySelectorAll('.product-card');
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.style.opacity = '1';
+        entry.target.style.transform = 'translateY(0)';
+      }
     });
-    
-    cards.forEach(card => {
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(20px)';
-        card.style.transition = 'all 0.6s ease';
-        observer.observe(card);
-    });
+  }, { threshold: 0.12 });
+
+  cards.forEach(card => {
+    card.style.opacity = '0';
+    card.style.transform = 'translateY(20px)';
+    card.style.transition = 'all 0.6s ease';
+    io.observe(card);
+  });
 });
 </script>
-{% endblock %} 
+{% endblock %}
