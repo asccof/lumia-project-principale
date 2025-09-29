@@ -1,4 +1,4 @@
-# models.py
+# models.py — contrat-fix
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime
@@ -41,24 +41,47 @@ class User(UserMixin, db.Model):
     def __repr__(self): return f"<User id={self.id} {self.username} type={self.user_type} admin={self.is_admin}>"
 
 # ======================
-# Référentiels (Phase 1)
+# Référentiels
 # ======================
 class City(db.Model):
     __tablename__ = "cities"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), unique=True, nullable=False)
 
+    __table_args__ = (
+        db.Index("ix_cities_name", "name"),
+    )
+
+    def __repr__(self): return f"<City id={self.id} {self.name}>"
+
 class Specialty(db.Model):
     __tablename__ = "specialties"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), unique=True, nullable=False)
-    category = db.Column(db.String(80))  # ex: Psychothérapie/Coaching…
+    # category = famille (Psychothérapie, Coaching, …)
+    category = db.Column(db.String(120))
+
+    __table_args__ = (
+        db.Index("ix_specialties_name", "name"),
+        db.Index("ix_specialties_category", "category"),
+    )
+
+    # backrefs remplis automatiquement par Professional.specialties / primary_specialty
+    def __repr__(self): return f"<Specialty id={self.id} {self.name} cat={self.category or '-'}>"
 
 # Pivot Pro <-> Spécialités secondaires
 professional_specialties = db.Table(
     "professional_specialties",
-    db.Column("professional_id", db.Integer, db.ForeignKey("professionals.id"), primary_key=True),
-    db.Column("specialty_id", db.Integer, db.ForeignKey("specialties.id"), primary_key=True),
+    db.Column("professional_id",
+              db.Integer,
+              db.ForeignKey("professionals.id", ondelete="CASCADE"),
+              primary_key=True),
+    db.Column("specialty_id",
+              db.Integer,
+              db.ForeignKey("specialties.id", ondelete="CASCADE"),
+              primary_key=True),
+    db.Index("ix_prof_spec_professional", "professional_id"),
+    db.Index("ix_prof_spec_specialty", "specialty_id"),
 )
 
 # ======================
@@ -77,13 +100,23 @@ class Professional(db.Model):
     specialty = db.Column(db.String(120))
 
     # Normalisation (Phase 1)
-    city_id = db.Column(db.Integer, db.ForeignKey("cities.id"), nullable=True)
-    city = db.relationship("City", lazy="joined")
+    city_id = db.Column(db.Integer, db.ForeignKey("cities.id", ondelete="SET NULL"), nullable=True)
+    city = db.relationship("City", lazy="joined", backref=db.backref("professionals", lazy="dynamic"))
 
-    primary_specialty_id = db.Column(db.Integer, db.ForeignKey("specialties.id"), nullable=True)
-    primary_specialty = db.relationship("Specialty", foreign_keys=[primary_specialty_id], lazy="joined")
+    primary_specialty_id = db.Column(db.Integer, db.ForeignKey("specialties.id", ondelete="SET NULL"), nullable=True)
+    primary_specialty = db.relationship(
+        "Specialty",
+        foreign_keys=[primary_specialty_id],
+        lazy="joined",
+        backref=db.backref("primary_for", lazy="dynamic")
+    )
 
-    specialties = db.relationship("Specialty", secondary=professional_specialties, lazy="subquery")
+    specialties = db.relationship(
+        "Specialty",
+        secondary=professional_specialties,
+        lazy="subquery",
+        backref=db.backref("professionals", lazy="dynamic")
+    )
 
     # Expérience / tarif
     experience_years = db.Column(db.Integer)
@@ -142,6 +175,11 @@ class Professional(db.Model):
     def __repr__(self):
         return f"<Professional id={self.id} {self.name} [{self.specialty}] status={self.status}>"
 
+    @property
+    def consultation_types_list(self):
+        raw = (self.consultation_types or "").strip()
+        return [t for t in (raw.split(",") if raw else []) if t]
+
 # ======================
 # Rendez-vous & disponibilité
 # ======================
@@ -150,7 +188,7 @@ class Appointment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     patient_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
-    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id', ondelete='CASCADE'), nullable=False)
 
     appointment_date = db.Column(db.DateTime, nullable=False)
     consultation_type = db.Column(db.String(20), default='cabinet')  # 'cabinet' | 'domicile' | 'en_ligne'
@@ -158,10 +196,13 @@ class Appointment(db.Model):
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    patient = db.relationship('User',
+    patient = db.relationship(
+        'User',
         backref=db.backref('appointments', passive_deletes=True),
-        lazy='joined', passive_deletes=True)
-    professional = db.relationship('Professional', backref='appointments', lazy='joined')
+        lazy='joined',
+        passive_deletes=True
+    )
+    professional = db.relationship('Professional', backref=db.backref('appointments', passive_deletes=True), lazy='joined')
 
     __table_args__ = (
         db.Index('ix_appointments_professional_date', 'professional_id', 'appointment_date'),
@@ -176,19 +217,23 @@ class Appointment(db.Model):
 class ProfessionalAvailability(db.Model):
     __tablename__ = "professional_availabilities"
     id = db.Column(db.Integer, primary_key=True)
-    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id', ondelete='CASCADE'), nullable=False)
     day_of_week = db.Column(db.Integer, nullable=False)  # 0..6
     start_time = db.Column(db.String(5), nullable=False)  # "HH:MM"
     end_time = db.Column(db.String(5), nullable=False)    # "HH:MM"
     is_available = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
+    professional = db.relationship('Professional', backref=db.backref('availabilities', passive_deletes=True))
+
 class UnavailableSlot(db.Model):
     __tablename__ = "unavailable_slots"
     id = db.Column(db.Integer, primary_key=True)
-    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id'), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id', ondelete='CASCADE'), nullable=False)
     date = db.Column(db.Date, nullable=False)
     start_time = db.Column(db.String(5), nullable=False)
     end_time = db.Column(db.String(5), nullable=False)
     reason = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+    professional = db.relationship('Professional', backref=db.backref('unavailable_slots', passive_deletes=True))
