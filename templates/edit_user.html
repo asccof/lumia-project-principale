@@ -1,5 +1,6 @@
 {% extends "admin_base.html" %}
-{% block title %}Modifier un utilisateur - Admin Lumia{% endblock %}
+{% block title %}Modifier un utilisateur - Admin Tighri{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
   <div class="row"><div class="col-12">
@@ -8,7 +9,7 @@
         <h4 class="card-title mb-0">
           <i class="fas fa-user-edit me-2"></i>Modifier l'utilisateur
         </h4>
-        <!-- Bouton conversion rapide vers "Professionnel" (soumet le formulaire) -->
+        <!-- Conversion rapide vers “Professionnel” -->
         <button type="button" class="btn btn-outline-success btn-sm" id="convertToProBtn">
           <i class="fas fa-user-tie me-1"></i> Convertir en professionnel
         </button>
@@ -51,14 +52,13 @@
             <div class="col-md-6">
               <div class="mb-3">
                 <label for="password" class="form-label">Nouveau mot de passe (laisser vide)</label>
-                <!-- Le backend accepte "new_password" OU "password". On garde "password" pour compatibilité. -->
                 <input type="password" class="form-control" id="password" name="password" autocomplete="new-password">
               </div>
             </div>
           </div>
 
           <div class="row">
-            <!-- Téléphone (utilisé par admin_server.edit_user) -->
+            <!-- Téléphone -->
             <div class="col-md-6">
               <div class="mb-3">
                 <label for="phone" class="form-label">Téléphone</label>
@@ -74,7 +74,7 @@
             </div>
           </div>
 
-          <div class="row">
+          <div class="row mb-2">
             <div class="col-md-6">
               <p class="text-muted mb-0">
                 <strong>Date de création:</strong>
@@ -83,21 +83,90 @@
             </div>
           </div>
 
-          <!-- ========= Bloc PROFIL PROFESSIONNEL (affiché si user_type=professional) ========= -->
+          <!-- ========= PROFIL PROFESSIONNEL ========= -->
           <div id="proSection" class="mt-4" style="display:none;">
             <hr class="my-4">
             <h5 class="mb-3"><i class="fas fa-user-tie me-2"></i>Profil professionnel</h5>
 
-            <!-- Aide : si la fiche pro existe, on remplit les valeurs ; sinon vide -->
             {% set P = pro if pro is defined else None %}
 
+            <!-- ======= Taxonomie (Famille + Spécialités) ======= -->
             <div class="row">
-              <div class="col-md-6">
-                <div class="mb-3">
-                  <label class="form-label">Spécialité</label>
-                  <input type="text" class="form-control" name="pro_specialty" value="{{ (P.specialty if P else '') or '' }}" placeholder="Psychologue, Coach, etc.">
+              {% if (families is defined and families) and (specialties is defined and specialties) %}
+                <!-- Famille = filtre visuel; la valeur n'est pas obligatoire -->
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">Famille (catégorie)</label>
+                    <select id="pro_family" class="form-select">
+                      <option value="">Toutes les familles</option>
+                      {% for f in families %}
+                        <option value="{{ f.name }}">{{ f.name }}</option>
+                      {% endfor %}
+                    </select>
+                    <div class="form-text">Filtre la liste des spécialités.</div>
+                  </div>
                 </div>
-              </div>
+
+                <!-- Spécialité principale (ID) + “Autre” -->
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">Spécialité principale</label>
+                    <div class="input-group">
+                      <select name="primary_specialty_id" id="pro_primary_specialty_id" class="form-select">
+                        <option value="">Choisir dans la liste…</option>
+                        {% for s in specialties %}
+                          <option value="{{ s.id }}" data-category="{{ s.category or '' }}"
+                                  {% if P and P.primary_specialty and P.primary_specialty.id==s.id %}selected{% endif %}>
+                            {{ s.name }}
+                          </option>
+                        {% endfor %}
+                      </select>
+                      <input id="pro_spec_other" class="form-control" placeholder="Autre spécialité (si non listée)">
+                    </div>
+                    <div class="form-text">Si vous saisissez “Autre”, laissez le menu vide.</div>
+                  </div>
+                </div>
+
+                <!-- Spécialités secondaires (multi) -->
+                <div class="col-12">
+                  <div class="mb-3">
+                    <label class="form-label">Spécialités secondaires (optionnel)</label>
+                    <select name="specialty_ids" id="pro_secondary_specialty_ids" class="form-select" multiple size="6">
+                      {% set sec_ids = (P.specialties|map(attribute='id')|list if P and P.specialties else []) %}
+                      {% for s in specialties %}
+                        <option value="{{ s.id }}" data-category="{{ s.category or '' }}"
+                          {% if s.id in sec_ids %}selected{% endif %}>{{ s.name }}</option>
+                      {% endfor %}
+                    </select>
+                    <div class="form-text">Maintenez Ctrl (Windows) ou ⌘ (Mac) pour multi-sélectionner.</div>
+                  </div>
+                </div>
+
+                <!-- Champs “création si absente” + compat legacy -->
+                <input type="hidden" name="new_specialty_name" id="new_specialty_name">
+                <input type="hidden" name="new_specialty_family" id="new_specialty_family">
+                <input type="hidden" name="pro_specialty" id="pro_specialty_legacy" value="{{ (P.specialty if P else '') or '' }}">
+              {% else %}
+                <!-- Fallback simple texte (aucune liste fournie) -->
+                <div class="col-md-6">
+                  <div class="mb-3">
+                    <label class="form-label">Spécialité</label>
+                    <input type="text" class="form-control" name="pro_specialty" value="{{ (P.specialty if P else '') or '' }}"
+                           placeholder="Psychologue, Coach…" list="specialties_list">
+                    <datalist id="specialties_list">
+                      {% if ALL_SPECIALTIES is defined %}
+                        {% for s in ALL_SPECIALTIES %}
+                          <option value="{{ s }}"></option>
+                        {% endfor %}
+                      {% endif %}
+                    </datalist>
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+
+            <!-- ======= Infos générales ======= -->
+            <div class="row">
               <div class="col-md-3">
                 <div class="mb-3">
                   <label class="form-label">Années d'expérience</label>
@@ -110,6 +179,25 @@
                   <input type="text" class="form-control" name="pro_consultation_fee" value="{{ (P.consultation_fee if P else '') or '' }}" placeholder="350">
                 </div>
               </div>
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label">Ville</label>
+                  <!-- CONTRAT FIXE : backend lit name="pro_location" (texte) -->
+                  <input type="text" class="form-control" name="pro_location"
+                         value="{{ (P.location if P else '') or '' }}"
+                         placeholder="Casablanca" list="morocco_cities">
+                  <datalist id="morocco_cities">
+                    {% if ALL_CITIES is defined %}
+                      {% for c in ALL_CITIES %}
+                        <option value="{{ c }}"></option>
+                      {% endfor %}
+                    {% else %}
+                      <option value="Casablanca"><option value="Rabat"><option value="Fès"><option value="Marrakech"><option value="Tanger"><option value="Agadir">
+                    {% endif %}
+                  </datalist>
+                  <div class="form-text">Saisie assistée sur une liste très élargie des villes marocaines.</div>
+                </div>
+              </div>
             </div>
 
             <div class="mb-3">
@@ -118,123 +206,19 @@
             </div>
 
             <div class="row">
-              <div class="col-md-4">
-                <div class="mb-3">
-                  <label class="form-label">Ville</label>
-                  <!-- CONTRAT FIXE : on garde name="pro_location" -->
-                  <input
-                    type="text"
-                    class="form-control"
-                    name="pro_location"
-                    value="{{ (P.location if P else '') or '' }}"
-                    placeholder="Casablanca"
-                    list="morocco_cities"
-                  >
-                  <!-- Liste de villes marocaines (datalist = autocomplétion sans changer le backend) -->
-                  <datalist id="morocco_cities">
-                    <option value="Casablanca">
-                    <option value="Rabat">
-                    <option value="Fès">
-                    <option value="Marrakech">
-                    <option value="Tanger">
-                    <option value="Agadir">
-                    <option value="Meknès">
-                    <option value="Oujda">
-                    <option value="Kénitra">
-                    <option value="Tétouan">
-                    <option value="Salé">
-                    <option value="Nador">
-                    <option value="Safi">
-                    <option value="Mohammédia">
-                    <option value="Khouribga">
-                    <option value="El Jadida">
-                    <option value="Béni Mellal">
-                    <option value="Taza">
-                    <option value="Taroudant">
-                    <option value="Settat">
-                    <option value="Larache">
-                    <option value="Ksar El Kebir">
-                    <option value="Guelmim">
-                    <option value="Berkane">
-                    <option value="Ouarzazate">
-                    <option value="Al Hoceïma">
-                    <option value="Errachidia">
-                    <option value="Essaouira">
-                    <option value="Khénifra">
-                    <option value="Taourirt">
-                    <option value="Ouazzane">
-                    <option value="Sidi Kacem">
-                    <option value="Sidi Slimane">
-                    <option value="Tiflet">
-                    <option value="Tiznit">
-                    <option value="Tan-Tan">
-                    <option value="Dakhla">
-                    <option value="Laâyoune">
-                    <option value="Fquih Ben Salah">
-                    <option value="Berrechid">
-                    <option value="Midelt">
-                    <option value="Guercif">
-                    <option value="Sefrou">
-                    <option value="Azrou">
-                    <option value="Ifrane">
-                    <option value="Youssoufia">
-                    <option value="Chichaoua">
-                    <option value="Sidi Ifni">
-                    <option value="El Kelaa des Sraghna">
-                    <option value="Kalaat M'Gouna">
-                    <option value="Tinghir">
-                    <option value="Zagora">
-                    <option value="Chefchaouen">
-                    <option value="Jérada">
-                    <option value="Boujdour">
-                    <option value="Smara">
-                    <option value="Tata">
-                    <option value="Assilah">
-                    <option value="Martil">
-                    <option value="Fnideq">
-                    <option value="Skhirat">
-                    <option value="Témara">
-                    <option value="Bouznika">
-                    <option value="Bouskoura">
-                    <option value="Dar Bouazza">
-                    <option value="Aït Melloul">
-                    <option value="Drarga">
-                    <option value="Sidi Bennour">
-                    <option value="Oulad Teima">
-                    <option value="Souk El Arbaa">
-                    <option value="El Aioun Sidi Mellouk">
-                    <option value="Biougra">
-                    <option value="Imzouren">
-                    <option value="Sidi Yahya El Gharb">
-                    <option value="Mechra Bel Ksiri">
-                    <option value="Azemmour">
-                    <option value="Aïn Harrouda">
-                    <option value="Benguerir">
-                  </datalist>
-                </div>
-              </div>
               <div class="col-md-8">
                 <div class="mb-3">
                   <label class="form-label">Adresse</label>
                   <input type="text" class="form-control" name="pro_address" value="{{ (P.address if P else '') or '' }}" placeholder="Adresse complète (optionnel)">
                 </div>
               </div>
-            </div>
-
-            <div class="row">
-              <div class="col-md-4">
-                <div class="mb-3">
-                  <label class="form-label">Téléphone (pro)</label>
-                  <input type="text" class="form-control" name="pro_phone" value="{{ (P.phone if P else '') or '' }}">
-                </div>
-              </div>
-              <div class="col-md-4">
+              <div class="col-md-2">
                 <div class="mb-3">
                   <label class="form-label">Latitude</label>
                   <input type="text" class="form-control" name="pro_latitude" value="{{ (P.latitude if P else '') or '' }}" placeholder="33.5731">
                 </div>
               </div>
-              <div class="col-md-4">
+              <div class="col-md-2">
                 <div class="mb-3">
                   <label class="form-label">Longitude</label>
                   <input type="text" class="form-control" name="pro_longitude" value="{{ (P.longitude if P else '') or '' }}" placeholder="-7.5898">
@@ -242,12 +226,13 @@
               </div>
             </div>
 
+            <!-- Statuts / types -->
             <div class="row">
               <div class="col-md-4">
                 <div class="mb-3">
                   <label class="form-label">Statut</label>
+                  {% set st = (P.status if P else '') or '' %}
                   <select class="form-select" name="pro_status">
-                    {% set st = (P.status if P else '') or '' %}
                     <option value="" {{ 'selected' if st=='' else '' }}>— Ne pas changer —</option>
                     <option value="en_attente" {{ 'selected' if st=='en_attente' else '' }}>En attente</option>
                     <option value="valide" {{ 'selected' if st=='valide' else '' }}>Validé</option>
@@ -259,8 +244,8 @@
               <div class="col-md-4">
                 <div class="mb-3">
                   <label class="form-label">Disponibilité</label>
+                  {% set av = (P.availability if P else '') or '' %}
                   <select class="form-select" name="pro_availability">
-                    {% set av = (P.availability if P else '') or '' %}
                     <option value="" {{ 'selected' if av=='' else '' }}>— Ne pas changer —</option>
                     <option value="disponible" {{ 'selected' if av=='disponible' else '' }}>Disponible</option>
                     <option value="indisponible" {{ 'selected' if av=='indisponible' else '' }}>Indisponible</option>
@@ -271,29 +256,20 @@
               <div class="col-md-4">
                 <div class="mb-3">
                   <label class="form-label">Types de consultation</label>
-                  <!-- checkboxes + hidden field pour envoyer une string 'cabinet,domicile,en_ligne' -->
                   {% set t = (P.consultation_types if P else '') or '' %}
                   {% set has_cab = 'cabinet' in t %}
                   {% set has_dom = 'domicile' in t %}
-                  {% set has_online = 'en_ligne' in t %}
-                  <div class="form-check">
-                    <input class="form-check-input pro-type" type="checkbox" id="t_cab" value="cabinet" {% if has_cab %}checked{% endif %}>
-                    <label class="form-check-label" for="t_cab">Cabinet</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input pro-type" type="checkbox" id="t_dom" value="domicile" {% if has_dom %}checked{% endif %}>
-                    <label class="form-check-label" for="t_dom">Domicile</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input pro-type" type="checkbox" id="t_onl" value="en_ligne" {% if has_online %}checked{% endif %}>
-                    <label class="form-check-label" for="t_onl">En ligne</label>
-                  </div>
+                  {% set has_online = ('en_ligne' in t) or ('visio' in t) %}
+                  <div class="form-check"><input class="form-check-input pro-type" type="checkbox" id="t_cab" value="cabinet" {% if has_cab %}checked{% endif %}><label class="form-check-label" for="t_cab">Cabinet</label></div>
+                  <div class="form-check"><input class="form-check-input pro-type" type="checkbox" id="t_dom" value="domicile" {% if has_dom %}checked{% endif %}><label class="form-check-label" for="t_dom">Domicile</label></div>
+                  <div class="form-check"><input class="form-check-input pro-type" type="checkbox" id="t_onl" value="en_ligne" {% if has_online %}checked{% endif %}><label class="form-check-label" for="t_onl">En ligne</label></div>
                   <input type="hidden" name="pro_consultation_types" id="pro_consultation_types" value="{{ t }}">
-                  <div class="form-text">Laisser vide pour ne rien changer.</div>
+                  <div class="form-text">Laisser vide pour ne pas modifier.</div>
                 </div>
               </div>
             </div>
 
+            <!-- Paramètres RDV / mise en avant -->
             <div class="row">
               <div class="col-md-3">
                 <div class="mb-3">
@@ -310,8 +286,8 @@
               <div class="col-md-3">
                 <div class="mb-3">
                   <label class="form-label">Mise en avant</label>
+                  {% set feat = (P.is_featured if P else None) %}
                   <select class="form-select" name="pro_is_featured">
-                    {% set feat = (P.is_featured if P else None) %}
                     <option value="" {{ 'selected' if feat is none else '' }}>— Ne pas changer —</option>
                     <option value="on" {{ 'selected' if feat==True else '' }}>Oui</option>
                     <option value="off" {{ 'selected' if feat==False else '' }}>Non</option>
@@ -350,14 +326,12 @@
               </div>
             </div>
 
-            <!-- Images (URL) : photo principale + 2 supplémentaires (galerie) -->
+            <!-- Images -->
             <div class="mb-3">
               <label class="form-label">Image (URL) principale</label>
               <input type="url" class="form-control" name="pro_image_url" value="{{ (P.image_url if P else '') or '' }}" placeholder="/media/profiles/xxxx.jpg ou https://...">
-              <div class="form-text">Astuce : pour téléverser un fichier image, passe par l’écran d’édition du professionnel.</div>
+              <div class="form-text">Pour téléverser un fichier image, utilisez l’écran d’édition du professionnel.</div>
             </div>
-
-            <!-- AJOUTS OPTION B : 2 emplacements supplémentaires pour la galerie -->
             <div class="row">
               <div class="col-md-6">
                 <div class="mb-3">
@@ -372,10 +346,8 @@
                 </div>
               </div>
             </div>
-            <!-- /AJOUTS OPTION B -->
-
           </div>
-          <!-- ========= /Bloc PROFIL PROFESSIONNEL ========= -->
+          <!-- ========= /PROFIL PROFESSIONNEL ========= -->
 
           <div class="d-flex justify-content-between mt-4">
             <a href="{{ url_for('admin.admin_users') }}" class="btn btn-secondary">
@@ -391,53 +363,98 @@
   </div></div>
 </div>
 
-<!-- JS : convertit en "professionnel" + gère l'affichage & sérialise les types -->
+<!-- JS : familles → filtre spécialités ; sérialisation types ; “Autre” spécialité ; toggle section pro -->
 <script>
-  (function () {
-    const btn = document.getElementById('convertToProBtn');
-    const form = document.getElementById('editUserForm');
-    const select = document.getElementById('user_type');
-    const proSection = document.getElementById('proSection');
+(function () {
+  const form = document.getElementById('editUserForm');
+  const btnConvert = document.getElementById('convertToProBtn');
+  const userType = document.getElementById('user_type');
+  const proSection = document.getElementById('proSection');
 
-    function toggleProSection() {
-      if (!proSection) return;
-      proSection.style.display = (select && select.value === 'professional') ? '' : 'none';
-    }
+  const famSel   = document.getElementById('pro_family');
+  const primSel  = document.getElementById('pro_primary_specialty_id');
+  const secSel   = document.getElementById('pro_secondary_specialty_ids');
+  const specOther= document.getElementById('pro_spec_other');
+  const newName  = document.getElementById('new_specialty_name');
+  const newFam   = document.getElementById('new_specialty_family');
+  const specLegacy = document.getElementById('pro_specialty_legacy');
 
-    if (btn && form && select) {
-      btn.addEventListener('click', function () {
-        try {
-          select.value = 'professional';
-          // Avant submit, sérialiser les types
-          serializeTypes();
-          form.submit();
-        } catch (e) {
-          console.error(e);
-        }
+  function toggleProSection() {
+    if (!proSection) return;
+    proSection.style.display = (userType && userType.value === 'professional') ? '' : 'none';
+  }
+
+  function filterByFamily() {
+    if (!famSel) return;
+    const cat = (famSel.value || '').trim();
+    [primSel, secSel].forEach(function(sel){
+      if(!sel) return;
+      let firstVisible = null;
+      Array.from(sel.options).forEach(function(opt){
+        if(!opt.value) return;
+        const ok = !cat || (String(opt.dataset.category||'') === cat);
+        opt.hidden = !ok;
+        if(ok && !firstVisible) firstVisible = opt;
       });
-    }
+      // si la sélection active n'est plus visible, reset
+      if(sel.selectedOptions.length){
+        const anyVisible = Array.from(sel.selectedOptions).some(o => !o.hidden);
+        if(!anyVisible) sel.value = '';
+      }
+    });
+  }
 
-    function serializeTypes() {
-      const checks = document.querySelectorAll('.pro-type');
-      const hidden = document.getElementById('pro_consultation_types');
-      if (!checks || !hidden) return;
-      const vals = [];
-      checks.forEach(ch => { if (ch.checked) vals.push(ch.value); });
-      // Si rien coché : on laisse tel quel pour "ne pas changer"
-      if (vals.length > 0) hidden.value = vals.join(',');
-    }
+  function serializeTypes() {
+    const checks = document.querySelectorAll('.pro-type');
+    const hidden = document.getElementById('pro_consultation_types');
+    if (!checks || !hidden) return;
+    const vals = [];
+    checks.forEach(ch => { if (ch.checked) vals.push(ch.value); });
+    if (vals.length > 0) hidden.value = vals.join(','); // sinon laisser vide (“ne pas changer”)
+  }
 
-    // Soumission normale → sérialiser types
-    if (form) {
-      form.addEventListener('submit', function () {
+  // “Autre spécialité” → legacy + création si absente
+  function handleOtherSpecialty() {
+    const other = (specOther ? specOther.value.trim() : '');
+    if (primSel && !primSel.value && other) {
+      if (specLegacy) specLegacy.value = other;        // compat backend legacy
+      if (newName)   newName.value = other;            // création
+      if (newFam)    newFam.value  = (famSel ? (famSel.value||'').trim() : '');
+    } else {
+      if (newName)   newName.value = '';
+      if (newFam)    newFam.value  = '';
+      // ne pas écraser la valeur legacy existante si Admin l’avait saisie à la main
+    }
+  }
+
+  // Init / events
+  if (btnConvert && userType) {
+    btnConvert.addEventListener('click', function () {
+      try {
+        userType.value = 'professional';
         serializeTypes();
-      });
-    }
+        handleOtherSpecialty();
+        form.submit();
+      } catch (e) { console.error(e); }
+    });
+  }
 
-    if (select) {
-      select.addEventListener('change', toggleProSection);
-      toggleProSection(); // init au chargement
-    }
-  })();
+  if (form) {
+    form.addEventListener('submit', function(){
+      serializeTypes();
+      handleOtherSpecialty();
+    });
+  }
+
+  if (userType) {
+    userType.addEventListener('change', toggleProSection);
+    toggleProSection();
+  }
+
+  if (famSel) {
+    famSel.addEventListener('change', filterByFamily);
+    filterByFamily();
+  }
+})();
 </script>
 {% endblock %}
