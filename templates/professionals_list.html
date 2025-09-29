@@ -1,36 +1,97 @@
 {% extends "base.html" %}
-{% block title %}Résultats — Professionnels{% endblock %}
+{% block title %}{{ t('search.results_title','Résultats — Professionnels') }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .pro-card{position:relative}
+  .pro-badges{position:absolute;top:.5rem;right:.5rem;display:flex;gap:.35rem;flex-wrap:wrap}
+  .pro-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .5rem;border-radius:999px;font-size:.75rem;font-weight:700;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .b-tighri{border:1.5px solid #8B5CF6}
+  .b-anthecc{border:1.5px solid #10b981}
+  .avatar-box{width:84px;height:84px;border-radius:50%;overflow:hidden;background:#eee;margin-right:.75rem;flex:0 0 84px}
+  .avatar-img{width:100%;height:100%;object-fit:cover;display:block}
+  .pill{display:inline-block;margin:.125rem .25rem 0 0;padding:.2rem .55rem;border-radius:999px;background:#f4f0ff;border:1px solid #e6dcff;font-size:.8rem;color:#4B3869}
+  .meta{color:#6c6a7a}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
-  <h1 class="h4 mb-3">Résultats de recherche</h1>
+  <h1 class="h4 mb-3">{{ t('search.results_title','Résultats de recherche') }}</h1>
+
   {% if professionals %}
     <div class="row g-3">
       {% for p in professionals %}
+        {% set tighri  = p.certified_tighri
+                         |default(p.tighri_certified
+                         |default(p.is_certified_tighri
+                         |default(false))) %}
+        {% set anthecc = p.approved_anthecc
+                         |default(p.anthecc_certified
+                         |default(p.is_certified_anthecc
+                         |default(false))) %}
+
         <div class="col-md-4">
-          <div class="card h-100">
-            <div class="card-body">
-              <h5 class="card-title mb-1">{{ p.name }}</h5>
-              <div class="text-muted mb-2">
-                {% if p.primary_specialty %}{{ p.primary_specialty.name }}
-                {% elif p.specialty %}{{ p.specialty }}
-                {% else %}Professionnel{% endif %}
-                {% if p.city %} • {{ p.city.name }}{% endif %}
-              </div>
-              <p class="card-text" style="min-height:3em">
-                {{ (p.description or '')[:120] }}{% if p.description and p.description|length>120 %}…{% endif %}
-              </p>
-              {% if p.certified_tighri %}<span class="badge text-bg-success">Certifié Tighri</span>{% endif %}
-              {% if p.approved_anthecc %}<span class="badge text-bg-warning">Agréé ANTHECC</span>{% endif %}
+          <div class="card h-100 pro-card">
+            <div class="pro-badges">
+              {% if tighri %}
+                <span class="pro-badge b-tighri" title="{{ t('badges.tighri','Certifié Tighri') }}">✓ {{ t('badges.tighri_short','Tighri') }}</span>
+              {% endif %}
+              {% if anthecc %}
+                <span class="pro-badge b-anthecc" title="{{ t('badges.anthecc','Certifié ANTHECC') }}">★ {{ t('badges.anthecc_short','ANTHECC') }}</span>
+              {% endif %}
             </div>
+
+            <div class="card-body d-flex">
+              <div class="avatar-box">
+                <img class="avatar-img"
+                     src="{{ url_for('profile_photo', professional_id=p.id) }}"
+                     alt="{{ t('alt.profile_photo','Photo de') }} {{ p.name|e }}"
+                     width="84" height="84" loading="lazy"
+                     onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
+              </div>
+
+              <div class="flex-grow-1">
+                <h5 class="card-title mb-1">
+                  <a href="{{ url_for('professional_detail', professional_id=p.id) }}" class="text-decoration-none">
+                    {{ p.name }}
+                  </a>
+                </h5>
+
+                <div class="meta mb-2">
+                  {% if p.primary_specialty %}{{ p.primary_specialty.name }}
+                  {% elif p.specialty %}{{ p.specialty }}
+                  {% else %}{{ t('labels.professional','Professionnel') }}{% endif %}
+                  {% if p.city %} • {{ p.city.name }}
+                  {% elif p.location %} • {{ p.location }}{% endif %}
+                </div>
+
+                {% set d = p.description or '' %}
+                <p class="card-text" style="min-height:3em">{{ d[:130] }}{% if d|length > 130 %}…{% endif %}</p>
+
+                <div class="mb-2">
+                  {% set types = (p.consultation_types or '') %}
+                  {% if 'cabinet' in types %}<span class="pill">{{ t('mode.cabinet','Cabinet') }}</span>{% endif %}
+                  {% if 'visio' in types or 'en_ligne' in types %}<span class="pill">{{ t('mode.visio','Visio') }}</span>{% endif %}
+                  {% if 'domicile' in types %}<span class="pill">{{ t('mode.domicile','Domicile') }}</span>{% endif %}
+                  {% if p.experience_years %}<span class="pill">{{ p.experience_years }} {{ t('labels.years','ans') }}</span>{% endif %}
+                  {% if p.consultation_fee is not none %}<span class="pill">{{ (p.consultation_fee|int) }} MAD</span>{% endif %}
+                </div>
+              </div>
+            </div>
+
             <div class="card-footer bg-white border-0">
-              <a class="btn btn-primary w-100" href="{{ url_for('professional_detail', professional_id=p.id) }}">Voir le profil</a>
+              <div class="d-grid gap-2">
+                <a class="btn btn-primary" href="{{ url_for('professional_detail', professional_id=p.id) }}">{{ t('btn.view_profile','Voir le profil') }}</a>
+                <a class="btn btn-outline-primary" href="{{ url_for('book_appointment', professional_id=p.id) }}">{{ t('btn.book','Réserver un rendez-vous') }}</a>
+              </div>
             </div>
           </div>
         </div>
       {% endfor %}
     </div>
   {% else %}
-    <div class="alert alert-info">Aucun professionnel ne correspond à votre recherche.</div>
+    <div class="alert alert-info">{{ t('results.empty','Aucun professionnel ne correspond à votre recherche.') }}</div>
   {% endif %}
 </div>
 {% endblock %}
