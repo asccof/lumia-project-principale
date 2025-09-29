@@ -76,6 +76,13 @@
   .card-mini h4{margin:.4rem 0 .1rem;color:#6D28D9;font-size:1rem}
   .card-mini p{margin:0;color:#4B3869;font-size:.9rem}
 
+  /* Badges (home) */
+  .tg-badges{display:flex;gap:.4rem;justify-content:center;flex-wrap:wrap;margin:.25rem 0}
+  .tg-badge{display:inline-block;font-size:.75rem;font-weight:700;padding:.2rem .55rem;border-radius:999px}
+  .tg-badge.tighri{background:#8B5CF6;color:#fff}
+  .tg-badge.anthecc{background:#22c55e;color:#fff}
+  .tg-badge.sm{font-size:.68rem;padding:.15rem .45rem}
+
   /* À propos / services / contact */
   .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
   .about-container{max-width:1200px;margin:0 auto;text-align:center}
@@ -225,7 +232,21 @@
                  onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
           </div>
           <h4>{{ professional.name }}</h4>
+
           <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}{{ t('labels.professional','Professionnel') }}{% endif %}</p>
+
+          {# --- BADGES vedette --- #}
+          {% if professional.certified_tighri or professional.approved_anthecc %}
+            <div class="tg-badges" aria-label="Badges">
+              {% if professional.certified_tighri %}
+                <span class="tg-badge tighri">Certifié Tighri</span>
+              {% endif %}
+              {% if professional.approved_anthecc %}
+                <span class="tg-badge anthecc">ANTHECC</span>
+              {% endif %}
+            </div>
+          {% endif %}
+
           <p>
             {% set d = professional.description or '' %}
             {{ d[:80] }}{% if d|length > 80 %}…{% endif %}
@@ -252,6 +273,19 @@
                onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
         </div>
         <h4>{{ professional.name }}</h4>
+
+        {# --- BADGES mini --- #}
+        {% if professional.certified_tighri or professional.approved_anthecc %}
+          <div class="tg-badges" aria-label="Badges">
+            {% if professional.certified_tighri %}
+              <span class="tg-badge tighri sm">Tighri</span>
+            {% endif %}
+            {% if professional.approved_anthecc %}
+              <span class="tg-badge anthecc sm">ANTHECC</span>
+            {% endif %}
+          </div>
+        {% endif %}
+
         <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}—{% endif %}</p>
         <a href="{{ url_for('professional_detail', professional_id=professional.id) }}" style="color:var(--primary);font-weight:600;text-decoration:none">{{ t('btn.view','Voir') }}</a>
       </div>
