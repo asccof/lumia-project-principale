@@ -5,16 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin · Profil — {{ professional.name }}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Font Awesome pour les icônes du bloc social/maps -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
   <style>
     .avatar-wrap{position:relative}
-    .avatar{object-fit:cover;height:240px}
+    .avatar{object-fit:cover;height:240px;cursor:zoom-in}
     .thumbs{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center;padding:.75rem}
     .thumb{width:64px;height:64px;border-radius:.5rem;overflow:hidden;background:#eee;box-shadow:0 1px 4px rgba(0,0,0,.08)}
     .thumb img{width:100%;height:100%;object-fit:cover;cursor:zoom-in;display:block}
     .badge-stack{position:absolute;top:.5rem;left:.5rem;display:flex;gap:.35rem;flex-wrap:wrap}
-    /* Lightbox admin */
     .lb-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.65);z-index:1055}
     .lb-backdrop.is-open{display:flex}
     .lb-img{max-width:92vw;max-height:92vh;border-radius:.5rem;box-shadow:0 10px 30px rgba(0,0,0,.5)}
@@ -27,7 +25,6 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h5 mb-0">Profil · {{ professional.name }}</h1>
     <div class="d-flex gap-2">
-      <!-- Liens sûrs (pas d’url_for sur endpoints encore non créés côté admin) -->
       <a class="btn btn-outline-primary" href="/admin/professionals/{{ professional.id }}/availability">Disponibilités</a>
       <a class="btn btn-outline-primary" href="/admin/professionals/{{ professional.id }}/unavailable-slots">Indisponibilités</a>
       <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_edit_product', product_id=professional.id) }}">Éditer</a>
@@ -53,8 +50,6 @@
                    |default(professional.anthecc_certified
                    |default(professional.is_certified_anthecc
                    |default(false))) %}
-  {% set sec1 = professional.image_url2 %}
-  {% set sec2 = professional.image_url3 %}
 
   <div class="row g-3">
     <div class="col-md-4">
@@ -71,16 +66,24 @@
             {% if anthecc %}<span class="badge bg-light text-dark border border-success">ANTHECC</span>{% endif %}
           </div>
         </div>
-        {% if sec1 or sec2 %}
+
+        {% if professional.image_url2 or professional.image_url3 %}
         <div class="thumbs">
-          {% if sec1 %}
-          <div class="thumb"><img class="js-zoom" src="{{ sec1 }}" data-full="{{ sec1 }}" alt="{{ professional.name|e }} — photo 2" onerror="this.style.display='none'"></div>
+          {% if professional.image_url2 %}
+          <div class="thumb"><img class="js-zoom"
+            src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
+            data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
+            alt="{{ professional.name|e }} — photo 2" onerror="this.style.display='none'"></div>
           {% endif %}
-          {% if sec2 %}
-          <div class="thumb"><img class="js-zoom" src="{{ sec2 }}" data-full="{{ sec2 }}" alt="{{ professional.name|e }} — photo 3" onerror="this.style.display='none'"></div>
+          {% if professional.image_url3 %}
+          <div class="thumb"><img class="js-zoom"
+            src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
+            data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
+            alt="{{ professional.name|e }} — photo 3" onerror="this.style.display='none'"></div>
           {% endif %}
         </div>
         {% endif %}
+
         <div class="card-body">
           <h5 class="card-title mb-1">{{ professional.name }}</h5>
           <div class="text-muted">{{ professional.specialty or (professional.primary_specialty.name if professional.primary_specialty else '-') }}</div>
@@ -110,7 +113,6 @@
         </div>
       </div>
 
-      {# ✅ Bloc Maps + Réseaux sociaux (affiche les liens même non approuvés en admin) #}
       {% include "_pro_social_block.html" %}
 
       <div class="mt-3 d-flex gap-2">
@@ -148,7 +150,7 @@
 
 </div>
 
-<!-- Lightbox (réutilisée pour avatar et miniatures) -->
+<!-- Lightbox admin -->
 <div class="lb-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
   <button class="lb-close" id="lbClose" aria-label="Fermer">✕</button>
   <img id="lbImg" class="lb-img" alt="Agrandissement">
