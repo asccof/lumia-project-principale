@@ -1,127 +1,167 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Administration Tighri{% endblock %}</title>
-    
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <style>
-        :root {
-            --primary-color: #6f42c1;
-            --secondary-color: #5a32a3;
-            --accent-color: #8b5cf6;
-            --dark-color: #1e1e1e;
-            --light-color: #f8f9fa;
-        }
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family:'Inter',sans-serif; background-color:#f8f9fa; }
-        .navbar {
-            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-            box-shadow: 0 2px 10px rgba(0,0,0,.1);
-        }
-        .navbar-brand { font-weight:700; font-size:1.5rem; color:#fff !important; }
-        .sidebar { background:#fff; box-shadow:2px 0 10px rgba(0,0,0,.1); min-height:calc(100vh - 70px); }
-        .sidebar .nav-link { color:var(--dark-color); padding:.75rem 1.5rem; border-radius:0; transition:.3s; }
-        .sidebar .nav-link:hover, .sidebar .nav-link.active { background:var(--primary-color); color:#fff; }
-        .sidebar .nav-link i { width:20px; margin-right:10px; }
-        .main-content { padding:2rem; }
-        .card { border:none; border-radius:15px; box-shadow:0 5px 20px rgba(0,0,0,.1); }
-        .card-header { background:#fff; border-bottom:1px solid #e9ecef; border-radius:15px 15px 0 0 !important; }
-        .btn-primary { background:var(--primary-color); border:none; border-radius:10px; padding:.5rem 1rem; transition:.3s; }
-        .btn-primary:hover { background:var(--secondary-color); transform:translateY(-2px); }
-        .btn-outline-primary { border-color:var(--primary-color); color:var(--primary-color); }
-        .btn-outline-primary:hover { background:var(--primary-color); border-color:var(--primary-color); color:#fff; }
-        .table th { border-top:none; font-weight:600; color:var(--dark-color); }
-        .badge.bg-primary { background-color:var(--primary-color) !important; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Administration Tighri{% endblock %}</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  {% if csrf_token is defined %}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+  {% endif %}
+
+  <style>
+    :root{
+      --primary-color:#6f42c1; --secondary-color:#5a32a3; --accent-color:#8b5cf6;
+      --dark-color:#1e1e1e; --light-color:#f8f9fa;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',sans-serif;background-color:#f8f9fa}
+    .navbar{background:linear-gradient(135deg,var(--primary-color),var(--secondary-color));box-shadow:0 2px 10px rgba(0,0,0,.1)}
+    .navbar-brand{font-weight:700;font-size:1.5rem;color:#fff !important}
+    .sidebar{background:#fff;box-shadow:2px 0 10px rgba(0,0,0,.1);min-height:calc(100vh - 70px);position:sticky;top:70px}
+    .sidebar .nav-link{color:var(--dark-color);padding:.75rem 1.5rem;border-radius:0;transition:.2s}
+    .sidebar .nav-link:hover,.sidebar .nav-link.active{background:var(--primary-color);color:#fff}
+    .sidebar .nav-link i{width:20px;margin-right:10px}
+    .main-content{padding:2rem}
+    .card{border:none;border-radius:15px;box-shadow:0 5px 20px rgba(0,0,0,.1)}
+    .card-header{background:#fff;border-bottom:1px solid #e9ecef;border-radius:15px 15px 0 0 !important}
+    .btn-primary{background:var(--primary-color);border:none;border-radius:10px;padding:.5rem 1rem;transition:.2s}
+    .btn-primary:hover{background:var(--secondary-color);transform:translateY(-2px)}
+    .btn-outline-primary{border-color:var(--primary-color);color:var(--primary-color)}
+    .btn-outline-primary:hover{background:var(--primary-color);border-color:var(--primary-color);color:#fff}
+    .table th{border-top:none;font-weight:600;color:var(--dark-color)}
+    .badge.bg-primary{background-color:var(--primary-color)!important}
+  </style>
+
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="{{ url_for('admin.admin_dashboard') }}">
-                <i class="fas fa-shield-alt me-2"></i>Administration Tighri
-            </a>
-            
-            <div class="navbar-nav ms-auto">
-                <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-user me-2"></i>{{ current_user.username }}
-                    </a>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>Profil</a></li>
-                        <li><hr class="dropdown-divider"></li>
-                        <li>
-                            <a class="dropdown-item" href="{{ url_for('admin.admin_logout') }}">
-                                <i class="fas fa-sign-out-alt me-2"></i>Déconnexion
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </nav>
-
+  <!-- Topbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <div class="col-md-3 col-lg-2 px-0">
-                <div class="sidebar">
-                    <nav class="nav flex-column">
-                        <a class="nav-link {% if request.endpoint == 'admin.admin_dashboard' %}active{% endif %}" href="{{ url_for('admin.admin_dashboard') }}">
-                            <i class="fas fa-tachometer-alt"></i>Tableau de bord
-                        </a>
-                        <a class="nav-link {% if request.endpoint == 'admin.admin_products' %}active{% endif %}" href="{{ url_for('admin.admin_products') }}">
-                            <i class="fas fa-user-md"></i>Professionnels
-                        </a>
-                        <a class="nav-link {% if request.endpoint == 'admin.admin_users' %}active{% endif %}" href="{{ url_for('admin.admin_users') }}">
-                            <i class="fas fa-users"></i>Utilisateurs
-                        </a>
-                        <a class="nav-link {% if request.endpoint == 'admin.admin_orders' %}active{% endif %}" href="{{ url_for('admin.admin_orders') }}">
-                            <i class="fas fa-calendar-check"></i>Rendez-vous
-                        </a>
-                        <!-- ✅ Nouveau bouton Classement -->
-                        <a class="nav-link {% if request.endpoint == 'admin.admin_professional_order' %}active{% endif %}" href="{{ url_for('admin.admin_professional_order') }}">
-                            <i class="fas fa-sort-amount-up-alt"></i>Classement
-                        </a>
-                        <a class="nav-link" href="https://www.tighri.com" target="_blank" rel="noopener">
-                            <i class="fas fa-external-link-alt"></i>Voir le site
-                        </a>
-                    </nav>
-                </div>
-            </div>
-            
-            <!-- Main Content -->
-            <div class="col-md-9 col-lg-10">
-                <div class="main-content">
-                    <!-- Flash Messages -->
-                    {% with messages = get_flashed_messages() %}
-                        {% if messages %}
-                            {% for message in messages %}
-                                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                    <i class="fas fa-check-circle me-2"></i>{{ message }}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                                </div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-                    
-                    {% block content %}{% endblock %}
-                </div>
-            </div>
-        </div>
-    </div>
+      <a class="navbar-brand" href="{{ url_for('admin.admin_dashboard') }}">
+        <i class="fas fa-shield-alt me-2"></i>Administration Tighri
+      </a>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    {% block extra_js %}{% endblock %}
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminTopbar">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse justify-content-end" id="adminTopbar">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
+              <i class="fas fa-user me-2"></i><span class="d-none d-sm-inline">{{ current_user.username }}</span>
+            </a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>Profil</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="{{ url_for('admin.admin_logout') }}"><i class="fas fa-sign-out-alt me-2"></i>Déconnexion</a></li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container-fluid">
+    <div class="row">
+      <!-- Sidebar -->
+      <div class="col-md-3 col-lg-2 px-0">
+        <div class="sidebar">
+          {% set ep = request.endpoint or '' %}
+          {% set pro_active = 'admin_products' in ep or 'professional' in ep %}
+          <nav class="nav flex-column">
+            <a class="nav-link {% if ep=='admin.admin_dashboard' %}active{% endif %}"
+               href="{{ url_for('admin.admin_dashboard') }}"
+               {% if ep=='admin.admin_dashboard' %}aria-current="page"{% endif %}>
+              <i class="fas fa-tachometer-alt"></i>Tableau de bord
+            </a>
+
+            <a class="nav-link {% if pro_active %}active{% endif %}"
+               href="{{ url_for('admin.admin_products') }}"
+               {% if pro_active %}aria-current="page"{% endif %}>
+              <i class="fas fa-user-md"></i>Professionnels
+            </a>
+
+            <a class="nav-link {% if ep and ep.startswith('admin.admin_users') %}active{% endif %}"
+               href="{{ url_for('admin.admin_users') }}"
+               {% if ep and ep.startswith('admin.admin_users') %}aria-current="page"{% endif %}>
+              <i class="fas fa-users"></i>Utilisateurs
+            </a>
+
+            <a class="nav-link {% if ep and ep.startswith('admin.admin_orders') %}active{% endif %}"
+               href="{{ url_for('admin.admin_orders') }}"
+               {% if ep and ep.startswith('admin.admin_orders') %}aria-current="page"{% endif %}>
+              <i class="fas fa-calendar-check"></i>Rendez-vous
+            </a>
+
+            <a class="nav-link {% if ep=='admin.admin_professional_order' %}active{% endif %}"
+               href="{{ url_for('admin.admin_professional_order') }}"
+               {% if ep=='admin.admin_professional_order' %}aria-current="page"{% endif %}>
+              <i class="fas fa-sort-amount-up-alt"></i>Classement
+            </a>
+
+            <a class="nav-link" href="https://www.tighri.com" target="_blank" rel="noopener">
+              <i class="fas fa-external-link-alt"></i>Voir le site
+            </a>
+          </nav>
+
+          {% block sidebar %}{% endblock %}
+        </div>
+      </div>
+
+      <!-- Main -->
+      <div class="col-md-9 col-lg-10">
+        <div class="main-content">
+          <!-- Flash messages (catégorisés) -->
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+              {% for cat, msg in messages %}
+                {% set cls = 'success' if cat in ['success','ok'] else ('danger' if cat in ['error','danger'] else ('warning' if cat=='warning' else 'info')) %}
+                <div class="alert alert-{{ cls }} alert-dismissible fade show" role="alert">
+                  <i class="fas fa-{% if cls=='success' %}check-circle{% elif cls=='danger' %}exclamation-triangle{% elif cls=='warning' %}exclamation-circle{% else %}info-circle{% endif %} me-2"></i>
+                  {{ msg }}
+                  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+              {% endfor %}
+            {% endif %}
+          {% endwith %}
+
+          {% block content %}{% endblock %}
+
+          {% block footer %}
+          <div class="mt-4 text-center text-muted small">
+            © {{  now().year if now is defined else (loop.cycle('', '') and  '' )  }} Tighri — Admin
+          </div>
+          {% endblock %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // Helper : récupère le token CSRF depuis la meta et l’ajoute à fetch si besoin
+    window.getCsrfToken = function(){
+      const m = document.querySelector('meta[name="csrf-token"]');
+      return m ? m.content : '';
+    };
+    window.csrfHeaders = function(h){
+      const t = window.getCsrfToken();
+      return Object.assign({'X-Requested-With':'XMLHttpRequest'}, h || {}, t ? {'X-CSRFToken': t} : {});
+    };
+  </script>
+
+  {% block extra_js %}{% endblock %}
 </body>
 </html>
