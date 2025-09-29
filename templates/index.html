@@ -83,34 +83,13 @@
   .tg-badge.anthecc{background:#22c55e;color:#fff}
   .tg-badge.sm{font-size:.68rem;padding:.15rem .45rem}
 
-  /* Thumbs secondaires (home) */
-  .thumbs{display:flex;gap:.35rem;justify-content:center;margin:.35rem 0 .2rem}
-  .thumb{width:40px;height:40px;border-radius:8px;overflow:hidden;background:#eee}
-  .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
-
-  /* À propos / services / contact */
-  .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
-  .about-container{max-width:1200px;margin:0 auto;text-align:center}
-  .about-section h2{color:var(--primary);font-size:2.2rem;margin:0 0 1rem}
-  .about-section p{color:#4B3869;font-size:1.05rem;line-height:1.8;max-width:800px;margin:0 auto 1.25rem}
-  .services-section{padding:4rem 2rem;background:var(--bg)}
-  .services-container{max-width:1200px;margin:0 auto}
-  .services-section h2{color:var(--primary);font-size:2.2rem;text-align:center;margin:0 0 2rem}
-  .services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem}
-  .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);text-align:center}
-  .service-card h3{color:#6D28D9;margin:.25rem 0 1rem}
-  .service-card p{color:#4B3869;margin:0}
-  .contact-section{background:var(--primary);color:#fff;padding:4rem 2rem;text-align:center}
-  .contact-container{max-width:800px;margin:0 auto}
-  .contact-section h2{font-size:2rem;margin:0 0 1rem}
-  .contact-section p{font-size:1.05rem;margin:0 0 1.25rem;opacity:.95}
-  .contact-info{display:flex;justify-content:center;gap:2rem;flex-wrap:wrap}
-  .contact-item{display:flex;flex-direction:column;align-items:center;gap:.35rem}
-  .contact-item strong{font-size:1.05rem}
-  .contact-actions{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin-top:1.25rem}
-  .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#fff;color:#6D28D9;border:2px solid #fff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,.18);transition:.2s}
-  .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
-  .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
+  /* Thumbnails secondaires (nouveau) */
+  .thumbs{display:flex;gap:.35rem;justify-content:center;align-items:center;margin-top:.45rem}
+  .thumb{width:40px;height:40px;border-radius:8px;overflow:hidden;background:#eee;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  .thumb-img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .thumbs-mini{display:flex;gap:.3rem;justify-content:center;margin-top:.35rem}
+  .thumb-mini{width:32px;height:32px;border-radius:7px;overflow:hidden;background:#eee;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+  .thumb-mini .thumb-img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
 
   /* Lightbox */
   .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
@@ -127,20 +106,99 @@
   </header>
 
   <div class="search-wrap">
-    {# Formulaire ... (inchangé) #}
-    <!-- ... (tout le bloc form de ta version reste inchangé) ... -->
+    {# Formulaire (desktop = inline ; mobile = panneau) #}
     <form id="tighri-search-form" class="search-bar" method="get" action="{{ url_for('professionals') }}">
-      <!-- (contenu identique à ta version, non répété ici pour compacité) -->
-      <!-- garde exactement ton formulaire tel quel -->
-      {{- caller() if false -}}
-      <!-- NB: rien d'autre ne change dans ce formulaire -->
-      <!-- ... -->
+      {# ==== q (desktop) ==== #}
+      <input class="desktop-only" type="text" name="q" id="q-desktop"
+             placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}"
+             value="{{ request.args.get('q','') }}">
+
+      {# ==== Panneau (contents en desktop) : q + Ville + Famille + Spécialité + Mode ==== #}
+      <div id="mobile-advanced-filters" aria-hidden="true">
+        <div class="adv-head"><button type="button" class="adv-close" id="advClose" aria-label="Fermer">✕</button></div>
+        <div class="adv-stack">
+          <!-- q (mobile) -->
+          <input class="mobile-only" type="text" name="q" id="q-mobile"
+                 placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}"
+                 value="{{ request.args.get('q','') }}">
+
+          <!-- Ville -->
+          {% if cities is defined and cities %}
+            <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
+              <option value="">{{ t('search.city','Ville') }}</option>
+              {% for c in cities %}
+                <option value="{{ c.id }}" {% if request.args.get('city_id')==c.id|string %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="text" name="city" placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}" value="{{ request.args.get('city','') }}">
+          {% endif %}
+
+          <!-- Famille (catégorie) -->
+          {% if families is defined and families %}
+            <select name="family" aria-label="{{ t('search.family','Famille') }}">
+              <option value="">{{ t('search.family','Famille') }}</option>
+              {% for f in families %}
+                <option value="{{ f.name }}" {% if request.args.get('family','')==f.name %}selected{% endif %}>{{ f.name }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="text" name="family" placeholder="{{ t('search.family','Famille') }}" aria-label="{{ t('search.family','Famille') }}" value="{{ request.args.get('family','') }}">
+          {% endif %}
+
+          <!-- Spécialité -->
+          {% if specialties is defined and specialties %}
+            <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
+              <option value="">{{ t('search.specialty','Spécialité') }}</option>
+              {% for s in specialties %}
+                <option value="{{ s.id }}" {% if request.args.get('specialty_id')==s.id|string %}selected{% endif %}>{{ s.name }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="text" name="specialty" placeholder="{{ t('search.specialty','Spécialité') }}" aria-label="{{ t('search.specialty','Spécialité') }}" value="{{ request.args.get('specialty','') }}">
+          {% endif %}
+
+          <!-- Mode -->
+          <select name="mode" aria-label="{{ t('search.mode','Mode') }}">
+            <option value="">{{ t('search.mode','Mode') }}</option>
+            <option value="cabinet"  {% if request.args.get('mode')=='cabinet' %}selected{% endif %}>{{ t('mode.cabinet','Cabinet') }}</option>
+            <option value="visio"    {% if request.args.get('mode')=='visio' %}selected{% endif %}>{{ t('mode.visio','Visio') }}</option>
+            <option value="domicile" {% if request.args.get('mode')=='domicile' %}selected{% endif %}>{{ t('mode.domicile','Domicile') }}</option>
+          </select>
+        </div>
+      </div>
+
+      {# ==== Actions ==== #}
+      <div class="search-actions">
+        <button id="btn-search-submit" type="submit" class="btn-icon" aria-expanded="false">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.415l-3.867-3.833zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>
+          </svg>
+          <span>{{ t('search.cta','Rechercher') }}</span>
+        </button>
+
+        <div class="form-check form-switch" style="margin:0 .25rem;">
+          <input class="form-check-input" type="checkbox" id="switch-advanced"
+                 aria-controls="mobile-advanced-filters" aria-label="Afficher les filtres"
+                 {% if request.args.get('q') or request.args.get('city') or request.args.get('city_id') or request.args.get('family') or request.args.get('specialty') or request.args.get('specialty_id') or request.args.get('mode') %}checked{% endif %}>
+          <label class="form-check-label" for="switch-advanced" style="font-size:.85rem;">Plus</label>
+        </div>
+      </div>
     </form>
   </div>
 
+  {# ======= autres sections ======= #}
   <div class="sections">
-    <!-- sections patient/pro (inchangé) -->
-    <!-- ... -->
+    <div class="section">
+      <h2>{{ t('cards.patient','Espace Patient') }}</h2>
+      <p>{{ t('cards.patient_text','Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.') }}</p>
+      <a href="{{ url_for('register') }}">{{ t('cards.patient_btn','Espace Patient') }}</a>
+    </div>
+    <div class="section">
+      <h2>{{ t('cards.pro','Espace Professionnel') }}</h2>
+      <p>{{ t('cards.pro_text','Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.') }}</p>
+      <a href="{{ url_for('professional_register') }}">{{ t('cards.pro_btn','Espace Professionnel') }}</a>
+    </div>
   </div>
 
   <div class="featured">
@@ -148,50 +206,48 @@
     {% set grid = top_professionals if top_professionals is defined else professionals %}
     <div class="professionals">
       {% for professional in grid %}
+        {% set main = professional_photo_url(professional, 1) %}
+        {% set sec1 = professional_photo_url(professional, 2) %}
+        {% set sec2 = professional_photo_url(professional, 3) %}
         <div class="professional-card">
           <div class="avatar-box">
             <img class="avatar-img js-zoom"
-                 src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-                 data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+                 src="{{ main }}"
+                 data-full="{{ main }}"
                  alt="{{ t('alt.profile_photo','Photo de') }} {{ professional.name|e }}"
                  width="96" height="96" loading="lazy"
                  onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
           </div>
 
-          {# ⇩⇩ miniatures secondaires si dispo ⇩⇩ #}
-          {% set has2 = professional.image_url2 %}
-          {% set has3 = professional.image_url3 %}
-          {% if has2 or has3 %}
-            <div class="thumbs" aria-label="Galerie">
-              {% if has2 %}
+          {# Miniatures secondaires (même zoom) #}
+          {% if sec1 or sec2 %}
+          <div class="thumbs" aria-label="Galerie">
+            {% if sec1 %}
               <div class="thumb">
-                <img class="js-zoom"
-                  src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
-                  data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
-                  alt="{{ professional.name|e }} — photo 2" loading="lazy"
-                  onerror="this.style.display='none'">
+                <img class="thumb-img js-zoom" src="{{ sec1 }}" data-full="{{ sec1 }}" alt="{{ professional.name|e }} — photo 2" loading="lazy">
               </div>
-              {% endif %}
-              {% if has3 %}
+            {% endif %}
+            {% if sec2 %}
               <div class="thumb">
-                <img class="js-zoom"
-                  src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
-                  data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
-                  alt="{{ professional.name|e }} — photo 3" loading="lazy"
-                  onerror="this.style.display='none'">
+                <img class="thumb-img js-zoom" src="{{ sec2 }}" data-full="{{ sec2 }}" alt="{{ professional.name|e }} — photo 3" loading="lazy">
               </div>
-              {% endif %}
-            </div>
+            {% endif %}
+          </div>
           {% endif %}
 
           <h4>{{ professional.name }}</h4>
 
           <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}{{ t('labels.professional','Professionnel') }}{% endif %}</p>
 
+          {# --- BADGES vedette --- #}
           {% if professional.certified_tighri or professional.approved_anthecc %}
             <div class="tg-badges" aria-label="Badges">
-              {% if professional.certified_tighri %}<span class="tg-badge tighri">Certifié Tighri</span>{% endif %}
-              {% if professional.approved_anthecc %}<span class="tg-badge anthecc">ANTHECC</span>{% endif %}
+              {% if professional.certified_tighri %}
+                <span class="tg-badge tighri">Certifié Tighri</span>
+              {% endif %}
+              {% if professional.approved_anthecc %}
+                <span class="tg-badge anthecc">ANTHECC</span>
+              {% endif %}
             </div>
           {% endif %}
 
@@ -211,48 +267,42 @@
     <h3>{{ t('other.title','Autres professionnels') }}</h3>
     <div class="hscroll">
       {% for professional in other %}
+      {% set main = professional_photo_url(professional, 1) %}
+      {% set sec1 = professional_photo_url(professional, 2) %}
+      {% set sec2 = professional_photo_url(professional, 3) %}
       <div class="card-mini">
         <div class="avatar-box">
           <img class="avatar-img js-zoom"
-               src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-               data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               src="{{ main }}"
+               data-full="{{ main }}"
                alt="{{ t('alt.profile_photo','Photo de') }} {{ professional.name|e }}"
                width="84" height="84" loading="lazy"
                onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
         </div>
 
-        {# ⇩⇩ miniatures secondaires si dispo ⇩⇩ #}
-        {% set has2 = professional.image_url2 %}
-        {% set has3 = professional.image_url3 %}
-        {% if has2 or has3 %}
-          <div class="thumbs" aria-label="Galerie">
-            {% if has2 %}
-              <div class="thumb">
-                <img class="js-zoom"
-                     src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
-                     data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
-                     alt="{{ professional.name|e }} — photo 2" loading="lazy"
-                     onerror="this.style.display='none'">
-              </div>
-            {% endif %}
-            {% if has3 %}
-              <div class="thumb">
-                <img class="js-zoom"
-                     src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
-                     data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
-                     alt="{{ professional.name|e }} — photo 3" loading="lazy"
-                     onerror="this.style.display='none'">
-              </div>
-            {% endif %}
-          </div>
+        {# miniatures secondaires sur mini-cartes #}
+        {% if sec1 or sec2 %}
+        <div class="thumbs-mini" aria-label="Galerie">
+          {% if sec1 %}
+            <div class="thumb-mini"><img class="thumb-img js-zoom" src="{{ sec1 }}" data-full="{{ sec1 }}" alt="{{ professional.name|e }} — photo 2" loading="lazy"></div>
+          {% endif %}
+          {% if sec2 %}
+            <div class="thumb-mini"><img class="thumb-img js-zoom" src="{{ sec2 }}" data-full="{{ sec2 }}" alt="{{ professional.name|e }} — photo 3" loading="lazy"></div>
+          {% endif %}
+        </div>
         {% endif %}
 
         <h4>{{ professional.name }}</h4>
 
+        {# --- BADGES mini --- #}
         {% if professional.certified_tighri or professional.approved_anthecc %}
           <div class="tg-badges" aria-label="Badges">
-            {% if professional.certified_tighri %}<span class="tg-badge tighri sm">Tighri</span>{% endif %}
-            {% if professional.approved_anthecc %}<span class="tg-badge anthecc sm">ANTHECC</span>{% endif %}
+            {% if professional.certified_tighri %}
+              <span class="tg-badge tighri sm">Tighri</span>
+            {% endif %}
+            {% if professional.approved_anthecc %}
+              <span class="tg-badge anthecc sm">ANTHECC</span>
+            {% endif %}
           </div>
         {% endif %}
 
@@ -265,18 +315,42 @@
   {% endif %}
 
   <section id="about" class="about-section">
-    <!-- inchangé -->
-    <!-- ... -->
+    <div class="about-container">
+      <h2>{{ t('about.title','À propos de Tighri') }}</h2>
+      <p>{{ t('about.p1','Tighri est la première plateforme marocaine dédiée à la santé mentale et au bien-être. Nous connectons patients et professionnels pour faciliter l\'accès à des soins psychologiques de qualité.') }}</p>
+      <p>{{ t('about.p2','Notre mission est de démocratiser l\'accès aux services de santé mentale au Maroc, dans un environnement de confiance et de sécurité.') }}</p>
+    </div>
   </section>
 
   <section id="services" class="services-section">
-    <!-- inchangé -->
-    <!-- ... -->
+    <div class="services-container">
+      <h2>{{ t('services.title','Nos Services') }}</h2>
+      <div class="services-grid">
+        <div class="service-card"><h3>{{ t('services.cabinet','Consultations en Cabinet') }}</h3><p>{{ t('services.cabinet_p','Rencontrez des professionnels en face à face.') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.home','Consultations à Domicile') }}</h3><p>{{ t('services.home_p','Certains professionnels se déplacent chez vous.') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.video','Consultations en Vidéo') }}</h3><p>{{ t('services.video_p','Consultez en ligne en toute sécurité.') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.planning','Gestion de Planning') }}</h3><p>{{ t('services.planning_p','Réservez vos créneaux, rappel 24h avant.') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.verified','Profils Vérifiés') }}</h3><p>{{ t('services.verified_p','Diplômes et identités vérifiés par Tighri.') }}</p></div>
+        <div class="service-card"><h3>{{ t('services.support','Support 24/7') }}</h3><p>{{ t('services.support_p','Nous vous accompagnons à chaque étape.') }}</p></div>
+      </div>
+    </div>
   </section>
 
   <section id="contact" class="contact-section">
-    <!-- inchangé -->
-    <!-- ... -->
+    <div class="contact-container">
+      <h2>{{ t('contact.title','Nous contacter') }}</h2>
+      <p><strong>{{ t('contact.lead_strong','Bienvenue au Centre d\'écoute et de conseil Tighri.') }}</strong><br>{{ t('contact.lead','Besoin d\'aide ou de conseils gratuits ? Contactez-nous.') }}</p>
+      <div class="contact-info" style="margin-top:1rem;">
+        <div class="contact-item"><strong>{{ t('contact.email','Email') }}</strong><span>contact@tighri.ma</span></div>
+        <div class="contact-item"><strong>{{ t('contact.phone','Téléphone') }}</strong><span>06 63 40 01 90</span></div>
+        <div class="contact-item"><strong>{{ t('contact.whatsapp','WhatsApp') }}</strong><span class="contact-badge">{{ t('contact.available','Disponible') }}</span></div>
+      </div>
+      <div class="contact-actions">
+        <a class="contact-btn" href="mailto:contact@tighri.ma?subject=Contact%20Tighri&body=Bonjour%20Tighri%2C">{{ t('contact.email_cta','✉️ Contacter par e-mail') }}</a>
+        <a class="contact-btn" href="tel:+212663400190">📞 {{ t('contact.call_cta','Appeler le') }} <span>06 63 40 01 90</span></a>
+        <a class="contact-btn" target="_blank" rel="noopener" href="https://wa.me/212663400190?text=Bonjour%20Tighri%2C%20j%E2%80%99ai%20besoin%20d%E2%80%99aide%20et%20de%20conseils.">💬 {{ t('contact.whatsapp_cta','WhatsApp direct') }}</a>
+      </div>
+    </div>
   </section>
 
   <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
@@ -285,7 +359,7 @@
   </div>
 
   <script>
-    /* Lightbox (inchangé) */
+    /* ===== Lightbox ===== */
     (function(){
       const b=document.getElementById('lbBackdrop'), img=document.getElementById('lbImg'), x=document.getElementById('lbClose');
       function open(src){ img.src=src; b.classList.add('is-open'); }
@@ -296,9 +370,79 @@
       document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close();});
     })();
 
-    /* Toggle filtres (inchangé) */
+    /* ===== Toggle filtres (MOBILE) ===== */
     (function(){
-      /* ... tout ton JS existant ici ... */
+      const panel  = document.getElementById('mobile-advanced-filters');
+      const btn    = document.getElementById('btn-search-submit');
+      const sw     = document.getElementById('switch-advanced');
+      const qDesk  = document.getElementById('q-desktop');
+      const qMob   = document.getElementById('q-mobile');
+
+      const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
+
+      function syncQState(){
+        if (isMobile()){
+          if(qDesk) qDesk.disabled = true;
+          if(qMob)  qMob.disabled  = false;
+        }else{
+          if(qDesk) qDesk.disabled = false;
+          if(qMob)  qMob.disabled  = true;
+        }
+      }
+
+      const openPanel = () => {
+        panel.classList.add('is-open');
+        panel.setAttribute('aria-hidden','false');
+        btn.setAttribute('aria-expanded','true');
+        if (sw) sw.checked = true;
+      };
+      const closePanel = () => {
+        panel.classList.remove('is-open');
+        panel.setAttribute('aria-hidden','true');
+        btn.setAttribute('aria-expanded','false');
+        if (sw) sw.checked = false;
+      };
+
+      // État initial (inclut 'family')
+      const qs = new URLSearchParams(window.location.search);
+      const hasFilters = ['q','city','city_id','family','specialty','specialty_id','mode'].some(k=>qs.get(k));
+      if (isMobile() && hasFilters) openPanel(); else closePanel();
+      syncQState();
+
+      sw && sw.addEventListener('change', function(){
+        if (!isMobile()) return;
+        this.checked ? openPanel() : closePanel();
+      });
+
+      // 1er clic (mobile) = ouvre; 2e = submit
+      btn && btn.addEventListener('click', function(e){
+        if (!isMobile()) return;
+        if (!panel.classList.contains('is-open')){
+          e.preventDefault();
+          openPanel();
+          setTimeout(()=>{ qMob && qMob.focus(); }, 0);
+        }
+      });
+
+      document.getElementById('advClose')?.addEventListener('click', ()=>{ if (isMobile()) closePanel(); });
+
+      document.addEventListener('click', (e)=>{
+        if (!isMobile()) return;
+        if (!panel.classList.contains('is-open')) return;
+        const inside = e.target.closest('#mobile-advanced-filters') || e.target.closest('#btn-search-submit') || e.target.closest('#switch-advanced');
+        if (!inside) closePanel();
+      });
+
+      document.addEventListener('keydown', (e)=>{ if (isMobile() && e.key === 'Escape' && panel.classList.contains('is-open')) closePanel(); });
+
+      window.addEventListener('resize', ()=>{
+        syncQState();
+        if (!isMobile()){
+          panel.setAttribute('aria-hidden','false');
+        }else{
+          sw && (sw.checked ? openPanel() : closePanel());
+        }
+      });
     })();
   </script>
 {% endblock %}
