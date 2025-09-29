@@ -27,8 +27,12 @@
   @media (max-width:640px){ .grid{grid-template-columns:1fr;} }
 
   .card{position:relative;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:360px;width:100%;text-align:center}
-  .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
+  .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .65rem}
   .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
+  .thumbs{display:flex;gap:.35rem;justify-content:center;align-items:center;margin:.35rem 0 .2rem}
+  .thumb{width:40px;height:40px;border-radius:8px;overflow:hidden;background:#eee;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+
   h3{margin:.4rem 0 .2rem;color:#6D28D9}
   .meta{color:#4B3869;font-size:.95rem;margin:.2rem 0}
   .desc{color:#4B3869;font-size:.95rem;margin:.35rem 0}
@@ -41,6 +45,12 @@
   .b svg{width:14px;height:14px}
   .b-tighri{border:1.5px solid #8B5CF6}
   .b-anthecc{border:1.5px solid #10b981}
+
+  /* Lightbox */
+  .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
+  .lightbox-backdrop.is-open{display:flex}
+  .lightbox-img{max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+  .lightbox-close{position:absolute;top:10px;right:10px;border:none;background:#fff;border-radius:999px;padding:.4rem .6rem;cursor:pointer}
 </style>
 {% endblock %}
 
@@ -129,6 +139,9 @@
                        |default(professional.is_certified_anthecc
                        |default(false))) %}
 
+      {% set sec1 = professional.image_url2 %}
+      {% set sec2 = professional.image_url3 %}
+
       <article class="card">
         <div class="badges">
           {% if tighri %}
@@ -153,6 +166,22 @@
                width="96" height="96" loading="lazy"
                onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
         </div>
+
+        {# Miniatures secondaires sous l'avatar (si présentes) #}
+        {% if sec1 or sec2 %}
+        <div class="thumbs" aria-label="Galerie">
+          {% if sec1 %}
+            <div class="thumb">
+              <img class="js-zoom" src="{{ sec1 }}" data-full="{{ sec1 }}" alt="{{ professional.name|e }} — photo 2" loading="lazy" onerror="this.style.display='none'">
+            </div>
+          {% endif %}
+          {% if sec2 %}
+            <div class="thumb">
+              <img class="js-zoom" src="{{ sec2 }}" data-full="{{ sec2 }}" alt="{{ professional.name|e }} — photo 3" loading="lazy" onerror="this.style.display='none'">
+            </div>
+          {% endif %}
+        </div>
+        {% endif %}
 
         <h3>{{ professional.name }}</h3>
         <div class="meta">
@@ -200,4 +229,21 @@
     });
   </script>
   {% endif %}
+
+  {# ===== Lightbox pour le zoom (même UX que la home / profil) ===== #}
+  <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
+    <button class="lightbox-close" id="lbClose" aria-label="{{ t('lightbox.close','Fermer') }}">✕</button>
+    <img id="lbImg" class="lightbox-img" alt="{{ t('lightbox.zoom_alt','Agrandissement') }}">
+  </div>
+  <script>
+    (function(){
+      const b=document.getElementById('lbBackdrop'), img=document.getElementById('lbImg'), x=document.getElementById('lbClose');
+      function open(src){ img.src=src; b.classList.add('is-open'); }
+      function close(){ b.classList.remove('is-open'); img.src=''; }
+      document.addEventListener('click',(e)=>{ const t=e.target.closest('.js-zoom'); if(!t) return;
+        e.preventDefault(); open(t.getAttribute('data-full')||t.src||'');});
+      x.addEventListener('click',close); b.addEventListener('click',(e)=>{ if(e.target===b) close();});
+      document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close();});
+    })();
+  </script>
 {% endblock %}
