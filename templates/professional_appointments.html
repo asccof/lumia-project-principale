@@ -1,121 +1,200 @@
+{# templates/professional_appointments.html #}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Voir & gérer mes RDV — Espace Pro</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
+  <title>Mes rendez-vous — Espace Pro</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body{background:#f6f6fb}
-    .badge{text-transform:capitalize}
-    .filter-bar .form-control, .filter-bar .form-select{min-width:180px}
-    .table td, .table th{vertical-align:middle}
+    body{background:#f7f5fa}
+    .page-head{background:#fff;border-radius:16px;box-shadow:0 2px 12px rgba(139,92,246,.10);padding:1rem 1.25rem;margin:1rem 0}
+    .tools{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+    .badge-dot{display:inline-flex;align-items:center;gap:.4rem}
+    .badge-dot::before{content:"";width:.5rem;height:.5rem;border-radius:50%;background:currentColor;display:inline-block}
+    .row-details{background:#faf9ff}
+    .filter-tabs .nav-link{border-radius:999px}
+    .status-badge{font-weight:600}
+    .status-en_attente{background:#fef3c7;color:#92400e}
+    .status-confirme{background:#dcfce7;color:#166534}
+    .status-annule{background:#e5e7eb;color:#374151}
+    .table > :not(caption) > * > *{vertical-align:middle}
+    .small-muted{color:#6b7280;font-size:.875rem}
   </style>
 </head>
 <body class="bg-light">
-<div class="container py-4">
+<div class="container py-3">
 
-  <!-- Header -->
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">Voir & gérer mes rendez-vous</h1>
+  <div class="d-flex justify-content-between align-items-center">
+    <h1 class="h4 mb-0">Mes rendez-vous</h1>
     <div class="d-flex gap-2">
       <a class="btn btn-outline-secondary" href="{{ url_for('professional_dashboard') }}">← Tableau de bord</a>
       <a class="btn btn-outline-dark" href="{{ url_for('logout') }}">Déconnexion</a>
     </div>
   </div>
 
-  <!-- Filtres -->
-  <form id="filters" class="filter-bar row g-2 align-items-end mb-3" method="get" action="{{ request.path }}">
-    <div class="col-sm-4 col-md-3">
-      <label class="form-label mb-1">Période</label>
-      <select class="form-select" name="period" id="f-period">
-        <option value="">Tous</option>
-        <option value="upcoming" {% if request.args.get('period')=='upcoming' %}selected{% endif %}>À venir</option>
-        <option value="past" {% if request.args.get('period')=='past' %}selected{% endif %}>Passés</option>
-      </select>
-    </div>
-    <div class="col-sm-4 col-md-3">
-      <label class="form-label mb-1">Statut</label>
-      <select class="form-select" name="status" id="f-status">
-        <option value="">Tous</option>
-        <option value="en_attente" {% if request.args.get('status')=='en_attente' %}selected{% endif %}>En attente</option>
-        <option value="confirme" {% if request.args.get('status')=='confirme' %}selected{% endif %}>Confirmé</option>
-        <option value="annule" {% if request.args.get('status')=='annule' %}selected{% endif %}>Annulé</option>
-      </select>
-    </div>
-    <div class="col-sm-4 col-md-4">
-      <label class="form-label mb-1">Recherche (nom / téléphone / e-mail)</label>
-      <input class="form-control" type="search" name="q" id="f-q" value="{{ request.args.get('q','') }}" placeholder="Rechercher…">
-    </div>
-    <div class="col-sm-12 col-md-2 d-grid gap-2 gap-md-1">
-      <button type="button" id="btn-apply" class="btn btn-primary">Filtrer</button>
-      <button type="button" id="btn-reset" class="btn btn-outline-secondary">Réinitialiser</button>
-    </div>
-  </form>
+  <div class="page-head">
+    <div class="tools">
+      <!-- Filtres -->
+      <ul class="nav nav-pills filter-tabs" id="filterTabs">
+        <li class="nav-item"><button class="nav-link active" data-filter="all">Tous</button></li>
+        <li class="nav-item"><button class="nav-link" data-filter="upcoming">À venir</button></li>
+        <li class="nav-item"><button class="nav-link" data-filter="pending">En attente</button></li>
+        <li class="nav-item"><button class="nav-link" data-filter="past">Passés</button></li>
+      </ul>
 
-  {% set _sorted = appointments|sort(attribute='appointment_date', reverse=true) %}
-  {% if _sorted %}
+      <!-- Tri -->
+      <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+        <input id="searchBox" class="form-control" placeholder="Rechercher (nom, téléphone…)" style="width:260px">
+        <select id="sortSelect" class="form-select" style="width:220px">
+          <option value="desc">Trier : plus récent en haut</option>
+          <option value="asc">Trier : plus ancien en haut</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  {% if appointments %}
     <div class="table-responsive">
-      <table class="table table-striped align-middle" id="rdv-table">
+      <table class="table align-middle bg-white shadow-sm rounded-3 overflow-hidden">
         <thead class="table-light">
           <tr>
             <th style="min-width:160px">Date & heure</th>
-            <th style="min-width:220px">Patient</th>
+            <th>Patient</th>
             <th>Type</th>
+            <th>Tarif</th>
             <th>Statut</th>
-            <th class="text-end" style="min-width:240px">Actions</th>
+            <th class="text-end" style="min-width:260px">Actions</th>
           </tr>
         </thead>
-        <tbody>
-        {% for ap in _sorted %}
-          {% set patient = ap.patient %}
-          {% set p_name = patient.username if patient else 'Patient #' ~ ap.patient_id %}
-          {% set p_phone = patient.phone if patient and patient.phone else '' %}
-          {% set p_mail  = patient.email if patient and patient.email else '' %}
+        <tbody id="apptTbody">
+        {% for ap in appointments %}
+          {# Prépare les data-attributes pour filtrage/tri #}
+          {% set ts = ap.appointment_date.timestamp() if ap.appointment_date else 0 %}
+          {% set status = ap.status or 'en_attente' %}
           <tr
-            data-status="{{ ap.status or '' }}"
-            data-date="{{ ap.appointment_date.isoformat() if ap.appointment_date else '' }}"
-            data-patient="{{ (p_name ~ ' ' ~ p_phone ~ ' ' ~ p_mail)|lower }}"
+            class="appt-row"
+            data-ts="{{ (ts * 1000) | int }}"
+            data-status="{{ status }}"
+            data-text="{{ (ap.patient.username ~ ' ' ~ (ap.patient.phone or '') ~ ' ' ~ (ap.patient.email or '')) | lower }}"
           >
             <td>
-              {{ ap.appointment_date.strftime('%d/%m/%Y %H:%M') if ap.appointment_date else '—' }}
+              <div>{{ ap.appointment_date.strftime('%d/%m/%Y %H:%M') if ap.appointment_date else '' }}</div>
+              <div class="small text-muted">
+                {% set now = namespace(val=namespace()) %} {# dummy to avoid unused #}
+                {% if ap.appointment_date %}
+                  {{ ap.appointment_date.strftime('%A') | capitalize }}
+                {% endif %}
+              </div>
             </td>
+
             <td>
-              <div class="fw-semibold">{{ p_name }}</div>
-              {% if p_phone %}<div class="text-muted small">📞 {{ p_phone }}</div>{% endif %}
-              {% if p_mail %}<div class="text-muted small">✉️ {{ p_mail }}</div>{% endif %}
+              <div class="fw-semibold">{{ ap.patient.username }}</div>
+              <div class="small-muted">
+                {% if ap.patient.phone %}📞 {{ ap.patient.phone }}{% endif %}
+                {% if ap.patient.email %}{% if ap.patient.phone %} · {% endif %}✉️ {{ ap.patient.email }}{% endif %}
+              </div>
+              <button class="btn btn-link p-0 small" type="button" data-bs-toggle="collapse" data-bs-target="#det{{ ap.id }}">
+                Détails
+              </button>
             </td>
-            <td class="text-capitalize">{{ ap.consultation_type or 'cabinet' }}</td>
+
+            <td class="text-capitalize">
+              {{ ap.consultation_type or 'cabinet' }}
+            </td>
+
             <td>
-              {% if ap.status == 'confirme' %}
-                <span class="badge bg-success">Confirmé</span>
-              {% elif ap.status == 'annule' %}
-                <span class="badge bg-secondary">Annulé</span>
-              {% else %}
-                <span class="badge bg-warning text-dark">En attente</span>
-              {% endif %}
+              {% set fee = ap.professional.consultation_fee if ap.professional else None %}
+              {{ (fee|string) ~ ' MAD' if fee is not none else '—' }}
             </td>
-            <td class="text-end text-nowrap">
-              {% if ap.status == 'en_attente' %}
-                <form class="d-inline ap-action" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='accept') }}">
-                  {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+
+            <td>
+              <span class="badge status-badge status-{{ status }}">
+                {% if status == 'confirme' %}Confirmé{% elif status == 'annule' %}Annulé{% else %}En attente{% endif %}
+              </span>
+            </td>
+
+            <td class="text-end">
+              {# CSRF token rendu dans chaque form si dispo #}
+              {% set csrf = csrf_token() if csrf_token is defined else '' %}
+
+              {% if status == 'en_attente' %}
+                <form class="d-inline" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='accept') }}">
+                  {% if csrf %}<input type="hidden" name="csrf_token" value="{{ csrf }}">{% endif %}
                   <button class="btn btn-sm btn-success">Accepter</button>
                 </form>
-                <form class="d-inline ap-action" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='reject') }}">
-                  {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-                  <button class="btn btn-sm btn-outline-secondary">Refuser</button>
-                </form>
-                <button class="btn btn-sm btn-outline-primary btn-resched" data-ap="{{ ap.id }}" data-current="{{ ap.appointment_date.isoformat() if ap.appointment_date else '' }}">Proposer un report</button>
-              {% elif ap.status == 'confirme' %}
-                <form class="d-inline ap-action" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='cancel') }}">
-                  {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-                  <button class="btn btn-sm btn-outline-danger">Annuler</button>
-                </form>
-                <button class="btn btn-sm btn-outline-primary btn-resched" data-ap="{{ ap.id }}" data-current="{{ ap.appointment_date.isoformat() if ap.appointment_date else '' }}">Proposer un report</button>
+
+                <button
+                  class="btn btn-sm btn-outline-danger"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalReason"
+                  data-action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='reject') }}"
+                  data-title="Refuser ce rendez-vous"
+                  data-label="Motif (optionnel)"
+                >Refuser</button>
+
+                <button
+                  class="btn btn-sm btn-outline-warning"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalReason"
+                  data-action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='request_reschedule') }}"
+                  data-title="Demander un report"
+                  data-label="Proposition / message au patient"
+                >Demander un report</button>
+
+              {% elif status == 'confirme' %}
+                <button
+                  class="btn btn-sm btn-outline-secondary"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalReason"
+                  data-action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='cancel') }}"
+                  data-title="Annuler ce rendez-vous"
+                  data-label="Motif d'annulation (optionnel)"
+                >Annuler</button>
+
+                <button
+                  class="btn btn-sm btn-outline-warning"
+                  data-bs-toggle="modal"
+                  data-bs-target="#modalReason"
+                  data-action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='request_reschedule') }}"
+                  data-title="Demander un report"
+                  data-label="Proposition / message au patient"
+                >Demander un report</button>
+
               {% else %}
                 <span class="text-muted small">—</span>
               {% endif %}
+            </td>
+          </tr>
+
+          <tr class="collapse row-details" id="det{{ ap.id }}">
+            <td colspan="6" class="p-3">
+              <div class="row g-3">
+                <div class="col-md-3">
+                  <div class="fw-semibold mb-1">Patient</div>
+                  <div>{{ ap.patient.username }}</div>
+                  {% if ap.patient.phone %}<div class="small-muted">📞 {{ ap.patient.phone }}</div>{% endif %}
+                  {% if ap.patient.email %}<div class="small-muted">✉️ {{ ap.patient.email }}</div>{% endif %}
+                </div>
+                <div class="col-md-3">
+                  <div class="fw-semibold mb-1">RDV</div>
+                  <div>{{ ap.appointment_date.strftime('%d/%m/%Y %H:%M') if ap.appointment_date else '' }}</div>
+                  <div class="small-muted text-capitalize">{{ ap.consultation_type or 'cabinet' }}</div>
+                  {% if ap.notes %}<div class="small mt-1">📝 {{ ap.notes }}</div>{% endif %}
+                </div>
+                <div class="col-md-6">
+                  <div class="fw-semibold mb-1">Contact rapide</div>
+                  <div class="d-flex flex-wrap gap-2">
+                    {% if ap.patient.phone %}
+                      <a class="btn btn-sm btn-outline-primary" href="tel:{{ ap.patient.phone }}">Appeler</a>
+                      <a class="btn btn-sm btn-outline-success" target="_blank" rel="noopener" href="https://wa.me/{{ ap.patient.phone|replace(' ','')|replace('+','') }}">WhatsApp</a>
+                    {% endif %}
+                    {% if ap.patient.email %}
+                      <a class="btn btn-sm btn-outline-dark" href="mailto:{{ ap.patient.email }}?subject=À propos de votre RDV">E-mail</a>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
             </td>
           </tr>
         {% endfor %}
@@ -123,135 +202,110 @@
       </table>
     </div>
   {% else %}
-    <div class="alert alert-info">Aucun rendez-vous pour le moment.</div>
+    <div class="alert alert-info shadow-sm">Aucun rendez-vous pour le moment.</div>
   {% endif %}
 </div>
 
-<!-- Modale : Proposer un report -->
-<div class="modal fade" id="reschedModal" tabindex="-1" aria-hidden="true">
+{# Modal raison / message pour refuser, annuler, demander un report #}
+<div class="modal fade" id="modalReason" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
-    <form class="modal-content" method="post" id="reschedForm">
+    <form id="reasonForm" method="post" class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Proposer un report</h5>
+        <h5 class="modal-title" id="reasonTitle">Action</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
       </div>
       <div class="modal-body">
         {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-        <input type="hidden" name="action" value="reschedule">
-        <div class="mb-3">
-          <label class="form-label">Nouvelle date & heure</label>
-          <input type="datetime-local" class="form-control" name="new_date" id="rs-newdate" required>
-          <div class="form-text">Aucun changement de statut n’est appliqué automatiquement.</div>
+        <div class="mb-2">
+          <label class="form-label" id="reasonLabel" for="reasonInput">Message</label>
+          <textarea class="form-control" name="message" id="reasonInput" rows="3" placeholder="Votre message…"></textarea>
         </div>
-        <div>
-          <label class="form-label">Message (optionnel)</label>
-          <textarea class="form-control" name="note" rows="3" placeholder="Ex: Je vous propose de décaler à demain même heure."></textarea>
-        </div>
+        <input type="hidden" name="next" value="{{ request.full_path }}">
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
-        <button class="btn btn-primary">Envoyer la proposition</button>
+        <button type="submit" class="btn btn-primary">Envoyer</button>
       </div>
     </form>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-(function(){
-  const $ = (sel, root=document)=>root.querySelector(sel);
-  const $$ = (sel, root=document)=>Array.from(root.querySelectorAll(sel));
-
-  // Confirmations douces sur les actions
-  $$('.ap-action').forEach(f=>{
-    f.addEventListener('submit', (e)=>{
-      const url = new URL(f.action, window.location.origin);
-      const act = url.searchParams.get('action') || '';
-      let msg = 'Confirmer cette action ?';
-      if (act==='accept') msg = 'Confirmer ce rendez-vous ?';
-      if (act==='reject') msg = 'Refuser ce rendez-vous ?';
-      if (act==='cancel') msg = 'Annuler ce rendez-vous ?';
-      if (!confirm(msg)) e.preventDefault();
-    });
+  // --------- Modal dynamique (raison / message)
+  const modal = document.getElementById('modalReason');
+  const form  = document.getElementById('reasonForm');
+  modal?.addEventListener('show.bs.modal', (ev) => {
+    const btn = ev.relatedTarget;
+    form.action = btn.getAttribute('data-action');
+    document.getElementById('reasonTitle').textContent = btn.getAttribute('data-title') || 'Action';
+    document.getElementById('reasonLabel').textContent = btn.getAttribute('data-label') || 'Message';
+    document.getElementById('reasonInput').value = '';
   });
 
-  // Filtres côté client (période / statut / recherche)
-  const periodSel = $('#f-period'), statusSel = $('#f-status'), qInput = $('#f-q');
-  const rows = $$('#rdv-table tbody tr');
+  // --------- Filtre / Tri / Recherche côté client (pas de changement backend)
+  const rows = Array.from(document.querySelectorAll('tr.appt-row'));
+  const tbody = document.getElementById('apptTbody');
+  const tabs = document.querySelectorAll('#filterTabs .nav-link');
+  const sortSel = document.getElementById('sortSelect');
+  const searchBox = document.getElementById('searchBox');
 
-  function applyFilters(pushURL=true){
-    const period = (periodSel?.value||'').trim();
-    const status = (statusSel?.value||'').trim();
-    const q = (qInput?.value||'').trim().toLowerCase();
-    const now = new Date();
-
-    rows.forEach(tr=>{
-      const dstr = tr.getAttribute('data-date')||'';
-      const st   = tr.getAttribute('data-status')||'';
-      const pat  = tr.getAttribute('data-patient')||'';
-      let show = true;
-
-      // period
-      if (period && dstr){
-        const d = new Date(dstr);
-        if (period==='upcoming' && d < now) show = false;
-        if (period==='past' && d >= now) show = false;
-      }
-      // status
-      if (show && status && st !== status) show = false;
-      // search
-      if (show && q && !pat.includes(q)) show = false;
-
-      tr.style.display = show ? '' : 'none';
-    });
-
-    if (pushURL){
-      const params = new URLSearchParams(window.location.search);
-      period ? params.set('period', period) : params.delete('period');
-      status ? params.set('status', status) : params.delete('status');
-      q ? params.set('q', q) : params.delete('q');
-      history.replaceState(null,'', `${location.pathname}${params.toString()?('?'+params.toString()):''}`);
-    }
+  function currentFilter(){
+    const act = document.querySelector('#filterTabs .nav-link.active');
+    return act ? act.getAttribute('data-filter') : 'all';
   }
+  function isUpcoming(ts){ return ts >= Date.now(); }
+  function isPast(ts){ return ts < Date.now(); }
 
-  $('#btn-apply')?.addEventListener('click',()=>applyFilters(true));
-  $('#btn-reset')?.addEventListener('click',()=>{
-    if (periodSel) periodSel.value='';
-    if (statusSel) statusSel.value='';
-    if (qInput) qInput.value='';
-    applyFilters(true);
-  });
-
-  // Appliquer à l'arrivée (si querystring présent)
-  applyFilters(false);
-
-  // Modale de report
-  const modalEl = $('#reschedModal');
-  const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
-  let currentApId = null;
-
-  $$('.btn-resched').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      currentApId = btn.getAttribute('data-ap');
-      const cur = btn.getAttribute('data-current');
-      const input = $('#rs-newdate');
-      if (cur && input){
-        // Normaliser pour <input type="datetime-local">
-        const dt = new Date(cur);
-        const pad = n=>String(n).padStart(2,'0');
-        const val = dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate())+'T'+pad(dt.getHours())+':'+pad(dt.getMinutes());
-        input.value = val;
-      }
-      modal && modal.show();
+  function matchFilter(row){
+    const f = currentFilter();
+    const ts = Number(row.getAttribute('data-ts') || '0');
+    const st = row.getAttribute('data-status');
+    if (f === 'pending') return st === 'en_attente';
+    if (f === 'upcoming') return isUpcoming(ts);
+    if (f === 'past') return isPast(ts);
+    return true;
+  }
+  function matchSearch(row){
+    const q = (searchBox.value || '').trim().toLowerCase();
+    if (!q) return true;
+    const text = row.getAttribute('data-text') || '';
+    return text.includes(q);
+  }
+  function applyFilterSort(){
+    const order = sortSel.value; // 'desc' or 'asc'
+    // Filter visibility
+    rows.forEach(r => {
+      r.style.display = (matchFilter(r) && matchSearch(r)) ? '' : 'none';
+      // also hide its details row if hidden
+      const det = document.getElementById('det' + r.querySelector('[data-bs-target]')?.getAttribute('data-bs-target')?.replace('#','') || '');
+      if (r.style.display === 'none' && det) det.classList.remove('show');
     });
-  });
+    // Sort visible rows by ts
+    const vis = rows.filter(r => r.style.display !== 'none');
+    vis.sort((a,b) => {
+      const ta = Number(a.getAttribute('data-ts')||'0');
+      const tb = Number(b.getAttribute('data-ts')||'0');
+      return order === 'asc' ? ta - tb : tb - ta;
+    });
+    // Re-append in sorted order, and keep each detail row adjacent
+    vis.forEach(r => {
+      const id = r.querySelector('button[data-bs-target]')?.getAttribute('data-bs-target')?.slice(1);
+      const det = id ? document.getElementById(id) : null;
+      tbody.appendChild(r);
+      if (det) tbody.appendChild(det);
+    });
+  }
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    applyFilterSort();
+  }));
+  sortSel.addEventListener('change', applyFilterSort);
+  searchBox.addEventListener('input', applyFilterSort);
 
-  $('#reschedForm')?.addEventListener('submit', function(e){
-    if (!currentApId) return; // sécurité
-    // On poste vers l’endpoint existant avec action=reschedule
-    this.action = "{{ url_for('professional_appointment_action', appointment_id=0, action='reschedule') }}".replace('0', currentApId);
-  });
-})();
+  // Init
+  applyFilterSort();
 </script>
 </body>
 </html>
