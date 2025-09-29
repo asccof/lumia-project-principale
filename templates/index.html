@@ -83,29 +83,13 @@
   .tg-badge.anthecc{background:#22c55e;color:#fff}
   .tg-badge.sm{font-size:.68rem;padding:.15rem .45rem}
 
-  /* À propos / services / contact */
-  .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
-  .about-container{max-width:1200px;margin:0 auto;text-align:center}
-  .about-section h2{color:var(--primary);font-size:2.2rem;margin:0 0 1rem}
-  .about-section p{color:#4B3869;font-size:1.05rem;line-height:1.8;max-width:800px;margin:0 auto 1.25rem}
-  .services-section{padding:4rem 2rem;background:var(--bg)}
-  .services-container{max-width:1200px;margin:0 auto}
-  .services-section h2{color:var(--primary);font-size:2.2rem;text-align:center;margin:0 0 2rem}
-  .services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem}
-  .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);text-align:center}
-  .service-card h3{color:#6D28D9;margin:.25rem 0 1rem}
-  .service-card p{color:#4B3869;margin:0}
-  .contact-section{background:var(--primary);color:#fff;padding:4rem 2rem;text-align:center}
-  .contact-container{max-width:800px;margin:0 auto}
-  .contact-section h2{font-size:2rem;margin:0 0 1rem}
-  .contact-section p{font-size:1.05rem;margin:0 0 1.25rem;opacity:.95}
-  .contact-info{display:flex;justify-content:center;gap:2rem;flex-wrap:wrap}
-  .contact-item{display:flex;flex-direction:column;align-items:center;gap:.35rem}
-  .contact-item strong{font-size:1.05rem}
-  .contact-actions{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin-top:1.25rem}
-  .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#fff;color:#6D28D9;border:2px solid #fff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,.18);transition:.2s}
-  .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
-  .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
+  /* Thumbnails secondaires (nouveau) */
+  .thumbs{display:flex;gap:.35rem;justify-content:center;align-items:center;margin-top:.45rem}
+  .thumb{width:40px;height:40px;border-radius:8px;overflow:hidden;background:#eee;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+  .thumb-img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .thumbs-mini{display:flex;gap:.3rem;justify-content:center;margin-top:.35rem}
+  .thumb-mini{width:32px;height:32px;border-radius:7px;overflow:hidden;background:#eee;box-shadow:0 1px 4px rgba(0,0,0,.05)}
+  .thumb-mini .thumb-img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
 
   /* Lightbox */
   .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
@@ -222,15 +206,35 @@
     {% set grid = top_professionals if top_professionals is defined else professionals %}
     <div class="professionals">
       {% for professional in grid %}
+        {% set main = professional_photo_url(professional, 1) %}
+        {% set sec1 = professional_photo_url(professional, 2) %}
+        {% set sec2 = professional_photo_url(professional, 3) %}
         <div class="professional-card">
           <div class="avatar-box">
             <img class="avatar-img js-zoom"
-                 src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-                 data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+                 src="{{ main }}"
+                 data-full="{{ main }}"
                  alt="{{ t('alt.profile_photo','Photo de') }} {{ professional.name|e }}"
                  width="96" height="96" loading="lazy"
                  onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
           </div>
+
+          {# Miniatures secondaires (même zoom) #}
+          {% if sec1 or sec2 %}
+          <div class="thumbs" aria-label="Galerie">
+            {% if sec1 %}
+              <div class="thumb">
+                <img class="thumb-img js-zoom" src="{{ sec1 }}" data-full="{{ sec1 }}" alt="{{ professional.name|e }} — photo 2" loading="lazy">
+              </div>
+            {% endif %}
+            {% if sec2 %}
+              <div class="thumb">
+                <img class="thumb-img js-zoom" src="{{ sec2 }}" data-full="{{ sec2 }}" alt="{{ professional.name|e }} — photo 3" loading="lazy">
+              </div>
+            {% endif %}
+          </div>
+          {% endif %}
+
           <h4>{{ professional.name }}</h4>
 
           <p>{% if professional.specialty %}{{ professional.specialty }}{% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}{% else %}{{ t('labels.professional','Professionnel') }}{% endif %}</p>
@@ -263,15 +267,31 @@
     <h3>{{ t('other.title','Autres professionnels') }}</h3>
     <div class="hscroll">
       {% for professional in other %}
+      {% set main = professional_photo_url(professional, 1) %}
+      {% set sec1 = professional_photo_url(professional, 2) %}
+      {% set sec2 = professional_photo_url(professional, 3) %}
       <div class="card-mini">
         <div class="avatar-box">
           <img class="avatar-img js-zoom"
-               src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-               data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+               src="{{ main }}"
+               data-full="{{ main }}"
                alt="{{ t('alt.profile_photo','Photo de') }} {{ professional.name|e }}"
                width="84" height="84" loading="lazy"
                onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
         </div>
+
+        {# miniatures secondaires sur mini-cartes #}
+        {% if sec1 or sec2 %}
+        <div class="thumbs-mini" aria-label="Galerie">
+          {% if sec1 %}
+            <div class="thumb-mini"><img class="thumb-img js-zoom" src="{{ sec1 }}" data-full="{{ sec1 }}" alt="{{ professional.name|e }} — photo 2" loading="lazy"></div>
+          {% endif %}
+          {% if sec2 %}
+            <div class="thumb-mini"><img class="thumb-img js-zoom" src="{{ sec2 }}" data-full="{{ sec2 }}" alt="{{ professional.name|e }} — photo 3" loading="lazy"></div>
+          {% endif %}
+        </div>
+        {% endif %}
+
         <h4>{{ professional.name }}</h4>
 
         {# --- BADGES mini --- #}
