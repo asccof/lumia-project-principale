@@ -1,317 +1,260 @@
 {% extends "base.html" %}
-
-{% block title %}{{ product.name }} - Lumia{% endblock %}
+{% block title %}{{ professional.name }} — Tighri{% endblock %}
 
 {% block content %}
-<!-- Breadcrumb -->
+<!-- Fil d'Ariane -->
 <nav aria-label="breadcrumb" class="py-3 bg-light">
-    <div class="container">
-        <ol class="breadcrumb mb-0">
-            <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Accueil</a></li>
-            <li class="breadcrumb-item"><a href="{{ url_for('professionals') }}">Professionnels</a></li>
-            <li class="breadcrumb-item"><a href="{{ url_for('professionals') }}">{{ professional.specialty|title }}</a></li>
-            <li class="breadcrumb-item active" aria-current="page">{{ product.name }}</li>
-        </ol>
-    </div>
+  <div class="container">
+    <ol class="breadcrumb mb-0">
+      <li class="breadcrumb-item"><a href="{{ url_for('index') }}">Accueil</a></li>
+      <li class="breadcrumb-item"><a href="{{ url_for('professionals') }}">Professionnels</a></li>
+      <li class="breadcrumb-item active" aria-current="page">{{ professional.name }}</li>
+    </ol>
+  </div>
 </nav>
 
-<!-- Product Detail Section -->
-<section class="py-5">
-    <div class="container">
-        <div class="row">
-            <!-- Product Images -->
-            <div class="col-lg-6 mb-4">
-                <div class="product-gallery">
-                    <div class="main-image mb-3">
-                        <img src="{{ product.image_url }}" class="img-fluid rounded-3 shadow" alt="{{ product.name }}" id="mainImage">
-                    </div>
-                    <div class="thumbnail-images d-flex gap-2">
-                        <img src="{{ product.image_url }}" class="img-thumbnail" style="width: 80px; height: 80px; object-fit: cover; cursor: pointer;" alt="{{ product.name }}" onclick="changeImage(this.src)">
-                        <img src="https://via.placeholder.com/80x80?text=Angle+2" class="img-thumbnail" style="width: 80px; height: 80px; object-fit: cover; cursor: pointer;" alt="Angle 2" onclick="changeImage(this.src)">
-                        <img src="https://via.placeholder.com/80x80?text=Angle+3" class="img-thumbnail" style="width: 80px; height: 80px; object-fit: cover; cursor: pointer;" alt="Angle 3" onclick="changeImage(this.src)">
-                        <img src="https://via.placeholder.com/80x80?text=Angle+4" class="img-thumbnail" style="width: 80px; height: 80px; object-fit: cover; cursor: pointer;" alt="Angle 4" onclick="changeImage(this.src)">
-                    </div>
-                </div>
+<section class="py-4">
+  <div class="container">
+    <div class="row g-4">
+      <!-- Galerie / Photos -->
+      <div class="col-lg-5">
+        <div class="card shadow-sm">
+          <img
+            src="{{ url_for('profile_photo', professional_id=professional.id) }}"
+            class="img-fluid rounded-top"
+            alt="Photo de {{ professional.name }}"
+            onerror="this.onerror=null;this.src='https://placehold.co/800x600?text=Photo';"
+          >
+          {% if professional.image_url2 or professional.image_url3 %}
+            <div class="p-3 border-top d-flex gap-2 flex-wrap">
+              {% if professional.image_url2 %}
+                <img src="{{ professional.image_url2 }}" alt="Photo 2"
+                     class="img-thumbnail" style="width:84px;height:84px;object-fit:cover"
+                     onerror="this.style.display='none'">
+              {% endif %}
+              {% if professional.image_url3 %}
+                <img src="{{ professional.image_url3 }}" alt="Photo 3"
+                     class="img-thumbnail" style="width:84px;height:84px;object-fit:cover"
+                     onerror="this.style.display='none'">
+              {% endif %}
             </div>
-            
-            <!-- Product Info -->
-            <div class="col-lg-6">
-                <div class="product-info">
-                    <div class="mb-3">
-                        <span class="badge bg-primary">{{ product.category|title }}</span>
-                        {% if product.stock > 0 %}
-                            <span class="badge bg-success ms-2">{{ product.stock }} en stock</span>
-                        {% else %}
-                            <span class="badge bg-danger ms-2">Rupture de stock</span>
-                        {% endif %}
-                    </div>
-                    
-                    <h1 class="mb-3">{{ product.name }}</h1>
-                    
-                    <div class="price-section mb-4">
-                        <span class="price display-4">{{ "%.2f"|format(product.price) }} €</span>
-                        <small class="text-muted d-block">Prix TTC, livraison incluse</small>
-                    </div>
-                    
-                    <div class="description mb-4">
-                        <h5>Description</h5>
-                        <p class="text-muted">{{ product.description }}</p>
-                    </div>
-                    
-                    <!-- Product Features -->
-                    <div class="features mb-4">
-                        <h5>Caractéristiques</h5>
-                        <ul class="list-unstyled">
-                            <li><i class="fas fa-check text-success me-2"></i>Design premium et moderne</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Qualité de fabrication exceptionnelle</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Garantie 2 ans incluse</li>
-                            <li><i class="fas fa-check text-success me-2"></i>Support technique disponible</li>
-                        </ul>
-                    </div>
-                    
-                    <!-- Purchase Options -->
-                    <div class="purchase-options">
-                        {% if product.stock > 0 %}
-                        <div class="row g-3 mb-4">
-                            <div class="col-md-3">
-                                <label for="quantity" class="form-label">Quantité</label>
-                                <select class="form-select" id="quantity">
-                                    {% for i in range(1, min(product.stock + 1, 11)) %}
-                                    <option value="{{ i }}">{{ i }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-9">
-                                <label class="form-label">&nbsp;</label>
-                                <div class="d-grid">
-                                    <button class="btn btn-primary btn-lg" onclick="addToCart({{ product.id }})">
-                                        <i class="fas fa-shopping-cart me-2"></i>Ajouter au panier
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="row g-2">
-                            <div class="col-md-6">
-                                <button class="btn btn-outline-primary w-100" onclick="buyNow({{ product.id }})">
-                                    <i class="fas fa-bolt me-2"></i>Acheter maintenant
-                                </button>
-                            </div>
-                            <div class="col-md-6">
-                                <button class="btn btn-outline-secondary w-100" onclick="addToWishlist({{ product.id }})">
-                                    <i class="fas fa-heart me-2"></i>Ajouter aux favoris
-                                </button>
-                            </div>
-                        </div>
-                        {% else %}
-                        <div class="alert alert-warning">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            Ce produit est actuellement en rupture de stock. 
-                            <a href="#" class="alert-link">Soyez notifié quand il sera disponible</a>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
+          {% endif %}
         </div>
-    </div>
-</section>
+      </div>
 
-<!-- Product Details Tabs -->
-<section class="py-5 bg-light">
-    <div class="container">
-        <div class="row">
-            <div class="col-lg-12">
-                <ul class="nav nav-tabs" id="productTabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="specs-tab" data-bs-toggle="tab" data-bs-target="#specs" type="button" role="tab">
-                            <i class="fas fa-list me-2"></i>Spécifications
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="reviews-tab" data-bs-toggle="tab" data-bs-target="#reviews" type="button" role="tab">
-                            <i class="fas fa-star me-2"></i>Avis (0)
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="shipping-tab" data-bs-toggle="tab" data-bs-target="#shipping" type="button" role="tab">
-                            <i class="fas fa-shipping-fast me-2"></i>Livraison
-                        </button>
-                    </li>
-                </ul>
-                
-                <div class="tab-content" id="productTabsContent">
-                    <!-- Specifications Tab -->
-                    <div class="tab-pane fade show active" id="specs" role="tabpanel">
-                        <div class="p-4">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h5>Caractéristiques techniques</h5>
-                                    <table class="table table-borderless">
-                                        <tr>
-                                            <td><strong>Marque:</strong></td>
-                                            <td>Lumia</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Modèle:</strong></td>
-                                            <td>{{ product.name }}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Catégorie:</strong></td>
-                                            <td>{{ product.category|title }}</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Prix:</strong></td>
-                                            <td>{{ "%.2f"|format(product.price) }} €</td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>Stock:</strong></td>
-                                            <td>{{ product.stock }} unités</td>
-                                        </tr>
-                                    </table>
-                                </div>
-                                <div class="col-md-6">
-                                    <h5>Informations supplémentaires</h5>
-                                    <ul class="list-unstyled">
-                                        <li><i class="fas fa-calendar me-2 text-primary"></i>Ajouté le {{ product.created_at.strftime('%d/%m/%Y') }}</li>
-                                        <li><i class="fas fa-shield-alt me-2 text-primary"></i>Garantie 2 ans</li>
-                                        <li><i class="fas fa-undo me-2 text-primary"></i>Retour sous 30 jours</li>
-                                        <li><i class="fas fa-truck me-2 text-primary"></i>Livraison gratuite</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Reviews Tab -->
-                    <div class="tab-pane fade" id="reviews" role="tabpanel">
-                        <div class="p-4">
-                            <div class="text-center py-5">
-                                <i class="fas fa-star fa-3x text-muted mb-3"></i>
-                                <h5>Aucun avis pour le moment</h5>
-                                <p class="text-muted">Soyez le premier à laisser un avis sur ce produit !</p>
-                                <button class="btn btn-primary">
-                                    <i class="fas fa-plus me-2"></i>Laisser un avis
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Shipping Tab -->
-                    <div class="tab-pane fade" id="shipping" role="tabpanel">
-                        <div class="p-4">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h5>Options de livraison</h5>
-                                    <div class="card mb-3">
-                                        <div class="card-body">
-                                            <h6><i class="fas fa-truck me-2 text-primary"></i>Livraison standard</h6>
-                                            <p class="text-muted mb-2">Livraison sous 3-5 jours ouvrés</p>
-                                            <span class="badge bg-success">Gratuit</span>
-                                        </div>
-                                    </div>
-                                    <div class="card">
-                                        <div class="card-body">
-                                            <h6><i class="fas fa-rocket me-2 text-primary"></i>Livraison express</h6>
-                                            <p class="text-muted mb-2">Livraison sous 24h</p>
-                                            <span class="badge bg-primary">9.99 €</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <h5>Informations de livraison</h5>
-                                    <ul class="list-unstyled">
-                                        <li><i class="fas fa-check text-success me-2"></i>Livraison gratuite à partir de 50€</li>
-                                        <li><i class="fas fa-check text-success me-2"></i>Suivi en temps réel</li>
-                                        <li><i class="fas fa-check text-success me-2"></i>Livraison sécurisée</li>
-                                        <li><i class="fas fa-check text-success me-2"></i>Signature requise</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+      <!-- Infos pro + RDV -->
+      <div class="col-lg-7">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <h1 class="h3 m-0">{{ professional.name }}</h1>
+          {% if professional.certified_tighri %}
+            <span class="badge text-bg-success">Certifié Tighri</span>
+          {% endif %}
+          {% if professional.approved_anthecc %}
+            <span class="badge text-bg-warning">ANTHECC</span>
+          {% endif %}
         </div>
-    </div>
-</section>
 
-<!-- Related Products -->
-<section class="py-5">
-    <div class="container">
-        <div class="section-title">
-            <h2>Produits similaires</h2>
-            <p>Découvrez d'autres produits qui pourraient vous intéresser</p>
+        <p class="text-muted mb-2">
+          {% if professional.primary_specialty %}{{ professional.primary_specialty.name }}
+          {% elif professional.specialty %}{{ professional.specialty }}
+          {% else %}Professionnel{% endif %}
+          {% if professional.city %} • {{ professional.city.name }}
+          {% elif professional.location %} • {{ professional.location }}{% endif %}
+        </p>
+
+        <div class="mb-3 d-flex flex-wrap gap-2">
+          {% set types = (professional.consultation_types or '') %}
+          {% if 'cabinet' in types %}<span class="badge text-bg-info"><i class="fas fa-building me-1"></i>Cabinet</span>{% endif %}
+          {% if 'domicile' in types %}<span class="badge text-bg-success"><i class="fas fa-home me-1"></i>Domicile</span>{% endif %}
+          {% if 'en_ligne' in types or 'visio' in types %}<span class="badge text-bg-warning"><i class="fas fa-video me-1"></i>En ligne</span>{% endif %}
+          {% if not ('cabinet' in types or 'domicile' in types or 'en_ligne' in types or 'visio' in types) %}
+            <span class="badge text-bg-secondary">Types à préciser</span>
+          {% endif %}
         </div>
-        
-        <div class="row g-4">
-            {% for i in range(4) %}
-            <div class="col-lg-3 col-md-6">
-                <div class="card product-card h-100">
-                    <img src="https://via.placeholder.com/300x200?text=Produit+{{ i+1 }}" class="card-img-top" alt="Produit similaire">
-                    <div class="card-body d-flex flex-column">
-                        <h6 class="card-title">Produit similaire {{ i+1 }}</h6>
-                        <p class="card-text text-muted">Description courte du produit similaire...</p>
-                        <div class="mt-auto">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span class="price">199.99 €</span>
-                                <span class="badge bg-success">En stock</span>
-                            </div>
-                            <a href="#" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-eye me-1"></i>Voir détails
-                            </a>
-                        </div>
-                    </div>
+
+        <ul class="list-unstyled small text-muted mb-3">
+          {% if professional.experience_years is not none %}
+            <li><i class="far fa-clock me-2"></i>{{ professional.experience_years }} an(s) d’expérience</li>
+          {% endif %}
+          {% if professional.consultation_fee is not none %}
+            <li><i class="fas fa-tag me-2"></i>Tarif indicatif : {{ '%.0f'|format(professional.consultation_fee) }} MAD</li>
+          {% endif %}
+          {% if professional.phone %}
+            <li><i class="fas fa-phone me-2"></i><a href="tel:{{ professional.phone|replace(' ','') }}">{{ professional.phone }}</a></li>
+          {% endif %}
+          {% if professional.address %}
+            <li><i class="fas fa-map-marker-alt me-2"></i>{{ professional.address }}</li>
+          {% endif %}
+        </ul>
+
+        {% if professional.description %}
+          <div class="mb-4">
+            <h2 class="h6">Présentation</h2>
+            <p class="mb-0">{{ professional.description }}</p>
+          </div>
+        {% endif %}
+
+        <!-- Liens sociaux (affichés quand approuvés) -->
+        {% if professional.social_links_approved %}
+          <div class="mb-4 d-flex flex-wrap gap-2">
+            {% if professional.facebook_url %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ professional.facebook_url }}"><i class="fab fa-facebook me-1"></i>Facebook</a>{% endif %}
+            {% if professional.instagram_url %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ professional.instagram_url }}"><i class="fab fa-instagram me-1"></i>Instagram</a>{% endif %}
+            {% if professional.tiktok_url %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ professional.tiktok_url }}"><i class="fab fa-tiktok me-1"></i>TikTok</a>{% endif %}
+            {% if professional.youtube_url %}<a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ professional.youtube_url }}"><i class="fab fa-youtube me-1"></i>YouTube</a>{% endif %}
+          </div>
+        {% endif %}
+
+        <!-- Carte / Maps -->
+        {% set maps_q = None %}
+        {% if professional.latitude is not none and professional.longitude is not none %}
+          {% set maps_q = (professional.latitude|string) ~ ',' ~ (professional.longitude|string) %}
+        {% elif professional.address %}
+          {% set maps_q = professional.address %}
+        {% elif professional.city %}
+          {% set maps_q = professional.city.name %}
+        {% elif professional.location %}
+          {% set maps_q = professional.location %}
+        {% endif %}
+        {% if maps_q %}
+          <a class="btn btn-outline-secondary btn-sm mb-3" target="_blank" rel="noopener" href="https://www.google.com/maps?q={{ maps_q|replace(' ','+') }}">
+            <i class="fas fa-map me-1"></i>Voir sur Google Maps
+          </a>
+        {% endif %}
+
+        <!-- 🗓️ Réservation : formulaire POST direct vers /book_appointment/<id> -->
+        <div class="card mt-2">
+          <div class="card-body">
+            <h2 class="h6 mb-3">Prendre rendez-vous</h2>
+            <form id="bookingForm" method="post" action="{{ url_for('book_appointment', professional_id=professional.id) }}">
+              {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+
+              <div class="row g-3">
+                <div class="col-md-5">
+                  <label class="form-label">Date</label>
+                  <input type="date" class="form-control" id="apptDate" name="appointment_date" required min="{{ (cycler).__class__.__mro__[1].__name__ is defined and '' }}">
+                  <!-- astuce min non fiable dans Jinja vanilla ; on fixera en JS -->
                 </div>
-            </div>
-            {% endfor %}
+                <div class="col-md-7">
+                  <label class="form-label">Créneau horaire</label>
+                  <div id="slotGrid" class="d-flex flex-wrap gap-2">
+                    <span class="text-muted small">Choisissez une date pour voir les créneaux…</span>
+                  </div>
+                  <input type="hidden" id="apptTime" name="appointment_time" required>
+                </div>
+
+                <div class="col-12">
+                  <label class="form-label d-block">Type de consultation</label>
+                  <div class="d-flex flex-wrap gap-3">
+                    {% set can_cab = 'cabinet' in types %}
+                    {% set can_dom = 'domicile' in types %}
+                    {% set can_vid = 'en_ligne' in types or 'visio' in types %}
+                    <label class="form-check">
+                      <input class="form-check-input" type="radio" name="consultation_type" value="cabinet" {% if can_cab %}checked{% endif %} {% if not can_cab %}disabled{% endif %}>
+                      <span class="ms-1">Cabinet</span>
+                    </label>
+                    <label class="form-check">
+                      <input class="form-check-input" type="radio" name="consultation_type" value="domicile" {% if not can_dom %}disabled{% endif %}>
+                      <span class="ms-1">Domicile</span>
+                    </label>
+                    <label class="form-check">
+                      <input class="form-check-input" type="radio" name="consultation_type" value="en_ligne" {% if not can_vid %}disabled{% endif %}>
+                      <span class="ms-1">En ligne</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div class="col-12">
+                  <label class="form-label">Notes (optionnel)</label>
+                  <textarea class="form-control" name="notes" rows="2" placeholder="Motif, précisions…"></textarea>
+                </div>
+              </div>
+
+              <div class="d-grid d-sm-flex gap-2 mt-3">
+                <button class="btn btn-primary"><i class="fas fa-calendar-check me-2"></i>Réserver</button>
+                <a class="btn btn-outline-secondary" href="{{ url_for('book_appointment', professional_id=professional.id) }}">Page de réservation</a>
+                {% if professional.phone %}
+                  <a class="btn btn-outline-secondary" href="tel:{{ professional.phone|replace(' ','') }}"><i class="fas fa-phone me-2"></i>Appeler</a>
+                {% endif %}
+              </div>
+
+              <div class="form-text mt-2">Vous devrez être connecté(e) pour valider la réservation.</div>
+            </form>
+          </div>
         </div>
+
+      </div>
     </div>
+  </div>
 </section>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-function changeImage(src) {
-    document.getElementById('mainImage').src = src;
-}
+// Min date = aujourd'hui
+(function(){
+  const d = document.getElementById('apptDate');
+  if (!d) return;
+  const today = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  const iso = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+  d.min = iso;
+  d.value = iso;
+})();
 
-function addToCart(productId) {
-    const quantity = document.getElementById('quantity').value;
-    alert(`Produit ajouté au panier ! Quantité: ${quantity}`);
-    // Ici vous pourriez implémenter la logique d'ajout au panier
-}
+// Fetch créneaux dispo (API: /api/professional/<id>/available-slots?date=YYYY-MM-DD)
+(function(){
+  const dateInput = document.getElementById('apptDate');
+  const grid = document.getElementById('slotGrid');
+  const out = document.getElementById('apptTime');
+  const proId = {{ professional.id }};
 
-function buyNow(productId) {
-    const quantity = document.getElementById('quantity').value;
-    alert(`Achat immédiat ! Quantité: ${quantity}`);
-    // Ici vous pourriez rediriger vers la page de paiement
-}
+  async function loadSlots(){
+    if(!dateInput || !grid) return;
+    const date = dateInput.value;
+    grid.innerHTML = '<span class="text-muted small">Chargement…</span>';
+    try{
+      const res = await fetch(`{{ url_for('api_available_slots', professional_id=professional.id) }}?date=${encodeURIComponent(date)}`);
+      const data = await res.json();
+      const slots = (data && data.available_slots) ? data.available_slots : [];
 
-function addToWishlist(productId) {
-    alert('Produit ajouté aux favoris !');
-    // Ici vous pourriez implémenter la logique d'ajout aux favoris
-}
+      // Filtre slots passés si la date == aujourd'hui
+      const now = new Date();
+      const isToday = (new Date(date)).toDateString() === now.toDateString();
 
-// Animation au scroll
-document.addEventListener('DOMContentLoaded', function() {
-    const elements = document.querySelectorAll('.product-info, .product-gallery');
-    
-    const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.style.opacity = '1';
-                entry.target.style.transform = 'translateY(0)';
-            }
+      grid.innerHTML = '';
+      if (!slots.length){
+        grid.innerHTML = '<span class="text-muted small">Aucun créneau disponible pour cette date.</span>';
+        out.value = '';
+        return;
+      }
+      slots.forEach(s=>{
+        let disabled = false;
+        if (isToday){
+          const [hh,mm] = s.start_time.split(':').map(Number);
+          const slotDate = new Date(); slotDate.setHours(hh,mm,0,0);
+          if (slotDate <= now) disabled = true;
+        }
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-sm ' + (disabled ? 'btn-outline-secondary' : 'btn-outline-primary');
+        btn.textContent = s.start_time;
+        btn.disabled = disabled;
+        btn.addEventListener('click', ()=>{
+          out.value = s.start_time;
+          // styling selection
+          grid.querySelectorAll('button').forEach(b=>b.classList.replace('btn-primary','btn-outline-primary'));
+          btn.classList.replace('btn-outline-primary','btn-primary');
         });
-    });
-    
-    elements.forEach(element => {
-        element.style.opacity = '0';
-        element.style.transform = 'translateY(20px)';
-        element.style.transition = 'all 0.6s ease';
-        observer.observe(element);
-    });
-});
+        grid.appendChild(btn);
+      });
+    }catch(e){
+      console.error(e);
+      grid.innerHTML = '<span class="text-danger small">Erreur lors du chargement des créneaux.</span>';
+    }
+  }
+
+  dateInput && dateInput.addEventListener('change', loadSlots);
+  loadSlots();
+})();
 </script>
-{% endblock %} 
+{% endblock %}
