@@ -8,7 +8,8 @@
       <i class="fas fa-user-tie me-2"></i>Modifier le professionnel
       <small class="text-muted">#{{ professional.id }}</small>
     </h1>
-    <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_professionals') }}">← Retour</a>
+    <!-- Retour vers la liste stable -->
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">← Retour</a>
   </div>
 
   <form method="post"
@@ -33,11 +34,11 @@
               <option value="{{ s.id }}"
                       data-category="{{ s.category or '' }}"
                       {{ 'selected' if professional.primary_specialty_id==s.id else '' }}>
-                {{ s.name }} {% if s.category %}— {{ s.category }}{% endif %}
+                {{ s.name }}{% if s.category %} — {{ s.category }}{% endif %}
               </option>
             {% endfor %}
           </select>
-          <div class="form-text">L’ancienne chaîne libre <code>specialty</code> reste en dessous (compat).</div>
+          <div class="form-text">Le champ libre <code>specialty</code> reste ci-dessous (compatibilité).</div>
         </div>
 
         <div class="col-12">
@@ -48,7 +49,7 @@
               <option value="{{ s.id }}"
                       data-category="{{ s.category or '' }}"
                       {{ 'selected' if s.id in sec_ids else '' }}>
-                {{ s.name }} {% if s.category %}— {{ s.category }}{% endif %}
+                {{ s.name }}{% if s.category %} — {{ s.category }}{% endif %}
               </option>
             {% endfor %}
           </select>
@@ -72,7 +73,7 @@
               <option value="{{ c.id }}" {{ 'selected' if professional.city_id==c.id else '' }}>{{ c.name }}</option>
             {% endfor %}
           </select>
-          <div class="form-text">L’ancien champ texte <code>location</code> reste utilisable ci-dessous.</div>
+          <div class="form-text">Le champ texte <code>location</code> reste utilisable ci-dessous.</div>
         </div>
       {% endif %}
 
@@ -130,6 +131,7 @@
         <div class="form-text">Par défaut : 15</div>
       </div>
 
+      <!-- Types -->
       <div class="col-12">
         <label class="form-label d-block">Types de consultation</label>
         {% set types = (professional.consultation_types or '') %}
@@ -145,9 +147,10 @@
           <input class="form-check-input" id="t_visio" type="checkbox" name="consultation_types" value="en_ligne" {% if 'en_ligne' in types or 'visio' in types %}checked{% endif %}>
           <label class="form-check-label" for="t_visio">En ligne</label>
         </div>
-        <div class="form-text">Le backend peut lire <code>request.form.getlist('consultation_types')</code> et joindre par “,”.</div>
+        <div class="form-text">Le backend peut faire <code>request.form.getlist('consultation_types')</code> puis <code>','.join(...)</code>.</div>
       </div>
 
+      <!-- Disponibilité / Statut -->
       <div class="col-md-6">
         <label class="form-label">Disponibilité</label>
         <select name="availability" class="form-select">
@@ -165,7 +168,7 @@
         </select>
       </div>
 
-      <!-- Mise en avant + badges -->
+      <!-- Mise en avant + Badges -->
       <div class="col-md-3">
         <label class="form-label">Mise en avant</label>
         <select name="is_featured" class="form-select">
@@ -258,7 +261,9 @@
 
     <div class="d-flex gap-2 mt-3">
       <button class="btn btn-primary"><i class="fas fa-save me-2"></i>Enregistrer</button>
-      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_professionals') }}">Annuler</a>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.admin_products') }}">Annuler</a>
+
+      {# Lien Google Maps contextuel #}
       {% set maps_q = None %}
       {% if professional.latitude is not none and professional.longitude is not none %}
         {% set maps_q = (professional.latitude|string) ~ ',' ~ (professional.longitude|string) %}
@@ -277,8 +282,7 @@
 
 {% if specialties is defined and specialties %}
 <script>
-  // (Optionnel) Filtrer les spécialités par catégorie si tu ajoutes un filtre plus tard.
-  // Ici, on conserve tout visible par défaut.
+// Placeholder si tu veux plus tard un filtrage client-side.
 </script>
 {% endif %}
 {% endblock %}
