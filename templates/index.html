@@ -10,7 +10,7 @@
   header p{margin:0 auto 1.5rem;max-width:700px;font-size:1.15rem;opacity:.95}
   .search-wrap{max-width:1100px;margin:-2.5rem auto 1rem;padding:0 1rem}
 
-  /* Desktop: barre intacte (ajout d'une colonne pour Famille) */
+  /* Desktop: barre intacte (colonne en plus pour Famille) */
   .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
   .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
   .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
@@ -20,40 +20,38 @@
   /* Mobile: on ne montre que les actions, le reste passe dans le panneau */
   @media (max-width:640px){
     .search-bar{grid-template-columns:1fr;gap:.5rem}
-    .desktop-only{display:none !important} /* cache l’input q desktop */
+    .desktop-only{display:none !important}
   }
   .search-actions{display:flex;align-items:center;gap:.5rem}
   .btn-icon{display:inline-flex;align-items:center;gap:.4rem}
   .btn-icon svg{width:16px;height:16px}
 
-  /* Panneau avancé MOBILE-ONLY (contient q + ville + famille + spécialité + mode) */
+  /* Panneau avancé MOBILE-ONLY (q + ville + famille + spécialité + mode) */
   @media (max-width:640px){
     #mobile-advanced-filters{
       overflow:hidden;max-height:0;opacity:0;transform:translateY(-4px);
       transition:max-height .28s ease,opacity .25s ease,transform .25s ease;
       background:#fff;border-radius:16px;padding:0 .5rem;box-shadow:var(--shadow)
     }
-    #mobile-advanced-filters.is-open{
-      max-height:600px;opacity:1;transform:translateY(0);padding:.5rem
-    }
+    #mobile-advanced-filters.is-open{max-height:600px;opacity:1;transform:translateY(0);padding:.5rem}
     #mobile-advanced-filters .adv-stack{display:grid;grid-template-columns:1fr;gap:.5rem}
-    /* bouton fermer mobile */
     .adv-head{display:flex;justify-content:flex-end}
     .adv-close{border:none;background:transparent;font-size:1.25rem;line-height:1;padding:.25rem .5rem;cursor:pointer;color:#6D28D9}
   }
   @media (min-width:641px){
-    /* Sur desktop, pas de panneau : on affiche inline (contents) */
     #mobile-advanced-filters{display:contents}
-    .mobile-only{display:none !important} /* cache l’input q mobile */
+    .mobile-only{display:none !important}
   }
 
-  /* le reste de tes styles inchangés */
+  /* Sections */
   .sections{display:flex;flex-wrap:wrap;justify-content:center;gap:2rem;margin:3rem 0;padding:0 2rem}
   .section{background:#fff;border-radius:18px;box-shadow:var(--shadow);padding:2.5rem;min-width:320px;max-width:400px;flex:1 1 320px;text-align:center}
   .section h2{color:var(--primary);margin:0 0 1rem}
   .section p{color:var(--muted);margin:0 0 1.5rem}
   .section a{display:inline-block;background:var(--primary);color:#fff;padding:1rem 2rem;border-radius:30px;text-decoration:none;font-weight:700}
   .section a:hover{background:var(--primary-dark)}
+
+  /* Grilles pros */
   .featured{max-width:1200px;margin:0 auto 3rem;padding:0 2rem}
   .featured h3{color:#6D28D9;margin:0 0 1.5rem;text-align:center;font-size:2rem}
   .professionals{display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:1.25rem;justify-items:center}
@@ -66,6 +64,8 @@
   .professional-card p{color:#4B3869;font-size:.95rem;margin:.35rem 0}
   .professional-card a{color:var(--primary);text-decoration:none;font-weight:600}
   .professional-card a:hover{text-decoration:underline}
+
+  /* Bandeau autre pros */
   .strip{max-width:1200px;margin:0 auto 4rem;padding:0 2rem}
   .strip h3{color:#6D28D9;margin:0 0 1rem;font-size:1.5rem}
   .hscroll{display:flex;gap:1rem;overflow-x:auto;padding-bottom:.5rem;scroll-snap-type:x mandatory}
@@ -75,6 +75,8 @@
   .card-mini .avatar-img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
   .card-mini h4{margin:.4rem 0 .1rem;color:#6D28D9;font-size:1rem}
   .card-mini p{margin:0;color:#4B3869;font-size:.9rem}
+
+  /* À propos / services / contact */
   .about-section{background:#fff;padding:4rem 2rem;margin:3rem 0}
   .about-container{max-width:1200px;margin:0 auto;text-align:center}
   .about-section h2{color:var(--primary);font-size:2.2rem;margin:0 0 1rem}
@@ -97,6 +99,8 @@
   .contact-btn{display:inline-flex;align-items:center;gap:.5rem;background:#fff;color:#6D28D9;border:2px solid #fff;padding:.8rem 1.2rem;border-radius:999px;text-decoration:none;font-weight:700;box-shadow:0 2px 8px rgba(139,92,246,.18);transition:.2s}
   .contact-btn:hover{transform:translateY(-2px);background:#f1e9ff;border-color:#8B5CF6}
   .contact-badge{display:inline-block;font-weight:700;padding:.3rem .7rem;border-radius:999px;background:#ffffff20;border:1px solid #ffffff50}
+
+  /* Lightbox */
   .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
   .lightbox-backdrop.is-open{display:flex}
   .lightbox-img{max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
@@ -113,12 +117,12 @@
   <div class="search-wrap">
     {# Formulaire (desktop = inline ; mobile = panneau) #}
     <form id="tighri-search-form" class="search-bar" method="get" action="{{ url_for('professionals') }}">
-      {# ==== Champ q (de base) — version desktop ==== #}
+      {# ==== q (desktop) ==== #}
       <input class="desktop-only" type="text" name="q" id="q-desktop"
              placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}"
              value="{{ request.args.get('q','') }}">
 
-      {# ==== PANNEAU MOBILE/DESKTOP (contents) : q + Ville + Famille + Spécialité + Mode ==== #}
+      {# ==== Panneau (contents en desktop) : q + Ville + Famille + Spécialité + Mode ==== #}
       <div id="mobile-advanced-filters" aria-hidden="true">
         <div class="adv-head"><button type="button" class="adv-close" id="advClose" aria-label="Fermer">✕</button></div>
         <div class="adv-stack">
@@ -139,21 +143,16 @@
             <input type="text" name="city" placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}" value="{{ request.args.get('city','') }}">
           {% endif %}
 
-          <!-- Famille (catégorie de spécialité) -->
+          <!-- Famille (catégorie) -->
           {% if families is defined and families %}
             <select name="family" aria-label="{{ t('search.family','Famille') }}">
               <option value="">{{ t('search.family','Famille') }}</option>
               {% for f in families %}
-                <option value="{{ f.name }}"
-                        {% if request.args.get('family','')==f.name %}selected{% endif %}>
-                  {{ f.name }}
-                </option>
+                <option value="{{ f.name }}" {% if request.args.get('family','')==f.name %}selected{% endif %}>{{ f.name }}</option>
               {% endfor %}
             </select>
           {% else %}
-            <input type="text" name="family" placeholder="{{ t('search.family','Famille') }}"
-                   aria-label="{{ t('search.family','Famille') }}"
-                   value="{{ request.args.get('family','') }}">
+            <input type="text" name="family" placeholder="{{ t('search.family','Famille') }}" aria-label="{{ t('search.family','Famille') }}" value="{{ request.args.get('family','') }}">
           {% endif %}
 
           <!-- Spécialité -->
@@ -161,10 +160,7 @@
             <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
               <option value="">{{ t('search.specialty','Spécialité') }}</option>
               {% for s in specialties %}
-                <option value="{{ s.id }}"
-                        {% if request.args.get('specialty_id')==s.id|string %}selected{% endif %}>
-                  {{ s.name }}
-                </option>
+                <option value="{{ s.id }}" {% if request.args.get('specialty_id')==s.id|string %}selected{% endif %}>{{ s.name }}</option>
               {% endfor %}
             </select>
           {% else %}
@@ -181,10 +177,9 @@
         </div>
       </div>
 
-      {# ==== Actions (bouton + switch) ==== #}
+      {# ==== Actions ==== #}
       <div class="search-actions">
         <button id="btn-search-submit" type="submit" class="btn-icon" aria-expanded="false">
-          <!-- loupe -->
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.415l-3.867-3.833zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>
           </svg>
@@ -201,7 +196,7 @@
     </form>
   </div>
 
-  {# ======= le reste de ta page (inchangé) ======= #}
+  {# ======= autres sections ======= #}
   <div class="sections">
     <div class="section">
       <h2>{{ t('cards.patient','Espace Patient') }}</h2>
@@ -310,7 +305,7 @@
   </div>
 
   <script>
-    /* ===== Lightbox (inchangé) ===== */
+    /* ===== Lightbox ===== */
     (function(){
       const b=document.getElementById('lbBackdrop'), img=document.getElementById('lbImg'), x=document.getElementById('lbClose');
       function open(src){ img.src=src; b.classList.add('is-open'); }
@@ -323,7 +318,6 @@
 
     /* ===== Toggle filtres (MOBILE) ===== */
     (function(){
-      const form   = document.getElementById('tighri-search-form');
       const panel  = document.getElementById('mobile-advanced-filters');
       const btn    = document.getElementById('btn-search-submit');
       const sw     = document.getElementById('switch-advanced');
@@ -355,37 +349,29 @@
         if (sw) sw.checked = false;
       };
 
-      // État initial selon URL (ajout 'family')
+      // État initial (inclut 'family')
       const qs = new URLSearchParams(window.location.search);
       const hasFilters = ['q','city','city_id','family','specialty','specialty_id','mode'].some(k=>qs.get(k));
       if (isMobile() && hasFilters) openPanel(); else closePanel();
       syncQState();
 
-      // Switch
       sw && sw.addEventListener('change', function(){
         if (!isMobile()) return;
         this.checked ? openPanel() : closePanel();
       });
 
-      // Bouton : 1er clic ouvre (mobile), 2e clic soumet
+      // 1er clic (mobile) = ouvre; 2e = submit
       btn && btn.addEventListener('click', function(e){
-        if (!isMobile()) return; // desktop: submit normal
-        const isOpen = panel.classList.contains('is-open');
-        if (!isOpen){
+        if (!isMobile()) return;
+        if (!panel.classList.contains('is-open')){
           e.preventDefault();
           openPanel();
-          // focus q mobile
           setTimeout(()=>{ qMob && qMob.focus(); }, 0);
         }
-        // si déjà ouvert -> laisser soumettre
       });
 
-      // Bouton fermer (✕)
-      document.getElementById('advClose')?.addEventListener('click', ()=>{
-        if (isMobile()) closePanel();
-      });
+      document.getElementById('advClose')?.addEventListener('click', ()=>{ if (isMobile()) closePanel(); });
 
-      // Tap dehors pour fermer
       document.addEventListener('click', (e)=>{
         if (!isMobile()) return;
         if (!panel.classList.contains('is-open')) return;
@@ -393,19 +379,13 @@
         if (!inside) closePanel();
       });
 
-      // Escape pour fermer
-      document.addEventListener('keydown', (e)=>{
-        if (isMobile() && e.key === 'Escape' && panel.classList.contains('is-open')) closePanel();
-      });
+      document.addEventListener('keydown', (e)=>{ if (isMobile() && e.key === 'Escape' && panel.classList.contains('is-open')) closePanel(); });
 
-      // Resize : resynchroniser
       window.addEventListener('resize', ()=>{
         syncQState();
         if (!isMobile()){
-          // desktop: panneau "virtuel"
           panel.setAttribute('aria-hidden','false');
         }else{
-          // mobile: refermer si switch OFF
           sw && (sw.checked ? openPanel() : closePanel());
         }
       });
