@@ -3,40 +3,88 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mes rendez-vous — Espace Pro</title>
+  <title>Voir & gérer mes RDV — Espace Pro</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    body{background:#f6f6fb}
+    .badge{text-transform:capitalize}
+    .filter-bar .form-control, .filter-bar .form-select{min-width:180px}
+    .table td, .table th{vertical-align:middle}
+  </style>
 </head>
 <body class="bg-light">
 <div class="container py-4">
+
+  <!-- Header -->
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h1 class="h4 mb-0">Mes rendez-vous</h1>
+    <h1 class="h4 mb-0">Voir & gérer mes rendez-vous</h1>
     <div class="d-flex gap-2">
       <a class="btn btn-outline-secondary" href="{{ url_for('professional_dashboard') }}">← Tableau de bord</a>
       <a class="btn btn-outline-dark" href="{{ url_for('logout') }}">Déconnexion</a>
     </div>
   </div>
 
-  {% if appointments %}
+  <!-- Filtres -->
+  <form id="filters" class="filter-bar row g-2 align-items-end mb-3" method="get" action="{{ request.path }}">
+    <div class="col-sm-4 col-md-3">
+      <label class="form-label mb-1">Période</label>
+      <select class="form-select" name="period" id="f-period">
+        <option value="">Tous</option>
+        <option value="upcoming" {% if request.args.get('period')=='upcoming' %}selected{% endif %}>À venir</option>
+        <option value="past" {% if request.args.get('period')=='past' %}selected{% endif %}>Passés</option>
+      </select>
+    </div>
+    <div class="col-sm-4 col-md-3">
+      <label class="form-label mb-1">Statut</label>
+      <select class="form-select" name="status" id="f-status">
+        <option value="">Tous</option>
+        <option value="en_attente" {% if request.args.get('status')=='en_attente' %}selected{% endif %}>En attente</option>
+        <option value="confirme" {% if request.args.get('status')=='confirme' %}selected{% endif %}>Confirmé</option>
+        <option value="annule" {% if request.args.get('status')=='annule' %}selected{% endif %}>Annulé</option>
+      </select>
+    </div>
+    <div class="col-sm-4 col-md-4">
+      <label class="form-label mb-1">Recherche (nom / téléphone / e-mail)</label>
+      <input class="form-control" type="search" name="q" id="f-q" value="{{ request.args.get('q','') }}" placeholder="Rechercher…">
+    </div>
+    <div class="col-sm-12 col-md-2 d-grid gap-2 gap-md-1">
+      <button type="button" id="btn-apply" class="btn btn-primary">Filtrer</button>
+      <button type="button" id="btn-reset" class="btn btn-outline-secondary">Réinitialiser</button>
+    </div>
+  </form>
+
+  {% set _sorted = appointments|sort(attribute='appointment_date', reverse=true) %}
+  {% if _sorted %}
     <div class="table-responsive">
-      <table class="table table-striped align-middle">
+      <table class="table table-striped align-middle" id="rdv-table">
         <thead class="table-light">
           <tr>
-            <th>Date & heure</th>
-            <th>Patient</th>
+            <th style="min-width:160px">Date & heure</th>
+            <th style="min-width:220px">Patient</th>
             <th>Type</th>
             <th>Statut</th>
-            <th class="text-end">Actions</th>
+            <th class="text-end" style="min-width:240px">Actions</th>
           </tr>
         </thead>
         <tbody>
-        {% for ap in appointments %}
-          <tr>
-            <td>{{ ap.appointment_date.strftime('%d/%m/%Y %H:%M') if ap.appointment_date else '' }}</td>
+        {% for ap in _sorted %}
+          {% set patient = ap.patient %}
+          {% set p_name = patient.username if patient else 'Patient #' ~ ap.patient_id %}
+          {% set p_phone = patient.phone if patient and patient.phone else '' %}
+          {% set p_mail  = patient.email if patient and patient.email else '' %}
+          <tr
+            data-status="{{ ap.status or '' }}"
+            data-date="{{ ap.appointment_date.isoformat() if ap.appointment_date else '' }}"
+            data-patient="{{ (p_name ~ ' ' ~ p_phone ~ ' ' ~ p_mail)|lower }}"
+          >
             <td>
-              {{ ap.patient.username }}
-              {% if ap.patient.phone %}
-                <div class="text-muted small">📞 {{ ap.patient.phone }}</div>
-              {% endif %}
+              {{ ap.appointment_date.strftime('%d/%m/%Y %H:%M') if ap.appointment_date else '—' }}
+            </td>
+            <td>
+              <div class="fw-semibold">{{ p_name }}</div>
+              {% if p_phone %}<div class="text-muted small">📞 {{ p_phone }}</div>{% endif %}
+              {% if p_mail %}<div class="text-muted small">✉️ {{ p_mail }}</div>{% endif %}
             </td>
             <td class="text-capitalize">{{ ap.consultation_type or 'cabinet' }}</td>
             <td>
@@ -48,16 +96,23 @@
                 <span class="badge bg-warning text-dark">En attente</span>
               {% endif %}
             </td>
-            <td class="text-end">
+            <td class="text-end text-nowrap">
               {% if ap.status == 'en_attente' %}
-                <form class="d-inline" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='accept') }}">
+                <form class="d-inline ap-action" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='accept') }}">
+                  {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
                   <button class="btn btn-sm btn-success">Accepter</button>
                 </form>
-                <form class="d-inline" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='reject') }}">
+                <form class="d-inline ap-action" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='reject') }}">
+                  {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
                   <button class="btn btn-sm btn-outline-secondary">Refuser</button>
                 </form>
+                <button class="btn btn-sm btn-outline-primary btn-resched" data-ap="{{ ap.id }}" data-current="{{ ap.appointment_date.isoformat() if ap.appointment_date else '' }}">Proposer un report</button>
               {% elif ap.status == 'confirme' %}
-                <span class="text-muted small">Aucune action</span>
+                <form class="d-inline ap-action" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='cancel') }}">
+                  {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                  <button class="btn btn-sm btn-outline-danger">Annuler</button>
+                </form>
+                <button class="btn btn-sm btn-outline-primary btn-resched" data-ap="{{ ap.id }}" data-current="{{ ap.appointment_date.isoformat() if ap.appointment_date else '' }}">Proposer un report</button>
               {% else %}
                 <span class="text-muted small">—</span>
               {% endif %}
@@ -71,5 +126,132 @@
     <div class="alert alert-info">Aucun rendez-vous pour le moment.</div>
   {% endif %}
 </div>
+
+<!-- Modale : Proposer un report -->
+<div class="modal fade" id="reschedModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" method="post" id="reschedForm">
+      <div class="modal-header">
+        <h5 class="modal-title">Proposer un report</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button>
+      </div>
+      <div class="modal-body">
+        {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <input type="hidden" name="action" value="reschedule">
+        <div class="mb-3">
+          <label class="form-label">Nouvelle date & heure</label>
+          <input type="datetime-local" class="form-control" name="new_date" id="rs-newdate" required>
+          <div class="form-text">Aucun changement de statut n’est appliqué automatiquement.</div>
+        </div>
+        <div>
+          <label class="form-label">Message (optionnel)</label>
+          <textarea class="form-control" name="note" rows="3" placeholder="Ex: Je vous propose de décaler à demain même heure."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button class="btn btn-primary">Envoyer la proposition</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+(function(){
+  const $ = (sel, root=document)=>root.querySelector(sel);
+  const $$ = (sel, root=document)=>Array.from(root.querySelectorAll(sel));
+
+  // Confirmations douces sur les actions
+  $$('.ap-action').forEach(f=>{
+    f.addEventListener('submit', (e)=>{
+      const url = new URL(f.action, window.location.origin);
+      const act = url.searchParams.get('action') || '';
+      let msg = 'Confirmer cette action ?';
+      if (act==='accept') msg = 'Confirmer ce rendez-vous ?';
+      if (act==='reject') msg = 'Refuser ce rendez-vous ?';
+      if (act==='cancel') msg = 'Annuler ce rendez-vous ?';
+      if (!confirm(msg)) e.preventDefault();
+    });
+  });
+
+  // Filtres côté client (période / statut / recherche)
+  const periodSel = $('#f-period'), statusSel = $('#f-status'), qInput = $('#f-q');
+  const rows = $$('#rdv-table tbody tr');
+
+  function applyFilters(pushURL=true){
+    const period = (periodSel?.value||'').trim();
+    const status = (statusSel?.value||'').trim();
+    const q = (qInput?.value||'').trim().toLowerCase();
+    const now = new Date();
+
+    rows.forEach(tr=>{
+      const dstr = tr.getAttribute('data-date')||'';
+      const st   = tr.getAttribute('data-status')||'';
+      const pat  = tr.getAttribute('data-patient')||'';
+      let show = true;
+
+      // period
+      if (period && dstr){
+        const d = new Date(dstr);
+        if (period==='upcoming' && d < now) show = false;
+        if (period==='past' && d >= now) show = false;
+      }
+      // status
+      if (show && status && st !== status) show = false;
+      // search
+      if (show && q && !pat.includes(q)) show = false;
+
+      tr.style.display = show ? '' : 'none';
+    });
+
+    if (pushURL){
+      const params = new URLSearchParams(window.location.search);
+      period ? params.set('period', period) : params.delete('period');
+      status ? params.set('status', status) : params.delete('status');
+      q ? params.set('q', q) : params.delete('q');
+      history.replaceState(null,'', `${location.pathname}${params.toString()?('?'+params.toString()):''}`);
+    }
+  }
+
+  $('#btn-apply')?.addEventListener('click',()=>applyFilters(true));
+  $('#btn-reset')?.addEventListener('click',()=>{
+    if (periodSel) periodSel.value='';
+    if (statusSel) statusSel.value='';
+    if (qInput) qInput.value='';
+    applyFilters(true);
+  });
+
+  // Appliquer à l'arrivée (si querystring présent)
+  applyFilters(false);
+
+  // Modale de report
+  const modalEl = $('#reschedModal');
+  const modal = modalEl ? new bootstrap.Modal(modalEl) : null;
+  let currentApId = null;
+
+  $$('.btn-resched').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      currentApId = btn.getAttribute('data-ap');
+      const cur = btn.getAttribute('data-current');
+      const input = $('#rs-newdate');
+      if (cur && input){
+        // Normaliser pour <input type="datetime-local">
+        const dt = new Date(cur);
+        const pad = n=>String(n).padStart(2,'0');
+        const val = dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate())+'T'+pad(dt.getHours())+':'+pad(dt.getMinutes());
+        input.value = val;
+      }
+      modal && modal.show();
+    });
+  });
+
+  $('#reschedForm')?.addEventListener('submit', function(e){
+    if (!currentApId) return; // sécurité
+    // On poste vers l’endpoint existant avec action=reschedule
+    this.action = "{{ url_for('professional_appointment_action', appointment_id=0, action='reschedule') }}".replace('0', currentApId);
+  });
+})();
+</script>
 </body>
 </html>
