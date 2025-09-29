@@ -358,9 +358,17 @@ def _avatar_fallback_response():
 # =========================
 #   LISTES (ORM + seeds)
 # =========================
+# → on lit les vraies données étendues depuis seeds_taxonomy (contrat-fix)
 try:
-    from seeds_taxonomy import ALL_CITIES as SEED_CITIES, ALL_SPECIALTIES as SEED_SPECIALTIES
+    from seeds_taxonomy import (
+        SPECIALTY_FAMILIES,
+        CITY_OBJECTS,
+        ALL_CITIES as SEED_CITIES,
+        ALL_SPECIALTIES as SEED_SPECIALTIES,
+    )
 except Exception:
+    SPECIALTY_FAMILIES = []
+    CITY_OBJECTS = []
     SEED_CITIES = ["Casablanca", "Rabat", "Marrakech", "Fès", "Tanger", "Agadir"]
     SEED_SPECIALTIES = [
         "Psychologue", "Psychiatre", "Psychothérapeute", "Coach",
@@ -375,7 +383,7 @@ def _ui_cities():
         return []
 
 def _ui_specialties():
-    """Liste pour les selects/datalists (id, name)."""
+    """Liste pour les selects/datalists (id, name, category)."""
     try:
         return [{"id": s.id, "name": s.name, "category": s.category} for s in Specialty.query.order_by(Specialty.name.asc()).all()]
     except Exception:
@@ -400,7 +408,7 @@ def _ui_families_rows():
 
 @app.context_processor
 def inject_taxonomies_for_forms():
-    # Datalists universelles pour tes templates (inscription/édition) en fallback
+    # Datalists universelles (fallback) — les selects utilisent l’ORM
     return {
         "ALL_CITIES": SEED_CITIES,
         "ALL_SPECIALTIES": SEED_SPECIALTIES,
@@ -1428,10 +1436,63 @@ def server_error(e):
     return render_template("errors/500.html"), 500
 
 # =========================
-#   BOOT (migrations légères + admin seed)
+#   BOOT (migrations légères + admin seed + TAXONOMIE)
 # =========================
+def _bootstrap_taxonomy():
+    """
+    Insère/complète villes et spécialités (avec catégorie=famille) depuis seeds_taxonomy.
+    Idempotent, sans supprimer l’existant.
+    """
+    inserted_cities = 0
+    inserted_specs = 0
+    updated_categ = 0
+
+    # --- Cities ---
+    try:
+        for obj in CITY_OBJECTS:
+            name = (obj.get("name_fr") or obj.get("name") or "").strip()
+            if not name:
+                continue
+            exists = City.query.filter(db.func.lower(City.name) == name.lower()).first()
+            if not exists:
+                db.session.add(City(name=name))
+                inserted_cities += 1
+    except Exception as e:
+        current_app.logger.warning("Bootstrap villes: %s", e)
+
+    # --- Specialties ---
+    try:
+        for fam in SPECIALTY_FAMILIES:
+            cat = (fam.get("name_fr") or "").strip()
+            for sp in fam.get("specialties", []):
+                sp_name = (sp.get("name_fr") or sp.get("name") or "").strip()
+                if not sp_name:
+                    continue
+                row = Specialty.query.filter(db.func.lower(Specialty.name) == sp_name.lower()).first()
+                if not row:
+                    db.session.add(Specialty(name=sp_name, category=cat))
+                    inserted_specs += 1
+                else:
+                    # si la catégorie est vide côté DB, la compléter
+                    if not (row.category or "").strip():
+                        row.category = cat
+                        updated_categ += 1
+    except Exception as e:
+        current_app.logger.warning("Bootstrap spécialités: %s", e)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.warning("Bootstrap taxonomy commit: %s", e)
+
+    current_app.logger.info(
+        "Taxonomy seed → villes +%d, spécialités +%d, catégories complétées %d",
+        inserted_cities, inserted_specs, updated_categ
+    )
+
 with app.app_context():
-    db.create_all()  # crée tables selon models.py (users, professionals, cities(name), specialties(name, category), pivot, etc.)
+    db.create_all()  # crée tables selon models.py
     try:
         stmts = [
             # colonnes additionnelles (idempotent)
@@ -1460,7 +1521,7 @@ with app.app_context():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;",
 
-            # FK facultatives (les tables cities / specialties existent via db.create_all)
+            # FK facultatives
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER REFERENCES cities(id) ON DELETE SET NULL;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER REFERENCES specialties(id) ON DELETE SET NULL;",
         ]
@@ -1470,19 +1531,28 @@ with app.app_context():
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
 
-    # seed minimal si vide (pour que les listes existent)
-    if Specialty.query.count() == 0:
-        for name in SEED_SPECIALTIES:
-            db.session.add(Specialty(name=name))
-        db.session.commit()
-    if City.query.count() == 0:
-        for name in SEED_CITIES:
-            try:
-                db.session.add(City(name=name))
-            except Exception:
-                pass
-        db.session.commit()
+    # --- Taxonomy étendue (familles/spécialités/villes)
+    try:
+        _bootstrap_taxonomy()
+    except Exception as e:
+        app.logger.warning("Bootstrap taxonomy failed, fallback minimal: %s", e)
+        # Fallback minimal si jamais seeds_taxonomy introuvable
+        if Specialty.query.count() == 0:
+            for name in SEED_SPECIALTIES:
+                try:
+                    db.session.add(Specialty(name=name))
+                except Exception:
+                    pass
+            db.session.commit()
+        if City.query.count() == 0:
+            for name in SEED_CITIES:
+                try:
+                    db.session.add(City(name=name))
+                except Exception:
+                    pass
+            db.session.commit()
 
+    # --- Admin par défaut
     admin_username = os.environ.get("ADMIN_USERNAME", "admin")
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@tighri.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
