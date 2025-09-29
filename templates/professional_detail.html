@@ -43,12 +43,10 @@
   @media (max-width:700px){ .gallery{grid-template-columns:1fr 1fr} }
   .gimg{aspect-ratio:1/1;border-radius:12px;object-fit:cover;background:#eee;width:100%;cursor:zoom-in}
 
-  /* Thumbs sous la photo principale */
   .thumbs{display:flex;gap:.4rem;justify-content:center;margin:.6rem 0 0}
   .thumb{width:64px;height:64px;border-radius:10px;overflow:hidden;background:#eee}
   .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
 
-  /* Lightbox */
   .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
   .lightbox-backdrop.is-open{display:flex}
   .lightbox-img{max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
@@ -57,41 +55,44 @@
 {% endblock %}
 
 {% block content %}
+{# Données principales #}
 {% set loc = professional.city.name if professional.city else professional.location %}
 {% set main_spec = professional.specialty or (professional.primary_specialty.name if professional.primary_specialty else "") %}
 {% set main_cat  = professional.primary_specialty.category if professional.primary_specialty else "" %}
-{% set show_social = professional.social_links_approved|default(false) %}
-{% set has2 = professional.image_url2 %}
-{% set has3 = professional.image_url3 %}
+
+{# URLs photos via helpers robustes (app.py) #}
+{% set main_url = professional_photo_url(professional, 1) %}
+{% set photo2_url = professional_photo_url(professional, 2) %}
+{% set photo3_url = professional_photo_url(professional, 3) %}
 
 <div class="wrap">
   <div class="top">
     <aside class="card">
       <div class="photo">
         <img class="js-zoom"
-             src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-             data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
+             src="{{ main_url }}"
+             data-full="{{ main_url }}"
              alt="Photo de {{ professional.name|e }}"
              width="220" height="220" loading="lazy"
              onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=Photo';">
       </div>
 
-      {% if has2 or has3 %}
+      {% if photo2_url or photo3_url %}
       <div class="thumbs" aria-label="Autres photos">
-        {% if has2 %}
+        {% if photo2_url %}
         <div class="thumb">
           <img class="js-zoom"
-               src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
-               data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
+               src="{{ photo2_url }}"
+               data-full="{{ photo2_url }}"
                alt="{{ professional.name|e }} — photo 2" loading="lazy"
                onerror="this.style.display='none'">
         </div>
         {% endif %}
-        {% if has3 %}
+        {% if photo3_url %}
         <div class="thumb">
           <img class="js-zoom"
-               src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
-               data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
+               src="{{ photo3_url }}"
+               data-full="{{ photo3_url }}"
                alt="{{ professional.name|e }} — photo 3" loading="lazy"
                onerror="this.style.display='none'">
         </div>
@@ -185,19 +186,19 @@
     </div>
   </div>
 
-  {% set g = [] %}
-  {% if has2 %}{% set _ = g.append(2) %}{% endif %}
-  {% if has3 %}{% set _ = g.append(3) %}{% endif %}
-  {% if g %}
+  {% set sec_urls = [] %}
+  {% if photo2_url %}{% set _ = sec_urls.append(photo2_url) %}{% endif %}
+  {% if photo3_url %}{% set _ = sec_urls.append(photo3_url) %}{% endif %}
+  {% if sec_urls %}
   <div class="section">
     <h2>Galerie</h2>
     <div class="box">
       <div class="gallery">
-        {% for idx in g %}
+        {% for u in sec_urls %}
           <img class="gimg js-zoom"
-               src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=idx) }}"
-               data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=idx) }}"
-               alt="Photo {{ idx }} — {{ professional.name|e }}" loading="lazy"
+               src="{{ u }}"
+               data-full="{{ u }}"
+               alt="Photo — {{ professional.name|e }}" loading="lazy"
                onerror="this.style.display='none'">
         {% endfor %}
       </div>
@@ -229,7 +230,7 @@
   </div>
 </div>
 
-<!-- Lightbox local (même UX que la home) -->
+<!-- Lightbox -->
 <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
   <button class="lightbox-close" id="lbClose" aria-label="{{ t('lightbox.close','Fermer') }}">✕</button>
   <img id="lbImg" class="lightbox-img" alt="{{ t('lightbox.zoom_alt','Agrandissement') }}">
