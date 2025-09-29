@@ -717,8 +717,12 @@ def profile_photo_n(professional_id: int, index: int):
     if url and (url.startswith("http://") or url.startswith("https://")):
         if url.startswith("http://"):
             url = "https://" + url[len("http://"):]
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
+            "Referer": "https://www.tighri.com",
+        }
         try:
-            r = requests.get(url, timeout=8, stream=True)
+            r = requests.get(url, headers=headers, timeout=8, stream=True)
             r.raise_for_status()
         except Exception:
             return _avatar_fallback_response()
