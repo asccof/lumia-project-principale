@@ -1,253 +1,97 @@
 {% extends "base.html" %}
-{% block title %}{{ t('search.page_title','Trouver un professionnel – Tighri') }}{% endblock %}
+{% block title %}{{ t('search.results_title','Résultats — Professionnels') }}{% endblock %}
 
 {% block extra_css %}
 <style>
-  :root{
-    --primary:#8B5CF6; --primary-dark:#6D28D9;
-    --ink:#2d1a47; --muted:#4B3869; --bg:#f7f5fa; --card:#fff;
-    --shadow:0 2px 12px rgba(139,92,246,0.1); --radius:18px;
-  }
-  body{background:var(--bg);color:var(--ink)}
-  .page-head{padding:3.5rem 1.25rem 1.25rem;text-align:center}
-  .page-head h1{margin:0 0 .35rem;font-weight:800}
-  .page-head p{margin:0;color:#6b5a82}
-
-  .search-wrap{max-width:1100px;margin:0 auto 1.25rem;padding:0 1rem}
-  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
-  .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
-  .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
-  .search-bar button:hover{background:var(--primary-dark)}
-  @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
-  @media (max-width:640px){ .search-bar{grid-template-columns:1fr} }
-
-  .grid{max-width:1200px;margin:0 auto 2.5rem;padding:0 1rem;display:grid;grid-template-columns:repeat(3,minmax(260px,1fr));gap:1.25rem;justify-items:center}
-  @media (max-width:1024px){ .grid{grid-template-columns:repeat(2,minmax(260px,1fr));} }
-  @media (max-width:640px){ .grid{grid-template-columns:1fr;} }
-
-  .card{position:relative;background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,0.08);padding:1.25rem;min-width:260px;max-width:360px;width:100%;text-align:center}
-  .avatar-box{width:96px;height:96px;border-radius:50%;overflow:hidden;background:#eee;margin:0 auto .85rem}
-  .avatar-img{width:100%;height:100%;object-fit:cover;object-position:center;display:block;cursor:zoom-in}
-  h3{margin:.4rem 0 .2rem;color:#6D28D9}
-  .meta{color:#4B3869;font-size:.95rem;margin:.2rem 0}
-  .desc{color:#4B3869;font-size:.95rem;margin:.35rem 0}
-  .link{color:var(--primary);text-decoration:none;font-weight:600}
-  .link:hover{text-decoration:underline}
-
-  /* Badges */
-  .badges{position:absolute;top:.6rem;right:.6rem;display:flex;gap:.35rem}
-  .b{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .45rem;border-radius:999px;font-size:.72rem;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,.08);background:#fff}
-  .b svg{width:14px;height:14px}
+  .pro-card{position:relative}
+  .pro-badges{position:absolute;top:.5rem;right:.5rem;display:flex;gap:.35rem;flex-wrap:wrap}
+  .pro-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .5rem;border-radius:999px;font-size:.75rem;font-weight:700;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08)}
   .b-tighri{border:1.5px solid #8B5CF6}
   .b-anthecc{border:1.5px solid #10b981}
-
-  /* Thumbs 2/3 */
-  .thumbs{display:flex;gap:.35rem;justify-content:center;margin:.35rem 0 .2rem}
-  .thumb{width:40px;height:40px;border-radius:8px;overflow:hidden;background:#eee}
-  .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
-
-  /* Lightbox */
-  .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
-  .lightbox-backdrop.is-open{display:flex}
-  .lightbox-img{max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
-  .lightbox-close{position:absolute;top:10px;right:10px;border:none;background:#fff;border-radius:999px;padding:.4rem .6rem;cursor:pointer}
+  .avatar-box{width:84px;height:84px;border-radius:50%;overflow:hidden;background:#eee;margin-right:.75rem;flex:0 0 84px}
+  .avatar-img{width:100%;height:100%;object-fit:cover;display:block}
+  .pill{display:inline-block;margin:.125rem .25rem 0 0;padding:.2rem .55rem;border-radius:999px;background:#f4f0ff;border:1px solid #e6dcff;font-size:.8rem;color:#4B3869}
+  .meta{color:#6c6a7a}
 </style>
 {% endblock %}
 
 {% block content %}
-  <div class="page-head">
-    <h1>{{ t('search.results_title','Professionnels') }}</h1>
-    <p>{{ t('search.results_sub','Recherchez par nom, ville, famille, spécialité ou mode de consultation.') }}</p>
-  </div>
+<div class="container py-4">
+  <h1 class="h4 mb-3">{{ t('search.results_title','Résultats de recherche') }}</h1>
 
-  <div class="search-wrap">
-    <form class="search-bar" method="get" action="{{ url_for('professionals') }}">
-      <!-- q -->
-      <input type="text" name="q"
-             value="{{ request.args.get('q','') }}"
-             placeholder="{{ t('search.q','Nom, mot-clé...') }}"
-             aria-label="{{ t('search.q','Nom, mot-clé...') }}">
+  {% if professionals %}
+    <div class="row g-3">
+      {% for p in professionals %}
+        {% set tighri  = p.certified_tighri
+                         |default(p.tighri_certified
+                         |default(p.is_certified_tighri
+                         |default(false))) %}
+        {% set anthecc = p.approved_anthecc
+                         |default(p.anthecc_certified
+                         |default(p.is_certified_anthecc
+                         |default(false))) %}
 
-      <!-- Ville (ID si dispo) -->
-      {% if cities is defined and cities %}
-        <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
-          <option value="">{{ t('search.city','Ville') }}</option>
-          {% for c in cities %}
-            <option value="{{ c.id }}" {{ 'selected' if request.args.get('city_id')==c.id|string else '' }}>{{ c.name }}</option>
-          {% endfor %}
-        </select>
-      {% else %}
-        <input type="text" name="city"
-               value="{{ request.args.get('city','') }}"
-               placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}">
-      {% endif %}
+        <div class="col-md-4">
+          <div class="card h-100 pro-card">
+            <div class="pro-badges">
+              {% if tighri %}
+                <span class="pro-badge b-tighri" title="{{ t('badges.tighri','Certifié Tighri') }}">✓ {{ t('badges.tighri_short','Tighri') }}</span>
+              {% endif %}
+              {% if anthecc %}
+                <span class="pro-badge b-anthecc" title="{{ t('badges.anthecc','Certifié ANTHECC') }}">★ {{ t('badges.anthecc_short','ANTHECC') }}</span>
+              {% endif %}
+            </div>
 
-      <!-- Famille -->
-      {% if families is defined and families %}
-        <select name="family" id="f_family" aria-label="{{ t('search.family','Famille') }}">
-          <option value="">{{ t('search.family','Famille') }}</option>
-          {% for f in families %}
-            <option value="{{ f.name }}" {{ 'selected' if request.args.get('family','')==f.name else '' }}>{{ f.name }}</option>
-          {% endfor %}
-        </select>
-      {% else %}
-        <input type="text" name="family"
-               value="{{ request.args.get('family','') }}"
-               placeholder="{{ t('search.family','Famille') }}" aria-label="{{ t('search.family','Famille') }}">
-      {% endif %}
-
-      <!-- Spécialité -->
-      {% if specialties is defined and specialties %}
-        <select name="specialty_id" id="f_specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
-          <option value="">{{ t('search.specialty','Spécialité') }}</option>
-          {% for s in specialties %}
-            <option value="{{ s.id }}"
-                    data-category="{{ s.category or '' }}"
-                    {{ 'selected' if request.args.get('specialty_id')==s.id|string else '' }}>
-              {{ s.name }}
-            </option>
-          {% endfor %}
-        </select>
-      {% else %}
-        <input type="text" name="specialty"
-               value="{{ request.args.get('specialty','') }}"
-               placeholder="{{ t('search.specialty','Spécialité') }}" aria-label="{{ t('search.specialty','Spécialité') }}">
-      {% endif %}
-
-      <!-- Mode -->
-      {% set _mode = request.args.get('mode','') %}
-      <select name="mode" aria-label="{{ t('search.mode','Mode') }}">
-        <option value="" {{ 'selected' if _mode=='' else '' }}>{{ t('search.mode','Mode') }}</option>
-        <option value="cabinet"  {{ 'selected' if _mode=='cabinet' else '' }}>{{ t('mode.cabinet','Cabinet') }}</option>
-        <option value="visio"    {{ 'selected' if _mode=='visio' else '' }}>{{ t('mode.visio','Visio') }}</option>
-        <option value="domicile" {{ 'selected' if _mode=='domicile' else '' }}>{{ t('mode.domicile','Domicile') }}</option>
-      </select>
-
-      <button type="submit">{{ t('search.cta','Rechercher') }}</button>
-    </form>
-  </div>
-
-  <section class="grid">
-    {% for professional in professionals %}
-      {% set tighri  = professional.certified_tighri
-                       |default(professional.tighri_certified
-                       |default(professional.is_certified_tighri
-                       |default(false))) %}
-      {% set anthecc = professional.approved_anthecc
-                       |default(professional.anthecc_certified
-                       |default(professional.is_certified_anthecc
-                       |default(false))) %}
-
-      <article class="card">
-        <div class="badges">
-          {% if tighri %}
-            <span class="b b-tighri" title="{{ t('badges.tighri','Certifié Tighri') }}">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M20 7l-9 9-5-5" stroke="#8B5CF6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              {{ t('badges.tighri_short','Tighri') }}
-            </span>
-          {% endif %}
-          {% if anthecc %}
-            <span class="b b-anthecc" title="{{ t('badges.anthecc','Certifié ANTHECC') }}">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l3 6 6 .9-4.5 4.3 1.1 6.5L12 17l-5.6 3.7 1.1-6.5L3 9.9 9 9z" stroke="#10b981" stroke-width="1.6" stroke-linejoin="round"/></svg>
-              {{ t('badges.anthecc_short','ANTHECC') }}
-            </span>
-          {% endif %}
-        </div>
-
-        <div class="avatar-box">
-          <img class="avatar-img js-zoom"
-               src="{{ url_for('profile_photo', professional_id=professional.id) }}"
-               data-full="{{ url_for('profile_photo', professional_id=professional.id) }}"
-               alt="{{ t('alt.profile_photo','Photo de') }} {{ professional.name|e }}"
-               width="96" height="96" loading="lazy"
-               onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
-        </div>
-
-        {# ⇩ miniatures secondaires comme la principale ⇩ #}
-        {% set has2 = professional.image_url2 %}
-        {% set has3 = professional.image_url3 %}
-        {% if has2 or has3 %}
-          <div class="thumbs" aria-label="Galerie">
-            {% if has2 %}
-              <div class="thumb">
-                <img class="js-zoom"
-                     src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
-                     data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=2) }}"
-                     alt="{{ professional.name|e }} — photo 2" loading="lazy"
-                     onerror="this.style.display='none'">
+            <div class="card-body d-flex">
+              <div class="avatar-box">
+                <img class="avatar-img"
+                     src="{{ professional_photo_url(p, 1) }}"
+                     alt="{{ t('alt.profile_photo','Photo de') }} {{ p.name|e }}"
+                     width="84" height="84" loading="lazy"
+                     onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
               </div>
-            {% endif %}
-            {% if has3 %}
-              <div class="thumb">
-                <img class="js-zoom"
-                     src="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
-                     data-full="{{ url_for('profile_photo_idx', professional_id=professional.id, idx=3) }}"
-                     alt="{{ professional.name|e }} — photo 3" loading="lazy"
-                     onerror="this.style.display='none'">
+
+              <div class="flex-grow-1">
+                <h5 class="card-title mb-1">
+                  <a href="{{ url_for('professional_detail', professional_id=p.id) }}" class="text-decoration-none">
+                    {{ p.name }}
+                  </a>
+                </h5>
+
+                <div class="meta mb-2">
+                  {% if p.primary_specialty %}{{ p.primary_specialty.name }}
+                  {% elif p.specialty %}{{ p.specialty }}
+                  {% else %}{{ t('labels.professional','Professionnel') }}{% endif %}
+                  {% if p.city %} • {{ p.city.name }}
+                  {% elif p.location %} • {{ p.location }}{% endif %}
+                </div>
+
+                {% set d = p.description or '' %}
+                <p class="card-text" style="min-height:3em">{{ d[:130] }}{% if d|length > 130 %}…{% endif %}</p>
+
+                <div class="mb-2">
+                  {% set types = (p.consultation_types or '') %}
+                  {% if 'cabinet' in types %}<span class="pill">{{ t('mode.cabinet','Cabinet') }}</span>{% endif %}
+                  {% if 'visio' in types or 'en_ligne' in types %}<span class="pill">{{ t('mode.visio','Visio') }}</span>{% endif %}
+                  {% if 'domicile' in types %}<span class="pill">{{ t('mode.domicile','Domicile') }}</span>{% endif %}
+                  {% if p.experience_years %}<span class="pill">{{ p.experience_years }} {{ t('labels.years','ans') }}</span>{% endif %}
+                  {% if p.consultation_fee is not none %}<span class="pill">{{ (p.consultation_fee|int) }} MAD</span>{% endif %}
+                </div>
               </div>
-            {% endif %}
+            </div>
+
+            <div class="card-footer bg-white border-0">
+              <div class="d-grid gap-2">
+                <a class="btn btn-primary" href="{{ url_for('professional_detail', professional_id=p.id) }}">{{ t('btn.view_profile','Voir le profil') }}</a>
+                <a class="btn btn-outline-primary" href="{{ url_for('book_appointment', professional_id=p.id) }}">{{ t('btn.book','Réserver un rendez-vous') }}</a>
+              </div>
+            </div>
           </div>
-        {% endif %}
-
-        <h3>{{ professional.name }}</h3>
-        <div class="meta">
-          {% if professional.specialty %}{{ professional.specialty }}
-          {% elif professional.primary_specialty %}{{ professional.primary_specialty.name }}
-          {% else %}{{ t('labels.professional','Professionnel') }}{% endif %}
-          {% if professional.location %} · {{ professional.location }}{% endif %}
         </div>
-        <div class="desc">
-          {% set d = professional.description or '' %}
-          {{ d[:110] }}{% if d|length > 110 %}…{% endif %}
-        </div>
-
-        <a class="link" href="{{ url_for('professional_detail', professional_id=professional.id) }}">{{ t('btn.view_profile','Voir le profil') }}</a>
-      </article>
-    {% else %}
-      <div style="grid-column:1/-1;text-align:center;color:#6b5a82">{{ t('results.empty','Aucun résultat.') }}</div>
-    {% endfor %}
-  </section>
-
-  {% if specialties is defined and specialties and families is defined and families %}
-  <script>
-    // Filtrage client Famille -> Spécialités (inchangé)
-    document.addEventListener('DOMContentLoaded', function(){
-      var fam = document.getElementById('f_family');
-      var spec = document.getElementById('f_specialty_id');
-      if(!fam || !spec) return;
-      function filterSpecs(){
-        var cat = (fam.value || '').trim();
-        var firstVisible = null;
-        Array.from(spec.options).forEach(function(opt){
-          if(!opt.value) return;
-          var ok = !cat || (String(opt.dataset.category||'') === cat);
-          opt.hidden = !ok;
-          if(ok && !firstVisible) firstVisible = opt;
-        });
-        if(spec.selectedOptions.length && spec.selectedOptions[0].hidden){
-          spec.value = '';
-        }
-      }
-      fam.addEventListener('change', filterSpecs);
-      filterSpecs();
-    });
-  </script>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">{{ t('results.empty','Aucun professionnel ne correspond à votre recherche.') }}</div>
   {% endif %}
-
-  <!-- Lightbox réutilisé ici -->
-  <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
-    <button class="lightbox-close" id="lbClose" aria-label="{{ t('lightbox.close','Fermer') }}">✕</button>
-    <img id="lbImg" class="lightbox-img" alt="{{ t('lightbox.zoom_alt','Agrandissement') }}">
-  </div>
-  <script>
-    (function(){
-      const b=document.getElementById('lbBackdrop'), img=document.getElementById('lbImg'), x=document.getElementById('lbClose');
-      function open(src){ img.src=src; b.classList.add('is-open'); }
-      function close(){ b.classList.remove('is-open'); img.src=''; }
-      document.addEventListener('click',(e)=>{ const t=e.target.closest('.js-zoom'); if(!t) return;
-        e.preventDefault(); open(t.getAttribute('data-full')||t.src||'');});
-      x.addEventListener('click',close); b.addEventListener('click',(e)=>{ if(e.target===b) close();});
-      document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close();});
-    })();
-  </script>
+</div>
 {% endblock %}
