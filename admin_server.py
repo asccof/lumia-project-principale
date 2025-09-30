@@ -349,6 +349,8 @@ def admin_add_product():
         specialty = (request.form.get('specialty') or request.form.get('category') or '').strip()
         city_or_location = (request.form.get('location') or '').strip()
         image_url = (request.form.get('image_url') or '').strip()
+        image_url2 = (request.form.get('image_url2') or '').strip()
+        image_url3 = (request.form.get('image_url3') or '').strip()
         phone = (request.form.get('phone') or '').strip()
 
         # adresse / géoloc
@@ -421,6 +423,21 @@ def admin_add_product():
                 image_url = f"/media/profiles/{saved}"
             except Exception as e:
                 flash(f"Image non enregistrée ({e}).", "warning")
+file2 = request.files.get('image_file2')
+if file2 and getattr(file2, 'filename', ''):
+    try:
+        saved2 = _admin_process_and_save_profile_image(file2)
+        image_url2 = f"/media/profiles/{saved2}"
+    except Exception as e:
+        flash(f"Image 2 non enregistrée ({e}).", "warning")
+
+file3 = request.files.get('image_file3')
+if file3 and getattr(file3, 'filename', ''):
+    try:
+        saved3 = _admin_process_and_save_profile_image(file3)
+        image_url3 = f"/media/profiles/{saved3}"
+    except Exception as e:
+        flash(f"Image 3 non enregistrée ({e}).", "warning")
 
         if not name or not specialty:
             flash("Nom et spécialité sont obligatoires.", "error")
@@ -431,6 +448,8 @@ def admin_add_product():
             description=description,
             consultation_fee=consultation_fee,
             image_url=image_url,
+            image_url2=image_url2 or None,
+            image_url3=image_url3 or None,
             specialty=specialty,
             availability=availability,
             consultation_types=consultation_types,
@@ -472,6 +491,13 @@ def admin_edit_product(product_id):
         professional.description = (request.form.get('description') or professional.description).strip()
         professional.specialty = (request.form.get('specialty') or request.form.get('category') or professional.specialty).strip()
         professional.image_url = (request.form.get('image_url') or professional.image_url or '').strip()
+        _u2 = (request.form.get('image_url2') or '').strip()
+_u3 = (request.form.get('image_url3') or '').strip()
+if _u2 != '':
+    professional.image_url2 = _u2
+if _u3 != '':
+    professional.image_url3 = _u3
+
         professional.location = (request.form.get('location') or professional.location or '').strip()
         professional.phone = (request.form.get('phone') or professional.phone or '').strip()
 
@@ -567,6 +593,21 @@ def admin_edit_product(product_id):
                 professional.image_url = f"/media/profiles/{saved}"
             except Exception as e:
                 flash(f"Image non enregistrée ({e}).", "warning")
+file2 = request.files.get('image_file2')
+if file2 and getattr(file2, 'filename', ''):
+    try:
+        saved2 = _admin_process_and_save_profile_image(file2)
+        professional.image_url2 = f"/media/profiles/{saved2}"
+    except Exception as e:
+        flash(f"Image 2 non enregistrée ({e}).", "warning")
+
+file3 = request.files.get('image_file3')
+if file3 and getattr(file3, 'filename', ''):
+    try:
+        saved3 = _admin_process_and_save_profile_image(file3)
+        professional.image_url3 = f"/media/profiles/{saved3}"
+    except Exception as e:
+        flash(f"Image 3 non enregistrée ({e}).", "warning")
 
         db.session.commit()
         flash('Professionnel modifié avec succès!')
