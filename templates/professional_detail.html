@@ -14,11 +14,25 @@
   @media (max-width:820px){ .top{grid-template-columns:1fr} }
 
   .card{background:#fff;border-radius:14px;box-shadow:var(--shadow);padding:1.25rem}
-  .photo{width:220px;height:220px;border-radius:14px;overflow:hidden;background:#eee;margin:0 auto}
-  .photo img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+
+  /* === Slider === */
+  .slider{position:relative}
+  .slide-viewport{width:220px;height:220px;border-radius:14px;overflow:hidden;background:#eee;margin:0 auto;position:relative}
+  .slides{display:flex;width:100%;height:100%;transition:transform .35s ease}
+  .slide{min-width:100%;height:100%}
+  .slide img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .nav-btn{position:absolute;top:50%;transform:translateY(-50%);border:none;background:rgba(255,255,255,.9);box-shadow:var(--shadow);border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .nav-btn:disabled{opacity:.4;cursor:not-allowed}
+  .nav-prev{left:-10px}
+  .nav-next{right:-10px}
+
+  .thumbs{display:flex;gap:.4rem;justify-content:center;margin:.6rem 0 0}
+  .thumb{width:64px;height:64px;border-radius:10px;overflow:hidden;background:#eee;opacity:.7;border:2px solid transparent}
+  .thumb.is-active{opacity:1;border-color:#8B5CF6}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
+
   .name{margin:.25rem 0 .35rem;color:#6D28D9}
   .meta{color:#4B3869;opacity:.95}
-
   .badges{display:flex;flex-wrap:wrap;gap:.45rem;margin:.5rem 0 0}
   .b{display:inline-flex;align-items:center;gap:.35rem;padding:.2rem .55rem;border-radius:999px;font-size:.78rem;font-weight:700;background:#fff;border:1.5px solid #e8e0ff}
   .b svg{width:16px;height:16px}
@@ -35,18 +49,10 @@
   .box{background:#fff;border-radius:14px;box-shadow:var(--shadow);padding:1rem}
   .list{display:flex;flex-wrap:wrap;gap:.5rem}
   .pill{background:#f4f0ff;border:1px solid #e6dcff;border-radius:999px;padding:.25rem .6rem;font-size:.85rem}
-  .social{display:flex;gap:.6rem;flex-wrap:wrap}
-  .social a{color:var(--primary);text-decoration:none}
-  .social a:hover{text-decoration:underline}
 
   .gallery{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem}
   @media (max-width:700px){ .gallery{grid-template-columns:1fr 1fr} }
   .gimg{aspect-ratio:1/1;border-radius:12px;object-fit:cover;background:#eee;width:100%;cursor:zoom-in}
-
-  /* Thumbs sous la photo principale */
-  .thumbs{display:flex;gap:.4rem;justify-content:center;margin:.6rem 0 0;flex-wrap:wrap}
-  .thumb{width:64px;height:64px;border-radius:10px;overflow:hidden;background:#eee;border:1px solid #eee}
-  .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
 
   /* Lightbox */
   .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
@@ -62,47 +68,39 @@
 {% set main_cat  = professional.primary_specialty.category if professional.primary_specialty else "" %}
 {% set show_social = professional.social_links_approved|default(false) %}
 
-{# Présence des secondaires via helper (compatible toutes colonnes) #}
 {% set url1 = professional_photo_url(professional, 1) %}
 {% set url2 = professional_photo_url(professional, 2) %}
 {% set url3 = professional_photo_url(professional, 3) %}
-{% set has2 = url2 %}
-{% set has3 = url3 %}
+{% set imgs = [u for u in [url1, url2, url3] if u] %}
 
 <div class="wrap">
   <div class="top">
     <aside class="card">
-      <div class="photo">
-        <img id="proMainPhoto" class="js-zoom"
-             src="{{ url1 }}"
-             data-full="{{ url1 }}"
-             alt="Photo de {{ professional.name|e }}"
-             width="220" height="220" loading="eager"
-             onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=Photo';">
-      </div>
+      <!-- Slider -->
+      <div class="slider" id="proSlider" aria-label="Photos du professionnel">
+        <button class="nav-btn nav-prev" id="sPrev" aria-label="Précédent">‹</button>
+        <div class="slide-viewport" id="sViewport">
+          <div class="slides" id="sTrack" style="transform:translateX(0)">
+            {% for u in imgs %}
+            <div class="slide">
+              <img class="js-zoom" src="{{ u }}" data-full="{{ u }}" alt="Photo {{ loop.index }} — {{ professional.name|e }}"
+                   onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=Photo';">
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <button class="nav-btn nav-next" id="sNext" aria-label="Suivant">›</button>
 
-      {% if has2 or has3 %}
-      <div class="thumbs" aria-label="Autres photos">
-        {% if has2 %}
-        <div class="thumb">
-          <img class="js-thumb"
-               src="{{ url2 }}"
-               data-full="{{ url2 }}"
-               alt="{{ professional.name|e }} — photo 2" loading="lazy"
-               onerror="this.style.display='none'">
-        </div>
-        {% endif %}
-        {% if has3 %}
-        <div class="thumb">
-          <img class="js-thumb"
-               src="{{ url3 }}"
-               data-full="{{ url3 }}"
-               alt="{{ professional.name|e }} — photo 3" loading="lazy"
-               onerror="this.style.display='none'">
+        {% if imgs|length > 1 %}
+        <div class="thumbs" id="sThumbs">
+          {% for u in imgs %}
+          <div class="thumb{% if loop.index0 == 0 %} is-active{% endif %}" data-idx="{{ loop.index0 }}">
+            <img src="{{ u }}" alt="Miniature {{ loop.index }}" onerror="this.style.display='none'">
+          </div>
+          {% endfor %}
         </div>
         {% endif %}
       </div>
-      {% endif %}
     </aside>
 
     <section class="card">
@@ -121,9 +119,7 @@
         {% if main_cat %} · {{ main_cat }}{% endif %}
         {% if loc %} · {{ loc }}{% endif %}
         {% if professional.experience_years %} · {{ professional.experience_years }} ans d'expérience{% endif %}
-        {% if professional.consultation_fee is not none %}
-          · {{ (professional.consultation_fee|int) }} MAD
-        {% endif %}
+        {% if professional.consultation_fee %} · {{ professional.consultation_fee|int if professional.consultation_fee==professional.consultation_fee|int else professional.consultation_fee }} MAD{% endif %}
       </div>
 
       <div class="badges">
@@ -192,21 +188,14 @@
     </div>
   </div>
 
-  {# Petite galerie additionnelle si #2/#3 existent #}
-  {% set g = [] %}
-  {% if has2 %}{% set _ = g.append(url2) %}{% endif %}
-  {% if has3 %}{% set _ = g.append(url3) %}{% endif %}
-  {% if g %}
+  {% if imgs|length > 1 %}
   <div class="section">
     <h2>Galerie</h2>
     <div class="box">
       <div class="gallery">
-        {% for u in g %}
-          <img class="gimg js-zoom"
-               src="{{ u }}"
-               data-full="{{ u }}"
-               alt="Photo — {{ professional.name|e }}" loading="lazy"
-               onerror="this.style.display='none'">
+        {% for u in imgs[1:] %}
+          <img class="gimg js-zoom" src="{{ u }}" data-full="{{ u }}" alt="Photo — {{ professional.name|e }}"
+               loading="lazy" onerror="this.style.display='none'">
         {% endfor %}
       </div>
     </div>
@@ -237,37 +226,70 @@
   </div>
 </div>
 
-<!-- Lightbox local -->
+<!-- Lightbox -->
 <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
   <button class="lightbox-close" id="lbClose" aria-label="{{ t('lightbox.close','Fermer') }}">✕</button>
   <img id="lbImg" class="lightbox-img" alt="{{ t('lightbox.zoom_alt','Agrandissement') }}">
 </div>
 <script>
   (function(){
+    // Lightbox (inchangé)
     const b=document.getElementById('lbBackdrop'), img=document.getElementById('lbImg'), x=document.getElementById('lbClose');
-    const main=document.getElementById('proMainPhoto');
-
     function open(src){ img.src=src; b.classList.add('is-open'); }
     function close(){ b.classList.remove('is-open'); img.src=''; }
-
-    // Zoom sur éléments .js-zoom (photo principale + galerie)
-    document.addEventListener('click',(e)=>{
-      const z=e.target.closest('.js-zoom');
-      if(z){ e.preventDefault(); open(z.getAttribute('data-full')||z.src||''); }
-    });
-
-    // Clic sur miniatures : remplace la photo principale (et garde lightbox au clic)
-    document.addEventListener('click',(e)=>{
-      const t=e.target.closest('.js-thumb'); if(!t) return;
-      e.preventDefault();
-      const src=t.getAttribute('data-full')||t.src;
-      main.src=src;
-      main.setAttribute('data-full',src);
-    });
-
-    x.addEventListener('click',close);
-    b.addEventListener('click',(e)=>{ if(e.target===b) close();});
+    document.addEventListener('click',(e)=>{ const t=e.target.closest('.js-zoom'); if(!t) return;
+      e.preventDefault(); open(t.getAttribute('data-full')||t.src||'');});
+    x.addEventListener('click',close); b.addEventListener('click',(e)=>{ if(e.target===b) close();});
     document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close();});
+  })();
+</script>
+<script>
+  // Slider minimal sans dépendance
+  (function(){
+    const track = document.getElementById('sTrack');
+    if(!track) return;
+    const slides = Array.from(track.children);
+    const prev = document.getElementById('sPrev');
+    const next = document.getElementById('sNext');
+    const thumbsWrap = document.getElementById('sThumbs');
+    const thumbs = thumbsWrap ? Array.from(thumbsWrap.querySelectorAll('.thumb')) : [];
+    const viewport = document.getElementById('sViewport');
+
+    let idx = 0, n = slides.length;
+
+    function update(){
+      track.style.transform = 'translateX(' + (-idx*100) + '%)';
+      if(prev) prev.disabled = (idx===0);
+      if(next) next.disabled = (idx===n-1);
+      thumbs.forEach((t,i)=>t.classList.toggle('is-active', i===idx));
+    }
+    function go(i){
+      idx = Math.max(0, Math.min(n-1, i)); update();
+    }
+
+    // Buttons
+    prev && prev.addEventListener('click', ()=>go(idx-1));
+    next && next.addEventListener('click', ()=>go(idx+1));
+
+    // Dots / thumbs
+    thumbs.forEach(t => t.addEventListener('click', ()=>go(parseInt(t.dataset.idx||'0',10)||0)));
+
+    // Keyboard
+    document.addEventListener('keydown', (e)=>{
+      if(e.key==='ArrowLeft') go(idx-1);
+      if(e.key==='ArrowRight') go(idx+1);
+    });
+
+    // Touch swipe
+    let sx=0, dx=0, touching=false;
+    function onStart(e){ touching=true; sx=(e.touches?e.touches[0].clientX:e.clientX); }
+    function onMove(e){ if(!touching) return; dx=((e.touches?e.touches[0].clientX:e.clientX)-sx); }
+    function onEnd(){ if(!touching) return; if(dx<-40) go(idx+1); else if(dx>40) go(idx-1); touching=false; sx=0; dx=0; }
+    (viewport||track).addEventListener('touchstart', onStart, {passive:true});
+    (viewport||track).addEventListener('touchmove', onMove, {passive:true});
+    (viewport||track).addEventListener('touchend', onEnd);
+
+    update();
   })();
 </script>
 {% endblock %}
