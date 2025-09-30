@@ -49,6 +49,8 @@ app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
 app.config["PREFERRED_URL_SCHEME"] = "https"
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
+# près des autres app.config, après PRIMARY_HOST :
+app.config["REMEMBER_COOKIE_DOMAIN"] = ".tighri.ma"
 
 # Crée les dossiers d’upload si besoin
 try:
