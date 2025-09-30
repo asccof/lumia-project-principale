@@ -5,6 +5,11 @@
 {% block content %}
 <div class="container" style="max-width: 980px; margin: 0 auto;">
   <h1 class="h4 mb-3">Mettre à jour vos photos</h1>
+  <!-- Lien retour ajouté (contrat fix) -->
+  <div class="mb-3">
+    <a href="{{ url_for('professional_dashboard') }}" class="link-secondary" style="font-size:.95rem;">← Retour au tableau de bord</a>
+  </div>
+
   <p class="text-muted" style="margin-top:-.25rem">Photo principale + 2 photos secondaires (optionnelles).</p>
 
   <div class="row g-4">
