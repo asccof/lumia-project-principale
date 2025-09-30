@@ -171,7 +171,7 @@ def clear_language_cookie():
 
 TRANSLATIONS = {
     "fr": {
-        "nav": {"home": "Accueil", "professionals": "Professionnels", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact"},
+        "nav": {"home": "Accueil", "professionals": "Professionals", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact"},
         "auth": {"login": "Connexion", "register": "Inscription", "logout": "Déconnexion"},
         "common": {"menu": "menu"},
         "home": {"title": "Tighri", "tagline": "La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés"},
@@ -356,11 +356,10 @@ def _avatar_fallback_response():
     return redirect(PHOTO_PLACEHOLDER)
 
 # =========================
-#   SERVICE FICHIERS (Render Disk) — NOUVEAU
+#   SERVICE FICHIERS (Render Disk)
 # =========================
 @app.route("/u/profiles/<path:filename>", endpoint="u_profiles")
 def u_profiles(filename: str):
-    # sécurité basique
     if not filename or ".." in filename or filename.startswith("/"):
         abort(404)
     fpath = UPLOAD_FOLDER / os.path.basename(filename)
@@ -381,24 +380,15 @@ def _normalize_disk_url(value: str | None) -> Optional[str]:
     if not value:
         return None
     v = value.strip()
-    # déjà une URL http(s) → laisser tel quel
     if v.startswith("http://") or v.startswith("https://"):
-        # upgrade http -> https
         if v.startswith("http://"):
             v = "https://" + v[len("http://"):]
         return v
-    # ancien format '/media/profiles/<name>'
     if v.startswith("/media/profiles/"):
         v = v.split("/media/profiles/", 1)[-1]
-    # sinon on considère que c'est un nom de fichier sur disque
     return url_for("u_profiles", filename=os.path.basename(v))
 
 def _pro_photo_field(pro: Professional, index: int) -> Optional[str]:
-    """
-    Essaie différentes conventions possibles pour les champs photo secondaires
-    sans casser le modèle (contrat fixe).
-    index = 1 (principale), 2 et 3 (secondaires)
-    """
     candidates_by_index = {
         1: ("image_url", "photo_main", "avatar_url"),
         2: ("image_url2", "photo_alt1", "gallery1", "gallery_1", "photo2", "photo_secondaire1"),
@@ -409,21 +399,17 @@ def _pro_photo_field(pro: Professional, index: int) -> Optional[str]:
             val = getattr(pro, field)
             if val:
                 return str(val)
-    # si rien trouvé pour secondaire: None
     return None
 
 def professional_photo_url(pro: Professional, index: int) -> Optional[str]:
-    """Retourne l’URL résolue pour la photo n (1..3) d’un pro."""
     raw = _pro_photo_field(pro, index)
     if raw:
         return _normalize_disk_url(raw)
-    # fallback avatar pour la principale
     if index == 1 and not raw:
         return url_for("profile_photo", professional_id=pro.id)
     return None
 
 def professional_gallery_urls(pro: Professional) -> list[str]:
-    """Liste ordonnée [principale, secondaire1, secondaire2] (URLs quand présentes)."""
     urls = []
     for i in (1, 2, 3):
         u = professional_photo_url(pro, i)
@@ -433,9 +419,6 @@ def professional_gallery_urls(pro: Professional) -> list[str]:
 
 @app.context_processor
 def inject_gallery_helpers():
-    # Helpers disponibles dans Jinja:
-    # - professional_photo_url(pro, 1..3)
-    # - professional_gallery_urls(pro)
     return {
         "professional_photo_url": professional_photo_url,
         "professional_gallery_urls": professional_gallery_urls,
@@ -444,7 +427,6 @@ def inject_gallery_helpers():
 # =========================
 #   LISTES (ORM + seeds)
 # =========================
-# → on lit les vraies données étendues depuis seeds_taxonomy (contrat-fix)
 try:
     from seeds_taxonomy import (
         SPECIALTY_FAMILIES,
@@ -462,21 +444,18 @@ except Exception:
     ]
 
 def _ui_cities():
-    """Liste pour les selects/datalists (id, name)."""
     try:
         return [{"id": c.id, "name": c.name} for c in City.query.order_by(City.name.asc()).all()]
     except Exception:
         return []
 
 def _ui_specialties():
-    """Liste pour les selects/datalists (id, name, category)."""
     try:
         return [{"id": s.id, "name": s.name, "category": s.category} for s in Specialty.query.order_by(Specialty.name.asc()).all()]
     except Exception:
         return []
 
 def _ui_families_rows():
-    """Familles = valeurs distinctes de Specialty.category (retourne [{id, name}])."""
     try:
         rows = (
             db.session.query(Specialty.category)
@@ -494,7 +473,6 @@ def _ui_families_rows():
 
 @app.context_processor
 def inject_taxonomies_for_forms():
-    # Datalists universelles (fallback) — les selects utilisent l’ORM
     return {
         "ALL_CITIES": SEED_CITIES,
         "ALL_SPECIALTIES": SEED_SPECIALTIES,
@@ -524,7 +502,6 @@ def robots():
 # =========================
 @app.route("/", endpoint="index")
 def index():
-    # Tri admin si table d’ordre dispo, sinon fallback
     try:
         base = (
             db.session.query(Professional)
@@ -557,7 +534,6 @@ def index():
         top_ids = [p.id for p in top_professionals]
         more_professionals = fb.filter(~Professional.id.in_(top_ids)).all() if top_ids else fb.offset(9).all()
 
-    # Listes optionnelles pour la barre de recherche (ORM; aucun champ name_fr ici)
     cities = _ui_cities()
     specialties = _ui_specialties()
     families = _ui_families_rows()
@@ -587,14 +563,12 @@ def professionals():
     city = (request.args.get("city") or "").strip()
     city_id = request.args.get("city_id", type=int)
 
-    # familles : schéma simple => string, pas d'ID
     family = (request.args.get("family") or "").strip()
 
     specialty = (request.args.get("specialty") or "").strip()
     specialty_id = request.args.get("specialty_id", type=int)
     mode = (request.args.get("mode") or "").strip().lower()
 
-    # Harmonise 'visio' -> 'en_ligne'
     if mode == "visio":
         mode = "en_ligne"
 
@@ -609,21 +583,18 @@ def professionals():
         if conds:
             qry = qry.filter(or_(*conds))
 
-    # Ville : ID prioritaire, sinon texte legacy
     if city_id is not None and hasattr(Professional, "city_id"):
         qry = qry.filter(Professional.city_id == city_id)
     elif city and hasattr(Professional, "location"):
         qry = qry.filter(Professional.location.ilike(f"%{city}%"))
 
-    # Spécialité : ID prioritaire, sinon texte legacy
     if specialty_id is not None and hasattr(Professional, "primary_specialty_id"):
         qry = qry.filter(Professional.primary_specialty_id == specialty_id)
     elif specialty and hasattr(Professional, "specialty"):
         qry = qry.filter(Professional.specialty.ilike(f"%{specialty}%"))
 
-    # Famille : par catégorie Specialty.category (FK principale, M2M secondaire) + fallback texte
     if family:
-        like_family = family  # mets f"{family}%" si tu veux prefix
+        like_family = family
         qry = qry.filter(
             db.or_(
                 Professional.primary_specialty.has(Specialty.category.ilike(like_family)),
@@ -637,7 +608,6 @@ def professionals():
 
     pros = qry.order_by(Professional.is_featured.desc(), Professional.created_at.desc()).all()
 
-    # Listes pour la barre de filtres (schéma simple)
     cities = _ui_cities()
     specialties = _ui_specialties()
     families = _ui_families_rows()
@@ -699,30 +669,22 @@ def profile_photo(professional_id: int):
     resp.headers["Cache-Control"] = "public, max-age=86400"
     return resp
 
-# --- NOUVEAU : servir la photo n (1..3) d’un pro, en résolvant les champs secondaires ---
 @app.route("/media/profile/<int:professional_id>/<int:index>", endpoint="profile_photo_n")
 def profile_photo_n(professional_id: int, index: int):
     if index not in (1, 2, 3):
         abort(404)
     pro = Professional.query.get_or_404(professional_id)
     raw = _pro_photo_field(pro, index)
-    # si index==1 et pas de champ dédié, réutiliser la route existante
     if index == 1 and not raw:
         return redirect(url_for("profile_photo", professional_id=professional_id))
 
-    # normaliser (gère /media/profiles/<name> et simple nom de fichier)
     url = _normalize_disk_url(raw) if raw else None
 
-    # si c’est une URL http(s), on la proxy comme pour la principale
     if url and (url.startswith("http://") or url.startswith("https://")):
         if url.startswith("http://"):
             url = "https://" + url[len("http://"):]
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
-            "Referer": "https://www.tighri.com",
-        }
         try:
-            r = requests.get(url, headers=headers, timeout=8, stream=True)
+            r = requests.get(url, timeout=8, stream=True)
             r.raise_for_status()
         except Exception:
             return _avatar_fallback_response()
@@ -730,9 +692,7 @@ def profile_photo_n(professional_id: int, index: int):
         resp.headers["Cache-Control"] = "public, max-age=86400"
         return resp
 
-    # sinon, c’est un fichier sur disque servi par /u/profiles/<name>
     if url:
-        # on renvoie directement le fichier depuis UPLOAD_FOLDER
         fname = url.split("/u/profiles/")[-1]
         fpath = UPLOAD_FOLDER / os.path.basename(fname)
         if fpath.exists():
@@ -740,7 +700,6 @@ def profile_photo_n(professional_id: int, index: int):
             resp.headers["Cache-Control"] = "public, max-age=31536000"
             return resp
 
-    # fallback avatar si introuvable
     return _avatar_fallback_response()
 
 @app.route("/avatar")
@@ -787,6 +746,41 @@ def professional_upload_photo():
             flash("Erreur interne lors du traitement de l'image.", "danger")
 
     return render_template("upload_photo.html", professional=pro)
+
+@app.route("/professional/profile/photo/<int:index>", methods=["GET", "POST"], endpoint="professional_upload_photo_n")
+@login_required
+def professional_upload_photo_n(index: int):
+    if current_user.user_type != "professional" or index not in (1, 2, 3):
+        flash("Accès non autorisé")
+        return redirect(url_for("index"))
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé")
+        return redirect(url_for("professional_dashboard"))
+
+    if request.method == "POST":
+        file = request.files.get("photo")
+        if not file:
+            flash("Veuillez sélectionner une image.", "warning")
+            return redirect(url_for("professional_upload_photo_n", index=index))
+        try:
+            saved_name = _process_and_save_profile_image(file)
+            field = "image_url" if index == 1 else ("image_url2" if index == 2 else "image_url3")
+            setattr(pro, field, f"/media/profiles/{saved_name}")
+            db.session.commit()
+            flash(f"Photo #{index} mise à jour avec succès.", "success")
+            return redirect(url_for("professional_dashboard"))
+        except RuntimeError:
+            current_app.logger.exception("PIL manquant pour traitement image.")
+            flash("Le traitement d'image nécessite Pillow.", "danger")
+        except ValueError as e:
+            flash(str(e), "danger")
+        except Exception:
+            current_app.logger.exception("Erreur interne lors du traitement de l'image")
+            flash("Erreur interne lors du traitement de l'image.", "danger")
+
+    return render_template("upload_photo.html", professional=pro, index=index)
 
 @app.route("/professional/profile/photos-upload", methods=["POST"], endpoint="professional_photos_upload")
 @login_required
@@ -836,8 +830,8 @@ def professional_register():
         username = (request.form.get("username") or "").strip()
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password", "")
-        specialty = (request.form.get("specialty") or "").strip()  # legacy texte
-        city = (request.form.get("city") or "").strip()            # legacy texte
+        specialty = (request.form.get("specialty") or "").strip()
+        city = (request.form.get("city") or "").strip()
         description = (request.form.get("description") or "").strip()
         experience_raw = request.form.get("experience", "0")
         fee_raw = request.form.get("consultation_fee", "0")
@@ -884,8 +878,8 @@ def professional_register():
             professional = Professional(
                 name=username,
                 description=description or "Profil en cours de complétion.",
-                specialty=specialty or "Psychologue",     # legacy
-                location=city or "Casablanca",            # legacy
+                specialty=specialty or "Psychologue",
+                location=city or "Casablanca",
                 experience_years=experience,
                 consultation_fee=consultation_fee,
                 phone=phone or None,
@@ -903,10 +897,8 @@ def professional_register():
             if primary_specialty_id is not None and hasattr(professional, "primary_specialty_id"):
                 professional.primary_specialty_id = primary_specialty_id
 
-            # --- multi-sélection d'IDs ---
             spec_ids = [int(x) for x in request.form.getlist("specialty_ids") if str(x).isdigit()]
 
-            # --- création "si absente" ---
             new_name = (request.form.get("new_specialty_name") or "").strip()
             new_family = (request.form.get("new_specialty_family") or "").strip()
             if new_name:
@@ -917,18 +909,15 @@ def professional_register():
                     db.session.flush()
                 spec_ids.append(existing.id)
 
-            # --- spécialité principale ---
             primary_spec_id = request.form.get("primary_specialty_id", type=int)
             if primary_spec_id:
                 professional.primary_specialty_id = primary_spec_id
             elif not getattr(professional, "primary_specialty_id", None) and spec_ids:
                 professional.primary_specialty_id = spec_ids[0]
 
-            # --- spécialités secondaires (M2M) ---
             if spec_ids:
                 professional.specialties = Specialty.query.filter(Specialty.id.in_(spec_ids)).all()
 
-            # --- synchronise le legacy texte si vide ---
             if professional.primary_specialty_id and not (professional.specialty or "").strip():
                 ps = db.session.get(Specialty, professional.primary_specialty_id)
                 if ps:
@@ -944,7 +933,6 @@ def professional_register():
         flash("Compte professionnel créé avec succès! Un administrateur validera votre profil.")
         return redirect(url_for("login"))
 
-    # --- GET : listes via ORM (schéma simple) ---
     cities = _ui_cities()
     specialties = _ui_specialties()
     families = _ui_families_rows()
@@ -1268,7 +1256,7 @@ def delete_unavailable_slot(slot_id: int):
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
 
-# Edition profil pro (conservatif)
+# Edition profil pro (conservatif, avec grâce sur les numériques)
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
@@ -1313,7 +1301,7 @@ def professional_edit_profile():
         elif not getattr(professional, "primary_specialty_id", None) and spec_ids:
             professional.primary_specialty_id = spec_ids[0]
 
-        if spec_ids is not None:
+        if spec_ids:
             professional.specialties = Specialty.query.filter(Specialty.id.in_(spec_ids)).all()
 
         if professional.primary_specialty_id and not (professional.specialty or "").strip():
@@ -1321,26 +1309,53 @@ def professional_edit_profile():
             if ps:
                 professional.specialty = ps.name
 
-        def to_float(v):
+        # Helpers numériques "gracieux"
+        def parse_int_or_keep(v_str: Optional[str], old_val: Optional[int], default_if_invalid: Optional[int]=None) -> Optional[int]:
+            v = (v_str or "").strip()
+            if v == "":
+                return old_val
+            v = v.replace(",", ".")
             try:
-                return float(v) if v not in (None, "",) else None
+                return int(float(v))
             except ValueError:
-                return None
+                return old_val if old_val is not None else default_if_invalid
 
-        def to_int(v):
+        def parse_float_or_keep(v_str: Optional[str], old_val: Optional[float], default_if_invalid: Optional[float]=None) -> Optional[float]:
+            v = (v_str or "").strip()
+            if v == "":
+                return old_val
+            v = v.replace(",", ".")
             try:
-                return int(v) if v not in (None, "",) else None
+                return float(v)
             except ValueError:
-                return None
+                return old_val if old_val is not None else default_if_invalid
 
-        professional.latitude  = to_float(f.get("latitude"))
-        professional.longitude = to_float(f.get("longitude"))
-        professional.consultation_fee = to_int(f.get("consultation_fee"))
-        professional.consultation_duration_minutes = to_int(f.get("consultation_duration_minutes")) or 45
-        professional.buffer_between_appointments_minutes = to_int(f.get("buffer_between_appointments_minutes")) or 15
+        professional.latitude  = parse_float_or_keep(f.get("latitude"),  getattr(professional, "latitude", None))
+        professional.longitude = parse_float_or_keep(f.get("longitude"), getattr(professional, "longitude", None))
 
-        types = f.getlist("consultation_types")
-        professional.consultation_types = ",".join(sorted({t for t in types if t}))
+        # ⬇️ Ne jamais envoyer NULL si champ laissé vide (évite NOT NULL violation)
+        professional.consultation_fee = parse_int_or_keep(
+            f.get("consultation_fee"),
+            getattr(professional, "consultation_fee", 0),
+            default_if_invalid=0
+        )
+
+        professional.consultation_duration_minutes = parse_int_or_keep(
+            f.get("consultation_duration_minutes"),
+            getattr(professional, "consultation_duration_minutes", 45),
+            default_if_invalid=45
+        ) or 45
+
+        professional.buffer_between_appointments_minutes = parse_int_or_keep(
+            f.get("buffer_between_appointments_minutes"),
+            getattr(professional, "buffer_between_appointments_minutes", 15),
+            default_if_invalid=15
+        ) or 15
+
+        # Types de consultation : si aucune valeur postée, on conserve l'existant
+        posted_types = [t for t in f.getlist("consultation_types") if t]
+        if posted_types:
+            professional.consultation_types = ",".join(sorted(set(posted_types)))
 
         old_links = (
             (professional.facebook_url or ""),
@@ -1365,7 +1380,6 @@ def professional_edit_profile():
         flash("Profil mis à jour.", "success")
         return redirect(url_for("professional_dashboard"))
 
-    # GET : listes pour selects (ORM)
     cities = _ui_cities()
     specialties = _ui_specialties()
     families = _ui_families_rows()
@@ -1654,15 +1668,10 @@ def server_error(e):
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
 # =========================
 def _bootstrap_taxonomy():
-    """
-    Insère/complète villes et spécialités (avec catégorie=famille) depuis seeds_taxonomy.
-    Idempotent, sans supprimer l’existant.
-    """
     inserted_cities = 0
     inserted_specs = 0
     updated_categ = 0
 
-    # --- Cities ---
     try:
         for obj in CITY_OBJECTS:
             name = (obj.get("name_fr") or obj.get("name") or "").strip()
@@ -1675,7 +1684,6 @@ def _bootstrap_taxonomy():
     except Exception as e:
         current_app.logger.warning("Bootstrap villes: %s", e)
 
-    # --- Specialties ---
     try:
         for fam in SPECIALTY_FAMILIES:
             cat = (fam.get("name_fr") or "").strip()
@@ -1688,7 +1696,6 @@ def _bootstrap_taxonomy():
                     db.session.add(Specialty(name=sp_name, category=cat))
                     inserted_specs += 1
                 else:
-                    # si la catégorie est vide côté DB, la compléter
                     if not (row.category or "").strip():
                         row.category = cat
                         updated_categ += 1
@@ -1707,7 +1714,7 @@ def _bootstrap_taxonomy():
     )
 
 with app.app_context():
-    db.create_all()  # crée tables selon models.py
+    db.create_all()
     try:
         stmts = [
             # colonnes additionnelles (idempotent)
@@ -1739,19 +1746,30 @@ with app.app_context():
             # FK facultatives
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER REFERENCES cities(id) ON DELETE SET NULL;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER REFERENCES specialties(id) ON DELETE SET NULL;",
+
+            # Photos secondaires
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
         ]
         for sql in stmts:
             db.session.execute(text(sql))
+
+        # Normalisation douce sur consultation_fee (évite crash si NULL historique)
+        try:
+            db.session.execute(text("UPDATE professionals SET consultation_fee = 0 WHERE consultation_fee IS NULL;"))
+            db.session.execute(text("ALTER TABLE professionals ALTER COLUMN consultation_fee SET DEFAULT 0;"))
+        except Exception as e:
+            current_app.logger.warning(f"consultation_fee default/normalize: {e}")
+
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
 
-    # --- Taxonomy étendue (familles/spécialités/villes)
+    # --- Taxonomy étendue
     try:
         _bootstrap_taxonomy()
     except Exception as e:
         app.logger.warning("Bootstrap taxonomy failed, fallback minimal: %s", e)
-        # Fallback minimal si jamais seeds_taxonomy introuvable
         if Specialty.query.count() == 0:
             for name in SEED_SPECIALTIES:
                 try:
