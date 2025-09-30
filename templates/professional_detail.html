@@ -44,9 +44,9 @@
   .gimg{aspect-ratio:1/1;border-radius:12px;object-fit:cover;background:#eee;width:100%;cursor:zoom-in}
 
   /* Thumbs sous la photo principale */
-  .thumbs{display:flex;gap:.4rem;justify-content:center;margin:.6rem 0 0}
-  .thumb{width:64px;height:64px;border-radius:10px;overflow:hidden;background:#eee}
-  .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .thumbs{display:flex;gap:.4rem;justify-content:center;margin:.6rem 0 0;flex-wrap:wrap}
+  .thumb{width:64px;height:64px;border-radius:10px;overflow:hidden;background:#eee;border:1px solid #eee}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:pointer}
 
   /* Lightbox */
   .lightbox-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:60}
@@ -63,6 +63,7 @@
 {% set show_social = professional.social_links_approved|default(false) %}
 
 {# Présence des secondaires via helper (compatible toutes colonnes) #}
+{% set url1 = professional_photo_url(professional, 1) %}
 {% set url2 = professional_photo_url(professional, 2) %}
 {% set url3 = professional_photo_url(professional, 3) %}
 {% set has2 = url2 %}
@@ -72,11 +73,11 @@
   <div class="top">
     <aside class="card">
       <div class="photo">
-        <img class="js-zoom"
-             src="{{ professional_photo_url(professional, 1) }}"
-             data-full="{{ professional_photo_url(professional, 1) }}"
+        <img id="proMainPhoto" class="js-zoom"
+             src="{{ url1 }}"
+             data-full="{{ url1 }}"
              alt="Photo de {{ professional.name|e }}"
-             width="220" height="220" loading="lazy"
+             width="220" height="220" loading="eager"
              onerror="this.onerror=null;this.src='https://placehold.co/500x500?text=Photo';">
       </div>
 
@@ -84,7 +85,7 @@
       <div class="thumbs" aria-label="Autres photos">
         {% if has2 %}
         <div class="thumb">
-          <img class="js-zoom"
+          <img class="js-thumb"
                src="{{ url2 }}"
                data-full="{{ url2 }}"
                alt="{{ professional.name|e }} — photo 2" loading="lazy"
@@ -93,7 +94,7 @@
         {% endif %}
         {% if has3 %}
         <div class="thumb">
-          <img class="js-zoom"
+          <img class="js-thumb"
                src="{{ url3 }}"
                data-full="{{ url3 }}"
                alt="{{ professional.name|e }} — photo 3" loading="lazy"
@@ -120,7 +121,9 @@
         {% if main_cat %} · {{ main_cat }}{% endif %}
         {% if loc %} · {{ loc }}{% endif %}
         {% if professional.experience_years %} · {{ professional.experience_years }} ans d'expérience{% endif %}
-        {% if professional.consultation_fee %} · {{ professional.consultation_fee|int if professional.consultation_fee==professional.consultation_fee|int else professional.consultation_fee }} MAD{% endif %}
+        {% if professional.consultation_fee is not none %}
+          · {{ (professional.consultation_fee|int) }} MAD
+        {% endif %}
       </div>
 
       <div class="badges">
@@ -189,6 +192,7 @@
     </div>
   </div>
 
+  {# Petite galerie additionnelle si #2/#3 existent #}
   {% set g = [] %}
   {% if has2 %}{% set _ = g.append(url2) %}{% endif %}
   {% if has3 %}{% set _ = g.append(url3) %}{% endif %}
@@ -233,7 +237,7 @@
   </div>
 </div>
 
-<!-- Lightbox local (même UX que la home) -->
+<!-- Lightbox local -->
 <div class="lightbox-backdrop" id="lbBackdrop" aria-modal="true" role="dialog">
   <button class="lightbox-close" id="lbClose" aria-label="{{ t('lightbox.close','Fermer') }}">✕</button>
   <img id="lbImg" class="lightbox-img" alt="{{ t('lightbox.zoom_alt','Agrandissement') }}">
@@ -241,11 +245,28 @@
 <script>
   (function(){
     const b=document.getElementById('lbBackdrop'), img=document.getElementById('lbImg'), x=document.getElementById('lbClose');
+    const main=document.getElementById('proMainPhoto');
+
     function open(src){ img.src=src; b.classList.add('is-open'); }
     function close(){ b.classList.remove('is-open'); img.src=''; }
-    document.addEventListener('click',(e)=>{ const t=e.target.closest('.js-zoom'); if(!t) return;
-      e.preventDefault(); open(t.getAttribute('data-full')||t.src||'');});
-    x.addEventListener('click',close); b.addEventListener('click',(e)=>{ if(e.target===b) close();});
+
+    // Zoom sur éléments .js-zoom (photo principale + galerie)
+    document.addEventListener('click',(e)=>{
+      const z=e.target.closest('.js-zoom');
+      if(z){ e.preventDefault(); open(z.getAttribute('data-full')||z.src||''); }
+    });
+
+    // Clic sur miniatures : remplace la photo principale (et garde lightbox au clic)
+    document.addEventListener('click',(e)=>{
+      const t=e.target.closest('.js-thumb'); if(!t) return;
+      e.preventDefault();
+      const src=t.getAttribute('data-full')||t.src;
+      main.src=src;
+      main.setAttribute('data-full',src);
+    });
+
+    x.addEventListener('click',close);
+    b.addEventListener('click',(e)=>{ if(e.target===b) close();});
     document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') close();});
   })();
 </script>
