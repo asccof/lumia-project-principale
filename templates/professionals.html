@@ -12,6 +12,12 @@
   .avatar-img{width:100%;height:100%;object-fit:cover;display:block}
   .pill{display:inline-block;margin:.125rem .25rem 0 0;padding:.2rem .55rem;border-radius:999px;background:#f4f0ff;border:1px solid #e6dcff;font-size:.8rem;color:#4B3869}
   .meta{color:#6c6a7a}
+
+  /* --- Miniatures secondaires (#2/#3) --- */
+  .mini-strip{display:flex;gap:6px;margin-top:.5rem;align-items:center;flex-wrap:wrap}
+  .mini-thumb{width:42px;height:42px;flex:0 0 42px;border-radius:6px;overflow:hidden;border:1px solid #eee;background:#f5f5f7}
+  .mini-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .mini-label{font-size:.75rem;color:#6c6a7a}
 </style>
 {% endblock %}
 
@@ -30,6 +36,10 @@
                          |default(p.anthecc_certified
                          |default(p.is_certified_anthecc
                          |default(false))) %}
+
+        {# URLs des photos #2 et #3 (si présentes) #}
+        {% set photo2 = professional_photo_url(p, 2) %}
+        {% set photo3 = professional_photo_url(p, 3) %}
 
         <div class="col-md-4">
           <div class="card h-100 pro-card">
@@ -68,6 +78,27 @@
 
                 {% set d = p.description or '' %}
                 <p class="card-text" style="min-height:3em">{{ d[:130] }}{% if d|length > 130 %}…{% endif %}</p>
+
+                {# --- Bandeau de miniatures (#2/#3) si dispo --- #}
+                {% if photo2 or photo3 %}
+                  <div class="mini-strip" aria-label="{{ t('alt.more_photos','Autres photos') }}">
+                    {% if photo2 %}
+                      <div class="mini-thumb">
+                        <a href="{{ url_for('professional_detail', professional_id=p.id) }}" title="{{ t('alt.photo_n','Photo') }} 2">
+                          <img src="{{ photo2 }}" alt="{{ t('alt.photo_n','Photo') }} 2" loading="lazy">
+                        </a>
+                      </div>
+                    {% endif %}
+                    {% if photo3 %}
+                      <div class="mini-thumb">
+                        <a href="{{ url_for('professional_detail', professional_id=p.id) }}" title="{{ t('alt.photo_n','Photo') }} 3">
+                          <img src="{{ photo3 }}" alt="{{ t('alt.photo_n','Photo') }} 3" loading="lazy">
+                        </a>
+                      </div>
+                    {% endif %}
+                    <span class="mini-label">{{ t('labels.gallery','Galerie') }}</span>
+                  </div>
+                {% endif %}
 
                 <div class="mb-2">
                   {% set types = (p.consultation_types or '') %}
