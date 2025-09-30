@@ -2,6 +2,11 @@
 {% block title %}Mes disponibilités{% endblock %}
 {% block content %}
 <div class="container py-4">
+  <!-- Lien retour (ajouté) -->
+  <div class="mb-2">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('professional_dashboard') }}">← Retour au tableau de bord</a>
+  </div>
+
   <h1 class="h4 mb-3">Mes disponibilités</h1>
   <p class="text-muted">Définissez vos plages horaires par jour. Vous pouvez ajouter jusqu’à 3 plages par jour. Les durées et le délai entre séances sont définis dans votre <a href="{{ url_for('professional_edit_profile') }}">profil</a>.</p>
 
