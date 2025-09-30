@@ -49,8 +49,6 @@ app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
 app.config["PREFERRED_URL_SCHEME"] = "https"
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
-# près des autres app.config, après PRIMARY_HOST :
-app.config["REMEMBER_COOKIE_DOMAIN"] = ".tighri.ma"
 
 # Crée les dossiers d’upload si besoin
 try:
@@ -173,7 +171,7 @@ def clear_language_cookie():
 
 TRANSLATIONS = {
     "fr": {
-        "nav": {"home": "Accueil", "professionals": "Professionnels", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact"},
+        "nav": {"home": "Accueil", "professionals": "Professionals", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact"},
         "auth": {"login": "Connexion", "register": "Inscription", "logout": "Déconnexion"},
         "common": {"menu": "menu"},
         "home": {"title": "Tighri", "tagline": "La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés"},
@@ -446,7 +444,6 @@ def inject_gallery_helpers():
 # =========================
 #   LISTES (ORM + seeds)
 # =========================
-# → on lit les vraies données étendues depuis seeds_taxonomy (contrat-fix)
 try:
     from seeds_taxonomy import (
         SPECIALTY_FAMILIES,
@@ -719,12 +716,8 @@ def profile_photo_n(professional_id: int, index: int):
     if url and (url.startswith("http://") or url.startswith("https://")):
         if url.startswith("http://"):
             url = "https://" + url[len("http://"):]
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; TighriBot/1.0; +https://www.tighri.com)",
-            "Referer": "https://www.tighri.com",
-        }
         try:
-            r = requests.get(url, headers=headers, timeout=8, stream=True)
+            r = requests.get(url, timeout=8, stream=True)
             r.raise_for_status()
         except Exception:
             return _avatar_fallback_response()
@@ -789,6 +782,44 @@ def professional_upload_photo():
             flash("Erreur interne lors du traitement de l'image.", "danger")
 
     return render_template("upload_photo.html", professional=pro)
+
+# <<< AJOUT — upload identique pour photo #2 et #3
+@app.route("/professional/profile/photo/<int:index>", methods=["GET", "POST"], endpoint="professional_upload_photo_n")
+@login_required
+def professional_upload_photo_n(index: int):
+    if current_user.user_type != "professional" or index not in (1, 2, 3):
+        flash("Accès non autorisé")
+        return redirect(url_for("index"))
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé")
+        return redirect(url_for("professional_dashboard"))
+
+    if request.method == "POST":
+        file = request.files.get("photo")
+        if not file:
+            flash("Veuillez sélectionner une image.", "warning")
+            return redirect(url_for("professional_upload_photo_n", index=index))
+        try:
+            saved_name = _process_and_save_profile_image(file)
+            field = "image_url" if index == 1 else ("image_url2" if index == 2 else "image_url3")
+            setattr(pro, field, f"/media/profiles/{saved_name}")
+            db.session.commit()
+            flash(f"Photo #{index} mise à jour avec succès.", "success")
+            return redirect(url_for("professional_dashboard"))
+        except RuntimeError:
+            current_app.logger.exception("PIL manquant pour traitement image.")
+            flash("Le traitement d'image nécessite Pillow.", "danger")
+        except ValueError as e:
+            flash(str(e), "danger")
+        except Exception:
+            current_app.logger.exception("Erreur interne lors du traitement de l'image")
+            flash("Erreur interne lors du traitement de l'image.", "danger")
+
+    # Réutilise le même template ; s’il n’a pas d’action explicite, il postera sur l’URL courante.
+    return render_template("upload_photo.html", professional=pro, index=index)
+# <<< FIN AJOUT
 
 @app.route("/professional/profile/photos-upload", methods=["POST"], endpoint="professional_photos_upload")
 @login_required
@@ -1741,6 +1772,11 @@ with app.app_context():
             # FK facultatives
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER REFERENCES cities(id) ON DELETE SET NULL;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER REFERENCES specialties(id) ON DELETE SET NULL;",
+
+            # <<< AJOUT — colonnes pour photos secondaires
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
+            # >>> FIN AJOUT
         ]
         for sql in stmts:
             db.session.execute(text(sql))
