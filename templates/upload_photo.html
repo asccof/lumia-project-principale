@@ -1,61 +1,148 @@
 {% extends "base.html" %}
 
+{% block title %}Mettre à jour mes photos{% endblock %}
+
 {% block content %}
 <div class="container" style="max-width: 980px; margin: 0 auto;">
-  <h1>Mettre à jour vos photos</h1>
+  <h1 class="h4 mb-3">Mettre à jour vos photos</h1>
+  <p class="text-muted" style="margin-top:-.25rem">Photo principale + 2 photos secondaires (optionnelles).</p>
 
-  <div class="grid" style="display:grid; grid-template-columns: repeat(3,1fr); gap: 16px;">
-    <div>
-      <label><strong>Photo (principale)</strong></label><br>
-      <img id="pv_main"
-           src="{{ professional.gallery_photo1_url
-                  or professional.photo1_url
-                  or professional.image_url
-                  or url_for('profile_photo', professional_id=professional.id) }}"
-           alt="Photo principale" style="max-width:100%; height:auto; border:1px solid #ddd; border-radius:8px;">
-      <!-- IMPORTANT : input que lit app.py -->
-      <input type="file" name="photo" accept="image/*" form="photosForm" style="margin-top:8px;">
-    </div>
-
-    <div>
-      <label><strong>Photo 2</strong></label><br>
-      <img id="pv2"
-           src="{{ professional.gallery_photo2_url
-                  or professional.photo2_url
-                  or url_for('profile_photo', professional_id=professional.id) }}"
-           alt="Photo 2" style="max-width:100%; height:auto; border:1px solid #ddd; border-radius:8px;">
-      <input type="file" name="photo2" accept="image/*" form="photosForm" style="margin-top:8px;">
-    </div>
-
-    <div>
-      <label><strong>Photo 3</strong></label><br>
-      <img id="pv3"
-           src="{{ professional.gallery_photo3_url
-                  or professional.photo3_url
-                  or url_for('profile_photo', professional_id=professional.id) }}"
-           alt="Photo 3" style="max-width:100%; height:auto; border:1px solid #ddd; border-radius:8px;">
-      <input type="file" name="photo3" accept="image/*" form="photosForm" style="margin-top:8px;">
-    </div>
-  </div>
-
-  <form id="photosForm"
-        method="post"
-        enctype="multipart/form-data"
-        action="{{ url_for('professional_upload_photo') }}"
-        style="margin-top:20px;">
-
-    <!-- Optionnel : input multiple pour glisser-déposer / sélection groupée -->
-    <div>
-      <label><strong>Sélection multiple (optionnel)</strong></label><br>
-      <input type="file" name="photos" accept="image/*" multiple>
-      <div style="font-size: 12px; color:#666; margin-top:6px;">
-        Vous pouvez soit choisir 3 fichiers séparément (Photo principale / 2 / 3) soit en sélectionner jusqu'à 3 ici.
+  <div class="row g-4">
+    <!-- ===================== Photo principale ===================== -->
+    <div class="col-md-4">
+      <div class="card p-3">
+        <label class="fw-bold mb-2">Photo (principale)</label>
+        <img id="pv_main"
+             src="{{ professional_photo_url(professional, 1) }}"
+             alt="Photo principale"
+             style="width:100%;aspect-ratio:1/1;object-fit:cover;border:1px solid #ddd;border-radius:8px;background:#eee"
+             onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=Photo';">
+        <form class="mt-2" method="post" enctype="multipart/form-data"
+              action="{{ url_for('professional_upload_photo') }}">
+          <input type="file" name="photo" accept="image/*" class="form-control" onchange="previewFile(this,'pv_main')">
+          <button type="submit" class="btn btn-primary mt-2 w-100">Enregistrer</button>
+        </form>
       </div>
     </div>
 
-    <button type="submit" class="btn btn-primary" style="margin-top:16px;">
-      Enregistrer
-    </button>
-  </form>
+    <!-- ===================== Photo #2 ===================== -->
+    <div class="col-md-4">
+      <div class="card p-3">
+        <label class="fw-bold mb-2">Photo 2</label>
+        <img id="pv2"
+             src="{{ professional_photo_url(professional, 2) or professional_photo_url(professional, 1) }}"
+             alt="Photo 2"
+             style="width:100%;aspect-ratio:1/1;object-fit:cover;border:1px solid #ddd;border-radius:8px;background:#eee"
+             onerror="this.onerror=null;this.style.opacity=.5">
+        <form class="mt-2" method="post" enctype="multipart/form-data"
+              action="{{ url_for('professional_upload_photo_n', index=2) }}">
+          <!-- IMPORTANT : le backend lit 'photo' (même nom que pour la principale) -->
+          <input type="file" name="photo" accept="image/*" class="form-control" onchange="previewFile(this,'pv2')">
+          <button type="submit" class="btn btn-primary mt-2 w-100">Enregistrer</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ===================== Photo #3 ===================== -->
+    <div class="col-md-4">
+      <div class="card p-3">
+        <label class="fw-bold mb-2">Photo 3</label>
+        <img id="pv3"
+             src="{{ professional_photo_url(professional, 3) or professional_photo_url(professional, 1) }}"
+             alt="Photo 3"
+             style="width:100%;aspect-ratio:1/1;object-fit:cover;border:1px solid #ddd;border-radius:8px;background:#eee"
+             onerror="this.onerror=null;this.style.opacity=.5">
+        <form class="mt-2" method="post" enctype="multipart/form-data"
+              action="{{ url_for('professional_upload_photo_n', index=3) }}">
+          <!-- IMPORTANT : le backend lit 'photo' -->
+          <input type="file" name="photo" accept="image/*" class="form-control" onchange="previewFile(this,'pv3')">
+          <button type="submit" class="btn btn-primary mt-2 w-100">Enregistrer</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== Option bonus : envoyer les 3 d’un coup (JS) ========== -->
+  <div class="card mt-4 p-3">
+    <h2 class="h6 mb-2">Envoyer plusieurs fichiers d’un coup (optionnel)</h2>
+    <p class="text-muted" style="margin-top:-.25rem">Choisissez jusqu’à 3 images, puis cliquez sur “Enregistrer tout”.</p>
+
+    <div class="row g-2">
+      <div class="col-md-8">
+        <input id="bulk_files" type="file" accept="image/*" multiple class="form-control">
+        <div class="form-text">Le premier fichier remplacera la photo principale, le deuxième => Photo 2, le troisième => Photo 3.</div>
+      </div>
+      <div class="col-md-4 d-grid">
+        <button id="bulk_submit" class="btn btn-outline-primary">Enregistrer tout</button>
+      </div>
+    </div>
+
+    <div id="bulk_status" class="mt-2 small"></div>
+  </div>
+
+  <div class="mt-3">
+    <a class="btn btn-outline-secondary" href="{{ url_for('professional_dashboard') }}">Retour à mon espace</a>
+  </div>
 </div>
+
+<script>
+  // Prévisualisation locale
+  function previewFile(input, imgId){
+    const f = input.files && input.files[0];
+    if(!f) return;
+    const img = document.getElementById(imgId);
+    img && (img.src = URL.createObjectURL(f));
+  }
+
+  // Upload groupé (JS) vers les 3 routes existantes
+  (function(){
+    const bulk = document.getElementById('bulk_files');
+    const btn  = document.getElementById('bulk_submit');
+    const out  = document.getElementById('bulk_status');
+    if(!bulk || !btn) return;
+
+    btn.addEventListener('click', async function(e){
+      e.preventDefault();
+      out.textContent = '';
+      const files = Array.from(bulk.files || []);
+      if(files.length === 0){
+        out.textContent = "Aucun fichier sélectionné.";
+        return;
+      }
+
+      // mapping : 0 -> principale, 1 -> photo2, 2 -> photo3
+      const endpoints = [
+        "{{ url_for('professional_upload_photo') }}",
+        "{{ url_for('professional_upload_photo_n', index=2) }}",
+        "{{ url_for('professional_upload_photo_n', index=3) }}"
+      ];
+
+      let results = [];
+      for(let i=0;i<Math.min(files.length,3);i++){
+        const fd = new FormData();
+        fd.append('photo', files[i]); // IMPORTANT : le backend lit 'photo'
+        try{
+          const res = await fetch(endpoints[i], { method:'POST', body: fd, credentials:'include' });
+          results.push(res.ok ? 'ok' : 'fail');
+        }catch(err){
+          results.push('fail');
+        }
+      }
+
+      const ok = results.filter(r=>r==='ok').length;
+      const ko = results.filter(r=>r==='fail').length;
+      out.textContent = `Envoi terminé : ${ok} fichier(s) enregistré(s)${ko?`, ${ko} échec(s)`:''}.`;
+      if(ok>0){
+        // rafraîchir les images
+        const bust = (u)=> u ? (u + (u.includes('?')?'&':'?') + 't=' + Date.now()) : u;
+        const main = document.getElementById('pv_main');
+        const i2   = document.getElementById('pv2');
+        const i3   = document.getElementById('pv3');
+        if(main) main.src = bust(main.src);
+        if(i2)   i2.src   = bust(i2.src);
+        if(i3)   i3.src   = bust(i3.src);
+      }
+    });
+  })();
+</script>
 {% endblock %}
