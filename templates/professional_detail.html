@@ -71,7 +71,11 @@
 {% set url1 = professional_photo_url(professional, 1) %}
 {% set url2 = professional_photo_url(professional, 2) %}
 {% set url3 = professional_photo_url(professional, 3) %}
-{% set imgs = [u for u in [url1, url2, url3] if u] %}
+{% set imgs = [] %}
+{% if url1 %}{% set _ = imgs.append(url1) %}{% endif %}
+{% if url2 %}{% set _ = imgs.append(url2) %}{% endif %}
+{% if url3 %}{% set _ = imgs.append(url3) %}{% endif %}
+
 
 <div class="wrap">
   <div class="top">
