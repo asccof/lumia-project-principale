@@ -228,6 +228,70 @@
     <button class="btn btn-primary mt-3">Enregistrer</button>
     <a href="{{ url_for('professional_dashboard') }}" class="btn btn-outline-secondary mt-3">Annuler</a>
   </form>
+
+  {# =================== GESTION DES PHOTOS (contrat fixé, routes dédiées) =================== #}
+  <hr class="my-4">
+  <h2 class="h5 mb-3">Photos du profil</h2>
+
+  <div class="row g-3">
+    {% set u1 = professional_photo_url(professional, 1) %}
+    {% set u2 = professional_photo_url(professional, 2) %}
+    {% set u3 = professional_photo_url(professional, 3) %}
+
+    <!-- Photo principale (#1) -->
+    <div class="col-md-4">
+      <div class="card p-3 h-100">
+        <div class="mb-2 text-muted">Photo principale</div>
+        <img src="{{ u1 }}" alt="Photo principale" class="img-fluid rounded mb-3"
+             onerror="this.onerror=null;this.src='https://placehold.co/600x600?text=Photo';">
+        <form action="{{ url_for('professional_upload_photo') }}" method="post" enctype="multipart/form-data">
+          {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input class="form-control mb-2" type="file" name="photo" accept=".jpg,.jpeg,.png,.gif" required>
+          <button class="btn btn-outline-primary w-100">Mettre à jour la photo principale</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Photo secondaire (#2) -->
+    <div class="col-md-4">
+      <div class="card p-3 h-100">
+        <div class="mb-2 text-muted">Photo secondaire #2</div>
+        {% if u2 %}
+          <img src="{{ u2 }}" alt="Photo #2" class="img-fluid rounded mb-3"
+               onerror="this.style.display='none'">
+        {% else %}
+          <div class="text-muted mb-3">— aucune</div>
+        {% endif %}
+        <form action="{{ url_for('professional_upload_photo_n', index=2) }}" method="post" enctype="multipart/form-data">
+          {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input class="form-control mb-2" type="file" name="photo" accept=".jpg,.jpeg,.png,.gif" required>
+          <button class="btn btn-outline-primary w-100">Téléverser / Remplacer #2</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Photo secondaire (#3) -->
+    <div class="col-md-4">
+      <div class="card p-3 h-100">
+        <div class="mb-2 text-muted">Photo secondaire #3</div>
+        {% if u3 %}
+          <img src="{{ u3 }}" alt="Photo #3" class="img-fluid rounded mb-3"
+               onerror="this.style.display='none'">
+        {% else %}
+          <div class="text-muted mb-3">— aucune</div>
+        {% endif %}
+        <form action="{{ url_for('professional_upload_photo_n', index=3) }}" method="post" enctype="multipart/form-data">
+          {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input class="form-control mb-2" type="file" name="photo" accept=".jpg,.jpeg,.png,.gif" required>
+          <button class="btn btn-outline-primary w-100">Téléverser / Remplacer #3</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="form-text mt-2">
+    Formats autorisés : .jpg, .jpeg, .png, .gif — redimensionnées en 512×512 pour de meilleures performances.
+  </div>
+  {# ======================================================================= #}
 </div>
 
 {% if (families is defined and families) and (specialties is defined and specialties) %}
