@@ -4,6 +4,11 @@
 
 {% block content %}
 <div class="container mt-4">
+    <!-- Ajout : petit lien retour -->
+    <div class="mb-2">
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('professional_dashboard') }}">← Retour au tableau de bord</a>
+    </div>
+
     <div class="row">
         <div class="col-md-12">
             <div class="card">
@@ -144,4 +149,4 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('date').min = new Date().toISOString().split('T')[0];
 });
 </script>
-{% endblock %} 
+{% endblock %}
