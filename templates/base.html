@@ -158,6 +158,22 @@
       </div>
     </div>
   </nav>
+{% if current_user.is_authenticated %}
+  {% if current_user.user_type == 'professional' %}
+    <a href="{{ url_for('messages_index') }}">Messages</a>
+    <a href="{{ url_for('pro_list_patients') }}">Mes patients</a>
+    <a href="{{ url_for('professional_reviews') }}">Avis</a>
+    <a href="{{ url_for('pro_exercise_library') }}">Ma bibliothèque</a>
+  {% elif current_user.user_type == 'patient' %}
+    <a href="{{ url_for('messages_index') }}">Messages</a>
+    <a href="{{ url_for('patient_files_me') }}">Mes fichiers</a>
+    <a href="{{ url_for('patient_journal_me') }}">Mon carnet</a>
+    <a href="{{ url_for('patient_assignments') }}">Mes exercices</a>
+  {% endif %}
+  {% if current_user.is_admin %}
+    <a href="{{ url_for('admin_home') }}">Admin</a>
+  {% endif %}
+{% endif %}
 
   <!-- Ruban d’accès rapide sur la page d’accueil après connexion -->
   {% if current_user.is_authenticated and request.endpoint == 'index' %}
