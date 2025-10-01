@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Dossier patient — Tighri{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <div class="mb-3 d-flex gap-2">
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('professional_appointments') }}">← Retour RDV</a>
+    <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url_for('pro_office_export_pdf', patient_id=patient.id) }}">🖨️ Imprimer / PDF</a>
+  </div>
+
+  <h3 class="mb-3">Dossier de {{ patient.full_name or patient.username }}</h3>
+
+  <div class="row g-3">
+    <!-- FICHE -->
+    <div class="col-lg-4">
+      <div class="card p-3 h-100">
+        <h5>Fiche patient</h5>
+        <form method="post" action="{{ url_for('pro_office_save_profile', patient_id=patient.id) }}">
+          <div class="mb-2">
+            <label class="form-label">Langue</label>
+            <select name="preferred_lang" class="form-select">
+              <option value=""  {{ ''==(profile.preferred_lang or '') and 'selected' or '' }}>—</option>
+              <option value="fr" {{ (profile and profile.preferred_lang=='fr') and 'selected' or '' }}>Français</option>
+              <option value="ar" {{ (profile and profile.preferred_lang=='ar') and 'selected' or '' }}>العربية</option>
+              <option value="en" {{ (profile and profile.preferred_lang=='en') and 'selected' or '' }}>English</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Préférences</label>
+            <textarea class="form-control" name="preferences" rows="2">{{ profile and profile.preferences or '' }}</textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Antécédents</label>
+            <textarea class="form-control" name="medical_history" rows="3">{{ profile and profile.medical_history or '' }}</textarea>
+          </div>
+          <button class="btn btn-primary btn-sm">Enregistrer la fiche</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- HISTORIQUE -->
+    <div class="col-lg-8">
+      <div class="card p-3 h-100">
+        <h5>Historique des séances</h5>
+        {% if appts %}
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr><th>Date</th><th>Type</th><th>Statut</th><th>Note liée</th></tr>
+              </thead>
+              <tbody>
+              {% for a in appts %}
+                <tr>
+                  <td>{{ a.appointment_date.strftime("%d/%m/%Y %H:%M") }}</td>
+                  <td>{{ a.consultation_type }}</td>
+                  <td>{{ a.status }}</td>
+                  <td>
+                    <form class="d-flex gap-2" method="post" action="{{ url_for('pro_office_add_note', patient_id=patient.id) }}">
+                      <input type="hidden" name="appointment_id" value="{{ a.id }}">
+                      <input class="form-control form-control-sm" name="note_text" placeholder="Ajouter une note courte…">
+                      <button class="btn btn-outline-primary btn-sm">Ajouter</button>
+                    </form>
+                  </td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="text-muted">Aucun rendez-vous.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mt-1">
+    <!-- NOTES -->
+    <div class="col-lg-6">
+      <div class="card p-3 h-100">
+        <h5>Notes de séance</h5>
+        <form class="mb-2" method="post" action="{{ url_for('pro_office_add_note', patient_id=patient.id) }}">
+          <textarea class="form-control mb-2" rows="3" name="note_text" placeholder="Saisir une note libre…"></textarea>
+          <button class="btn btn-primary btn-sm">Enregistrer</button>
+        </form>
+        {% if notes %}
+          <div class="list-group">
+            {% for n in notes %}
+              <div class="list-group-item">
+                <small class="text-muted">{{ n.created_at.strftime("%d/%m/%Y %H:%M") }}</small>
+                <div>{{ n.note_text | replace('\n','<br>') | safe }}</div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-muted">Aucune note pour le moment.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- DOCUMENTS -->
+    <div class="col-lg-6">
+      <div class="card p-3 h-100">
+        <h5>Documents</h5>
+        <form class="d-flex gap-2 mb-2" method="post" enctype="multipart/form-data"
+              action="{{ url_for('pro_office_upload_file', patient_id=patient.id) }}">
+          <input type="file" name="file" class="form-control form-control-sm" required>
+          <button class="btn btn-outline-primary btn-sm">Téléverser</button>
+        </form>
+        {% if files %}
+          <ul class="list-group">
+            {% for f in files %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>{{ f.original_name or 'Fichier' }}</strong>
+                  <div class="text-muted small">{{ f.mime_type or '—' }} · {{ f.uploaded_at.strftime("%d/%m/%Y") }}</div>
+                </div>
+                <a class="btn btn-sm btn-secondary"
+                   href="{{ url_for('pro_office_download_file', file_id=f.id) }}">Télécharger</a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="text-muted">Aucun document.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
