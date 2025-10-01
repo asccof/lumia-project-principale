@@ -1802,5 +1802,10 @@ with app.app_context():
         )
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
+from pro_office import pro_office_bp      # nouveau blueprint "Bureau virtuel"
+from patient_portal import patient_bp     # nouveau blueprint "Espace patient"
+
+app.register_blueprint(pro_office_bp, url_prefix="/pro/office")
+app.register_blueprint(patient_bp,    url_prefix="/patient")
 
 # Pas de __main__: Gunicorn lance app:app
