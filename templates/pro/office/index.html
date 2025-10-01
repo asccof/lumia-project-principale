@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Bureau virtuel</h2>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <a class="btn btn-primary" href="{{ url_for('pro_office.exercises_index') }}">Bibliothèque d’exercices</a>
+    <a class="btn btn-outline-primary" href="{{ url_for('professional_appointments') }}">Mes rendez-vous</a>
+  </div>
+</div>
+
+<h5>Prochains rendez-vous</h5>
+<ul class="list-group mb-4">
+  {% for ap in upcoming %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <span>{{ ap.appointment_date.strftime("%Y-%m-%d %H:%M") }} — {{ ap.status }}</span>
+      {% if ap.meet_url %}
+        <a class="btn btn-sm btn-success" target="_blank" rel="noopener" href="{{ ap.meet_url }}">Rejoindre Google Meet</a>
+      {% else %}
+        <form method="post" action="{{ url_for('pro_office.attach_meet', appointment_id=ap.id) }}" class="d-flex">
+          <input name="meet_url" class="form-control form-control-sm me-2" placeholder="Coller lien Google Meet">
+          <button class="btn btn-sm btn-outline-primary">Enregistrer</button>
+        </form>
+      {% endif %}
+    </li>
+  {% else %}
+    <li class="list-group-item">Aucun rendez-vous à venir.</li>
+  {% endfor %}
+</ul>
+
+<h5>Mes patients</h5>
+<ul class="list-group">
+  {% for c in cases %}
+    <li class="list-group-item">{{ c.display_name or c.patient_user.username }}</li>
+  {% else %}
+    <li class="list-group-item">Aucun patient relié pour l’instant.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
