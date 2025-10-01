@@ -1,0 +1,17 @@
+<h2>Mes fichiers</h2>
+
+<form method="post" enctype="multipart/form-data" style="margin:10px 0;">
+  <input type="file" name="file" required>
+  <button>Uploader</button>
+</form>
+
+<ul>
+  {% for f in files %}
+    <li>
+      {{ f.filename }} — {{ f.mime_type }} — {{ f.created_at }}
+      [<a href="{{ url_for('media_patient_file', file_id=f.id) }}">télécharger</a>]
+    </li>
+  {% else %}
+    <li>Aucun fichier.</li>
+  {% endfor %}
+</ul>
