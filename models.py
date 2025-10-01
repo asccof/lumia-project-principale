@@ -127,7 +127,7 @@ class Professional(db.Model):
 
     # Expérience / tarif
     experience_years = db.Column(db.Integer)
-    consultation_fee = db.Column(db.Float)  # MAD
+    consultation_fee = db.Column(db.Float, nullable=False, default=0.0)  # MAD
 
     # Images
     image_url = db.Column(db.Text)
@@ -178,6 +178,13 @@ class Professional(db.Model):
         db.Index('ix_professionals_is_featured', 'is_featured'),
         db.Index('ix_professionals_featured_rank', 'featured_rank'),
     )
+@validates("consultation_fee")
+def _ensure_fee(self, key, v):
+    # Si None ou vide → 0.0
+    try:
+        return float(v) if v is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
 
     def __repr__(self):
         return f"<Professional id={self.id} {self.name} [{self.specialty}] status={self.status}>"
