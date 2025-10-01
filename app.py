@@ -20,8 +20,64 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
+from sqlalchemy.exc import ProgrammingError  # ✅ ajout : pour le fallback reviews.professional_id
+from flask import render_template, request, redirect, url_for, abort, flash, send_from_directory
+from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
-from sqlalchemy.exc import ProgrammingError
+import os
+from datetime import datetime
+
+from models import (
+    db, User, Professional, PatientCase, PatientProfile, PatientFile,
+    MessageThread, Message, Review, TherapeuticJournal, JournalEntry,
+    ExerciseItem, ExerciseAssignment, ExerciseProgress, Appointment, Specialty
+)
+# --- Rôles
+def require_role(*roles):
+    if not current_user.is_authenticated or current_user.user_type not in roles:
+        abort(403)
+
+def require_admin():
+    if not current_user.is_authenticated or not current_user.is_admin:
+        abort(403)
+
+# --- Dossier d'upload (persistant local ; pour le cloud, adapte ici)
+UPLOAD_ROOT = os.environ.get("UPLOAD_ROOT", os.path.join(os.getcwd(), "uploads"))
+os.makedirs(UPLOAD_ROOT, exist_ok=True)
+
+ALLOWED_EXTS = {"pdf","png","jpg","jpeg","mp3","wav","mp4","doc","docx","txt"}
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".",1)[1].lower() in ALLOWED_EXTS
+
+# --- Sécurité d'accès: le pro ne voit ce patient que s'il est lié ou a un RDV
+def pro_can_access_patient(pro_id:int, patient_id:int)->bool:
+    if PatientCase.query.filter_by(professional_id=pro_id, patient_user_id=patient_id).first():
+        return True
+    appt_exists = Appointment.query.filter_by(professional_id=pro_id, patient_id=patient_id).first()
+    return bool(appt_exists)
+
+# --- Assure une ligne Professional "placeholder" sans violer les contraintes (ex. consultation_fee)
+def ensure_professional_row_for_user(user: User) -> Professional|None:
+    if user.user_type != "professional":
+        return None
+    pro = Professional.query.get(user.id)
+    if not pro:
+        # Valeurs par défaut non destructives (DB legacy: consultation_fee NOT NULL)
+        pro = Professional(
+            id=user.id,  # on suit ton mapping actuel user.id == professional.id
+            name=user.full_name or user.username or f"Pro#{user.id}",
+            description="Profil en cours de complétion.",
+            consultation_fee=0.0,  # évite l'IntegrityError vu dans tes logs
+            availability="disponible",
+            status="en_attente",
+            consultation_duration_minutes=45,
+            buffer_between_appointments_minutes=15,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(pro)
+        db.session.commit()
+    return pro
 
 # =========================
 #   CONSTANTES / DOSSIERS
@@ -29,39 +85,10 @@ from sqlalchemy.exc import ProgrammingError
 BASE_DIR = Path(__file__).resolve().parent
 BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
 
-# Racine d'upload (unique, Path)
 UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
-# Sous-dossier photos de profils pro
 UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
-# Sous-dossier documents patients
-PATIENT_FILES_FOLDER = UPLOAD_ROOT / "patient_files"
-
-# Extensions autorisées
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
-ALLOWED_DOC_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".mp3", ".wav"}
-ALLOWED_EXTS = {"pdf", "png", "jpg", "jpeg", "mp3", "wav", "mp4", "doc", "docx", "txt"}
-
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
-
-def allowed_file(filename: str) -> bool:
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTS
-
-def _secure_save_patient_file(file_storage):
-    filename = getattr(file_storage, "filename", None)
-    if not filename:
-        raise ValueError("Aucun fichier sélectionné.")
-    ext = os.path.splitext(filename.lower())[1]
-    if ext not in (ALLOWED_IMAGE_EXT | ALLOWED_DOC_EXT):
-        raise ValueError("Extension non autorisée.")
-    raw = file_storage.read()
-    if not raw:
-        raise ValueError("Fichier vide.")
-    out_name = f"{uuid.uuid4().hex}{ext}"
-    out_path = PATIENT_FILES_FOLDER / out_name
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "wb") as f:
-        f.write(raw)
-    return out_name, len(raw)
 
 # =========================
 #   FLASK APP
@@ -85,48 +112,32 @@ app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
 try:
     UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
+# === AJOUT : répertoire fichiers patients ===
+PATIENT_FILES_FOLDER = UPLOAD_ROOT / "patient_files"
+try:
     PATIENT_FILES_FOLDER.mkdir(parents=True, exist_ok=True)
 except Exception as e:
-    app.logger.warning("Impossible de créer le(s) dossier(s) d'upload: %s", e)
+    app.logger.warning("Impossible de créer patient_files: %s", e)
 
-# --- Rôles
-def require_role(*roles):
-    if not current_user.is_authenticated or current_user.user_type not in roles:
-        abort(403)
+ALLOWED_DOC_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".mp3", ".wav"}
 
-def require_admin():
-    if not current_user.is_authenticated or not current_user.is_admin:
-        abort(403)
-
-# --- Sécurité d'accès: le pro ne voit ce patient que s'il est lié ou a un RDV
-def pro_can_access_patient(pro_id:int, patient_id:int)->bool:
-    from models import PatientCase, Appointment  # import local pour éviter import cycle
-    if PatientCase.query.filter_by(professional_id=pro_id, patient_user_id=patient_id).first():
-        return True
-    appt_exists = Appointment.query.filter_by(professional_id=pro_id, patient_id=patient_id).first()
-    return bool(appt_exists)
-
-# --- Assure une ligne Professional "placeholder" sans violer les contraintes (ex. consultation_fee)
-def ensure_professional_row_for_user(user) -> "Professional|None":
-    from models import Professional, db  # import local
-    if user.user_type != "professional":
-        return None
-    pro = Professional.query.get(user.id)
-    if not pro:
-        pro = Professional(
-            id=user.id,  # mapping actuel user.id == professional.id
-            name=user.full_name or user.username or f"Pro#{user.id}",
-            description="Profil en cours de complétion.",
-            consultation_fee=0.0,
-            availability="disponible",
-            status="en_attente",
-            consultation_duration_minutes=45,
-            buffer_between_appointments_minutes=15,
-            created_at=datetime.utcnow(),
-        )
-        db.session.add(pro)
-        db.session.commit()
-    return pro
+def _secure_save_patient_file(file_storage):
+    filename = getattr(file_storage, "filename", None)
+    if not filename:
+        raise ValueError("Aucun fichier sélectionné.")
+    ext = os.path.splitext(filename.lower())[1]
+    if ext not in (ALLOWED_IMAGE_EXT | ALLOWED_DOC_EXT):
+        raise ValueError("Extension non autorisée.")
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError("Fichier vide.")
+    out_name = f"{uuid.uuid4().hex}{ext}"
+    out_path = PATIENT_FILES_FOLDER / out_name
+    with open(out_path, "wb") as f:
+        f.write(raw)
+    return out_name, len(raw)
 
 # =========================
 #   DB / MODELS
@@ -149,13 +160,11 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-# Import unique et complet (contrat fix)
+# ⬇️ Importe City / Specialty pour correspondre à ton models.py
 from models import (
     db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
-    City, Specialty, Review, NewsletterSubscriber,
-    PatientProfile, SessionNote, PatientFile, PatientCase,
-    MessageThread, Message, TherapeuticJournal, JournalEntry,
-    ExerciseItem, ExerciseAssignment, ExerciseProgress
+    City, Specialty, Review, NewsletterSubscriber,  # AJOUT regroupe les imports
+    PatientProfile, SessionNote, PatientFile        # AJOUT
 )
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
@@ -185,16 +194,6 @@ def _load_user(user_id: str):
         return db.session.get(User, int(user_id))
     except Exception:
         return None
-# --- Alias legacy pour les templates : "Mes patients"
-@app.route("/pro/patients", endpoint="pro_list_patients")
-@login_required
-def pro_list_patients():
-    # Redirige vers le bureau pro (la liste patients y vit déjà)
-    return redirect("/pro/office/")
-
-# =========================
-#   MESSAGERIE
-# =========================
 @app.route("/messages")
 @login_required
 def messages_index():
@@ -229,29 +228,6 @@ def messages_start():
         t = MessageThread(professional_id=pro_id, patient_user_id=patient_id)
         db.session.add(t); db.session.commit()
     return redirect(url_for("messages_thread", thread_id=t.id))
-
-@app.route("/messages/<int:thread_id>", methods=["GET","POST"])
-@login_required
-def messages_thread(thread_id):
-    t = MessageThread.query.get_or_404(thread_id)
-    # accès
-    if current_user.user_type == "professional" and t.professional_id != current_user.id: abort(403)
-    if current_user.user_type == "patient" and t.patient_user_id != current_user.id: abort(403)
-
-    if request.method == "POST":
-        body = (request.form.get("body") or "").strip()
-        if body:
-            m = Message(thread_id=t.id, sender_user_id=current_user.id, body=body)
-            db.session.add(m); db.session.commit()
-            flash("Message envoyé.", "success")
-        return redirect(url_for("messages_thread", thread_id=t.id))
-
-    msgs = Message.query.filter_by(thread_id=t.id).order_by(Message.created_at.asc()).all()
-    return render_template("messages/thread.html", thread=t, messages=msgs)
-
-# =========================
-#   LIEN PRO ↔ PATIENT
-# =========================
 @app.route("/pro/patient/link/<int:patient_id>", methods=["POST"])
 @login_required
 def pro_link_patient(patient_id):
@@ -266,10 +242,6 @@ def pro_link_patient(patient_id):
         db.session.add(pc); db.session.commit()
         flash("Patient lié.", "success")
     return redirect(url_for("pro_office_patient", patient_id=patient_id))
-
-# =========================
-#   FICHIERS PATIENT
-# =========================
 @app.route("/patient/files", methods=["GET","POST"])
 @login_required
 def patient_files_me():
@@ -282,7 +254,7 @@ def patient_files_me():
             flash("Extension non autorisée.", "danger"); return redirect(url_for("patient_files_me"))
         filename = secure_filename(f.filename)
         stored = f"{current_user.id}_{int(datetime.utcnow().timestamp())}_{filename}"
-        path = os.path.join(str(UPLOAD_ROOT), stored)
+        path = os.path.join(UPLOAD_ROOT, stored)
         f.save(path)
         pf = PatientFile(
             patient_user_id=current_user.id,
@@ -314,7 +286,7 @@ def pro_files_for_patient(patient_id):
             flash("Extension non autorisée.", "danger"); return redirect(url_for("pro_files_for_patient", patient_id=patient_id))
         filename = secure_filename(f.filename)
         stored = f"pro{current_user.id}_p{patient_id}_{int(datetime.utcnow().timestamp())}_{filename}"
-        path = os.path.join(str(UPLOAD_ROOT), stored)
+        path = os.path.join(UPLOAD_ROOT, stored)
         f.save(path)
         pf = PatientFile(
             patient_user_id=patient_id,
@@ -331,28 +303,6 @@ def pro_files_for_patient(patient_id):
              .filter_by(patient_user_id=patient_id)
              .order_by(PatientFile.created_at.desc()).all())
     return render_template("pro/patient_files.html", files=files, patient_id=patient_id)
-
-@app.route("/media/patient_file/<int:file_id>")
-@login_required
-def media_patient_file(file_id):
-    pf = PatientFile.query.get_or_404(file_id)
-    # sécurité d'accès
-    if current_user.is_admin:
-        pass
-    elif current_user.user_type == "patient":
-        if pf.patient_user_id != current_user.id: abort(403)
-    elif current_user.user_type == "professional":
-        # accès si pro lié ou auteur
-        if pf.professional_id != current_user.id and not pro_can_access_patient(current_user.id, pf.patient_user_id):
-            abort(403)
-    else:
-        abort(403)
-
-    return send_from_directory(str(UPLOAD_ROOT), pf.file_url, as_attachment=True)
-
-# =========================
-#   CARNET THÉRAPEUTIQUE
-# =========================
 def _get_or_create_journal(pro_id, patient_id):
     j = TherapeuticJournal.query.filter_by(professional_id=pro_id, patient_user_id=patient_id).first()
     if not j:
@@ -383,27 +333,7 @@ def patient_journal_me():
     entries_by_j = {j.id: JournalEntry.query.filter_by(journal_id=j.id).order_by(JournalEntry.created_at.desc()).all()
                     for j in journals}
     return render_template("patient/journals.html", journals=journals, entries_by_j=entries_by_j)
-
-@app.route("/pro/patient/<int:patient_id>/journal", methods=["GET","POST"])
-@login_required
-def pro_patient_journal(patient_id):
-    require_role("professional")
-    if not pro_can_access_patient(current_user.id, patient_id): abort(403)
-    j = _get_or_create_journal(current_user.id, patient_id)
-    if request.method == "POST":
-        title = (request.form.get("title") or "").strip()
-        content = (request.form.get("content") or "").strip()
-        if title or content:
-            e = JournalEntry(journal_id=j.id, author_role="pro", title=title, content=content)
-            db.session.add(e); db.session.commit()
-            flash("Entrée ajoutée.", "success")
-        return redirect(url_for("pro_patient_journal", patient_id=patient_id))
-    entries = JournalEntry.query.filter_by(journal_id=j.id).order_by(JournalEntry.created_at.desc()).all()
-    return render_template("pro/journal.html", journal=j, entries=entries, patient_id=patient_id)
-
-# =========================
-#   EXERCICES / ASSIGNATIONS
-# =========================
+# --- Bibliothèque personnelle du pro + création simple d'un item privé
 @app.route("/pro/exercises", methods=["GET","POST"])
 @login_required
 def pro_exercise_library():
@@ -423,6 +353,7 @@ def pro_exercise_library():
              .order_by(ExerciseItem.created_at.desc()).all())
     return render_template("pro/exercises.html", items=items)
 
+# --- Assignations par le pro à un patient
 @app.route("/pro/patient/<int:patient_id>/assignments", methods=["GET","POST"])
 @login_required
 def pro_assignments_for_patient(patient_id):
@@ -451,6 +382,7 @@ def pro_assignments_for_patient(patient_id):
     return render_template("pro/assignments.html", assignments=assigns, patient_id=patient_id,
                            my_items=my_items, public_items=public_items)
 
+# --- Vue patient de ses assignations + dépôt de progression
 @app.route("/patient/assignments")
 @login_required
 def patient_assignments():
@@ -466,25 +398,6 @@ def patient_assignments():
              .first())
         latest_progress[a.id] = p
     return render_template("patient/assignments.html", assignments=assigns, latest_progress=latest_progress)
-
-@app.route("/patient/progress/new/<int:assignment_id>", methods=["GET","POST"])
-@login_required
-def patient_progress_new(assignment_id):
-    require_role("patient")
-    a = ExerciseAssignment.query.get_or_404(assignment_id)
-    if a.patient_user_id != current_user.id: abort(403)
-    if request.method == "POST":
-        progress_percent = int(request.form.get("progress_percent") or 0)
-        response_text = (request.form.get("response_text") or "").strip() or None
-        ep = ExerciseProgress(assignment_id=a.id, progress_percent=progress_percent, response_text=response_text)
-        db.session.add(ep); db.session.commit()
-        flash("Progression envoyée.", "success")
-        return redirect(url_for("patient_assignments"))
-    return render_template("patient/progress_new.html", assignment=a)
-
-# =========================
-#   AVIS
-# =========================
 @app.route("/professional/reviews")
 @login_required
 def professional_reviews():
@@ -515,10 +428,6 @@ def review_new(appointment_id):
         flash("Merci pour votre avis.", "success")
         return redirect(url_for("patient_assignments"))
     return render_template("reviews/new.html", appointment=appt)
-
-# =========================
-#   VUE DOSSIER PATIENT (PRO)
-# =========================
 @app.route("/pro/office/patient/<int:patient_id>")
 @login_required
 def pro_office_patient(patient_id):
@@ -544,10 +453,6 @@ def pro_office_patient(patient_id):
     return render_template("pro/patient_case.html",
                            patient=patient, profile=profile, files=files, cases=cases,
                            assigns=assigns, journal=journal, last_entries=last_entries, thread=thread)
-
-# =========================
-#   ADMIN SIMPLE
-# =========================
 @app.route("/admin")
 @login_required
 def admin_home():
@@ -605,6 +510,87 @@ def admin_files():
     require_admin()
     files = PatientFile.query.order_by(PatientFile.created_at.desc()).all()
     return render_template("admin/files.html", files=files)
+
+@app.route("/patient/progress/new/<int:assignment_id>", methods=["GET","POST"])
+@login_required
+def patient_progress_new(assignment_id):
+    require_role("patient")
+    a = ExerciseAssignment.query.get_or_404(assignment_id)
+    if a.patient_user_id != current_user.id: abort(403)
+    if request.method == "POST":
+        progress_percent = int(request.form.get("progress_percent") or 0)
+        response_text = (request.form.get("response_text") or "").strip() or None
+        ep = ExerciseProgress(assignment_id=a.id, progress_percent=progress_percent, response_text=response_text)
+        db.session.add(ep); db.session.commit()
+        flash("Progression envoyée.", "success")
+        return redirect(url_for("patient_assignments"))
+    return render_template("patient/progress_new.html", assignment=a)
+
+@app.route("/pro/patient/<int:patient_id>/journal", methods=["GET","POST"])
+@login_required
+def pro_patient_journal(patient_id):
+    require_role("professional")
+    if not pro_can_access_patient(current_user.id, patient_id): abort(403)
+    j = _get_or_create_journal(current_user.id, patient_id)
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        content = (request.form.get("content") or "").strip()
+        if title or content:
+            e = JournalEntry(journal_id=j.id, author_role="pro", title=title, content=content)
+            db.session.add(e); db.session.commit()
+            flash("Entrée ajoutée.", "success")
+        return redirect(url_for("pro_patient_journal", patient_id=patient_id))
+    entries = JournalEntry.query.filter_by(journal_id=j.id).order_by(JournalEntry.created_at.desc()).all()
+    return render_template("pro/journal.html", journal=j, entries=entries, patient_id=patient_id)
+
+@app.route("/media/patient_file/<int:file_id>")
+@login_required
+def media_patient_file(file_id):
+    pf = PatientFile.query.get_or_404(file_id)
+    # sécurité d'accès
+    if current_user.is_admin:
+        pass
+    elif current_user.user_type == "patient":
+        if pf.patient_user_id != current_user.id: abort(403)
+    elif current_user.user_type == "professional":
+        # accès si pro lié ou auteur
+        if pf.professional_id != current_user.id and not pro_can_access_patient(current_user.id, pf.patient_user_id):
+            abort(403)
+    else:
+        abort(403)
+
+    return send_from_directory(UPLOAD_ROOT, pf.file_url, as_attachment=True)
+
+@app.route("/pro/patients")
+@login_required
+def pro_list_patients():
+    require_role("professional")
+    # patients liés via PatientCase
+    cases = (PatientCase.query
+             .filter_by(professional_id=current_user.id)
+             .order_by(PatientCase.created_at.desc()).all())
+    patient_ids = [c.patient_user_id for c in cases]
+    patients = User.query.filter(User.id.in_(patient_ids)).all() if patient_ids else []
+    return render_template("pro/patients.html", cases=cases, patients=patients)
+
+@app.route("/messages/<int:thread_id>", methods=["GET","POST"])
+@login_required
+def messages_thread(thread_id):
+    t = MessageThread.query.get_or_404(thread_id)
+    # accès
+    if current_user.user_type == "professional" and t.professional_id != current_user.id: abort(403)
+    if current_user.user_type == "patient" and t.patient_user_id != current_user.id: abort(403)
+
+    if request.method == "POST":
+        body = (request.form.get("body") or "").strip()
+        if body:
+            m = Message(thread_id=t.id, sender_user_id=current_user.id, body=body)
+            db.session.add(m); db.session.commit()
+            flash("Message envoyé.", "success")
+        return redirect(url_for("messages_thread", thread_id=t.id))
+
+    msgs = Message.query.filter_by(thread_id=t.id).order_by(Message.created_at.asc()).all()
+    return render_template("messages/thread.html", thread=t, messages=msgs)
 
 # =========================
 #   I18N / LANG
@@ -915,6 +901,60 @@ def inject_gallery_helpers():
     }
 
 # =========================
+#   LISTES (ORM + seeds)
+# =========================
+try:
+    from seeds_taxonomy import (
+        SPECIALTY_FAMILIES,
+        CITY_OBJECTS,
+        ALL_CITIES as SEED_CITIES,
+        ALL_SPECIALTIES as SEED_SPECIALTIES,
+    )
+except Exception:
+    SPECIALTY_FAMILIES = []
+    CITY_OBJECTS = []
+    SEED_CITIES = ["Casablanca", "Rabat", "Marrakech", "Fès", "Tanger", "Agadir"]
+    SEED_SPECIALTIES = [
+        "Psychologue", "Psychiatre", "Psychothérapeute", "Coach",
+        "Orthophoniste", "Psychomotricien", "Kinésithérapeute"
+    ]
+
+def _ui_cities():
+    try:
+        return [{"id": c.id, "name": c.name} for c in City.query.order_by(City.name.asc()).all()]
+    except Exception:
+        return []
+
+def _ui_specialties():
+    try:
+        return [{"id": s.id, "name": s.name, "category": s.category} for s in Specialty.query.order_by(Specialty.name.asc()).all()]
+    except Exception:
+        return []
+
+def _ui_families_rows():
+    try:
+        rows = (
+            db.session.query(Specialty.category)
+            .filter(Specialty.category.isnot(None), Specialty.category != "")
+            .distinct()
+            .order_by(Specialty.category.asc())
+            .all()
+        )
+        out = []
+        for i, r in enumerate(rows, start=1):
+            out.append({"id": i, "name": r[0]})
+        return out
+    except Exception:
+        return []
+
+@app.context_processor
+def inject_taxonomies_for_forms():
+    return {
+        "ALL_CITIES": SEED_CITIES,
+        "ALL_SPECIALTIES": SEED_SPECIALTIES,
+    }
+
+# =========================
 #   ROUTES TECH
 # =========================
 @app.route("/favicon.ico")
@@ -970,26 +1010,9 @@ def index():
         top_ids = [p.id for p in top_professionals]
         more_professionals = fb.filter(~Professional.id.in_(top_ids)).all() if top_ids else fb.offset(9).all()
 
-    # Villes, spécialités, familles pour les formulaires
-    try:
-        cities = [{"id": c.id, "name": c.name} for c in City.query.order_by(City.name.asc()).all()]
-    except Exception:
-        cities = []
-    try:
-        specialties = [{"id": s.id, "name": s.name, "category": s.category} for s in Specialty.query.order_by(Specialty.name.asc()).all()]
-    except Exception:
-        specialties = []
-    try:
-        rows = (
-            db.session.query(Specialty.category)
-            .filter(Specialty.category.isnot(None), Specialty.category != "")
-            .distinct()
-            .order_by(Specialty.category.asc())
-            .all()
-        )
-        families = [{"id": i+1, "name": r[0]} for i, r in enumerate(rows)]
-    except Exception:
-        families = []
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = _ui_families_rows()
 
     return render_template("index.html",
         top_professionals=top_professionals,
@@ -1032,7 +1055,6 @@ def professionals():
         conds = []
         for attr in ("name", "full_name", "description", "specialty", "location", "address"):
             if hasattr(Professional, attr):
-                from sqlalchemy import func
                 conds.append(getattr(Professional, attr).ilike(like))
         if conds:
             qry = qry.filter(or_(*conds))
@@ -1062,25 +1084,9 @@ def professionals():
 
     pros = qry.order_by(Professional.is_featured.desc(), Professional.created_at.desc()).all()
 
-    try:
-        cities = [{"id": c.id, "name": c.name} for c in City.query.order_by(City.name.asc()).all()]
-    except Exception:
-        cities = []
-    try:
-        specialties = [{"id": s.id, "name": s.name, "category": s.category} for s in Specialty.query.order_by(Specialty.name.asc()).all()]
-    except Exception:
-        specialties = []
-    try:
-        rows = (
-            db.session.query(Specialty.category)
-            .filter(Specialty.category.isnot(None), Specialty.category != "")
-            .distinct()
-            .order_by(Specialty.category.asc())
-            .all()
-        )
-        families = [{"id": i+1, "name": r[0]} for i, r in enumerate(rows)]
-    except Exception:
-        families = []
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = _ui_families_rows()
 
     return render_template("professionals.html",
                            professionals=pros,
@@ -1091,11 +1097,27 @@ def professionals():
 @app.route("/professional/<int:professional_id>", endpoint="professional_detail")
 def professional_detail(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
-    avg = db.session.query(db.func.avg(Review.rating)).filter(
-        Review.professional_id==professional_id, Review.is_public==True
-    ).scalar() or 0
-    reviews = Review.query.filter_by(professional_id=professional_id, is_public=True)\
-                          .order_by(Review.created_at.desc()).limit(10).all()
+    # ✅ Fallback robuste si la colonne reviews.professional_id n'existe pas encore
+    try:
+        avg = db.session.query(db.func.avg(Review.rating)).filter(
+            Review.professional_id == professional_id, Review.is_public == True
+        ).scalar() or 0
+        reviews = (Review.query
+                   .filter_by(professional_id=professional_id, is_public=True)
+                   .order_by(Review.created_at.desc())
+                   .limit(10).all())
+    except ProgrammingError:
+        # Colonne absente : calcule en joignant appointments
+        avg = (db.session.query(db.func.avg(Review.rating))
+               .join(Appointment, Review.appointment_id == Appointment.id)
+               .filter(Appointment.professional_id == professional_id,
+                       Review.is_public == True)
+               .scalar() or 0)
+        reviews = (Review.query
+                   .join(Appointment, Review.appointment_id == Appointment.id)
+                   .filter(Appointment.professional_id == professional_id,
+                           Review.is_public == True)
+                   .order_by(Review.created_at.desc()).limit(10).all())
     return render_template("professional_detail.html",
                            professional=professional, avg_rating=round(float(avg),1),
                            public_reviews=reviews)
@@ -1411,27 +1433,9 @@ def professional_register():
         flash("Compte professionnel créé avec succès! Un administrateur validera votre profil.")
         return redirect(url_for("login"))
 
-    # Villes, spécialités, familles pour les formulaires
-    try:
-        cities = [{"id": c.id, "name": c.name} for c in City.query.order_by(City.name.asc()).all()]
-    except Exception:
-        cities = []
-    try:
-        specialties = [{"id": s.id, "name": s.name, "category": s.category} for s in Specialty.query.order_by(Specialty.name.asc()).all()]
-    except Exception:
-        specialties = []
-    try:
-        rows = (
-            db.session.query(Specialty.category)
-            .filter(Specialty.category.isnot(None), Specialty.category != "")
-            .distinct()
-            .order_by(Specialty.category.asc())
-            .all()
-        )
-        families = [{"id": i+1, "name": r[0]} for i, r in enumerate(rows)]
-    except Exception:
-        families = []
-
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = _ui_families_rows()
     return render_template("professional_register.html",
                            cities=cities, families=families, specialties=specialties)
 
@@ -1460,9 +1464,6 @@ def logout():
     logout_user()
     return redirect(url_for("index"))
 
-# =========================
-#   STATS / OFFICE PRO
-# =========================
 @app.route("/pro/office/stats", endpoint="pro_office_stats")
 @login_required
 def pro_office_stats():
@@ -1663,6 +1664,125 @@ def reset_password(token: str):
         flash("Mot de passe réinitialisé. Vous pouvez vous connecter.", "success")
         return redirect(url_for("login"))
     return render_template("reset_password.html")
+
+# -------- Dossier patient (fiche + notes + fichiers) --------
+@app.route("/pro/office/patient/<int:patient_id>", methods=["GET"], endpoint="pro_office_patient")
+@login_required
+def pro_office_patient(patient_id:int):
+    if current_user.user_type not in ("professional",) and not current_user.is_admin:
+        flash("Accès non autorisé"); return redirect(url_for("index"))
+    pro = Professional.query.filter_by(name=current_user.username).first() if current_user.user_type=="professional" else None
+    patient = User.query.get_or_404(patient_id)
+
+    profile = PatientProfile.query.filter_by(patient_user_id=patient.id).first()
+    appts = (Appointment.query
+             .filter_by(patient_id=patient.id)
+             .order_by(Appointment.appointment_date.desc()).all())
+    # Notes/Docs restreints au pro courant (ou admin voit tout)
+    notes_q = SessionNote.query.filter_by(patient_user_id=patient.id)
+    files_q = PatientFile.query.filter_by(patient_user_id=patient.id)
+    if pro and not current_user.is_admin:
+        notes_q = notes_q.filter_by(professional_id=pro.id)
+        files_q = files_q.filter_by(professional_id=pro.id)
+    notes = notes_q.order_by(SessionNote.created_at.desc()).all()
+    files = files_q.order_by(PatientFile.uploaded_at.desc()).all()
+
+    return render_template("pro/office/dossier.html",
+                           patient=patient, profile=profile,
+                           appts=appts, notes=notes, files=files)
+
+@app.route("/pro/office/patient/<int:patient_id>/profile", methods=["POST"], endpoint="pro_office_save_profile")
+
+@login_required
+def pro_office_save_profile(patient_id:int):
+    if current_user.user_type!="professional" and not current_user.is_admin: abort(403)
+    patient = User.query.get_or_404(patient_id)
+    row = PatientProfile.query.filter_by(patient_user_id=patient.id).first() or PatientProfile(patient_user_id=patient.id)
+    row.preferred_lang = (request.form.get("preferred_lang") or "").strip() or None
+    row.preferences    = (request.form.get("preferences") or "").strip() or None
+    row.medical_history= (request.form.get("medical_history") or "").strip() or None
+    db.session.add(row); db.session.commit()
+    flash("Fiche patient enregistrée.", "success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+
+@app.route("/pro/office/patient/<int:patient_id>/note", methods=["POST"], endpoint="pro_office_add_note")
+@login_required
+def pro_office_add_note(patient_id:int):
+    if current_user.user_type!="professional": abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro: abort(403)
+    text_note = (request.form.get("note_text") or "").strip()
+    appt_id = request.form.get("appointment_id", type=int)
+    if not text_note:
+        flash("Note vide.","warning")
+        return redirect(url_for("pro_office_patient", patient_id=patient_id))
+    db.session.add(SessionNote(
+        professional_id=pro.id, patient_user_id=patient_id,
+        appointment_id=appt_id, note_text=text_note
+    ))
+    db.session.commit()
+    flash("Note ajoutée.","success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+
+@app.route("/pro/office/patient/<int:patient_id>/upload", methods=["POST"], endpoint="pro_office_upload_file")
+@login_required
+def pro_office_upload_file(patient_id:int):
+    if current_user.user_type!="professional": abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro: abort(403)
+    f = request.files.get("file")
+    if not f:
+        flash("Sélectionnez un fichier.", "warning")
+        return redirect(url_for("pro_office_patient", patient_id=patient_id))
+    try:
+        saved_name, size = _secure_save_patient_file(f)
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("pro_office_patient", patient_id=patient_id))
+    db.session.add(PatientFile(
+        professional_id=pro.id, patient_user_id=patient_id,
+        stored_name=saved_name, original_name=(f.filename or None),
+        mime_type=(f.mimetype or None), size=size
+    ))
+    db.session.commit()
+    flash("Document ajouté.", "success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+
+@app.route("/pro/office/file/<int:file_id>/download", endpoint="pro_office_download_file")
+@login_required
+def pro_office_download_file(file_id:int):
+    row = PatientFile.query.get_or_404(file_id)
+    allowed = False
+    if current_user.is_admin:
+        allowed = True
+    elif current_user.user_type=="patient":
+        allowed = (row.patient_user_id == current_user.id)
+    elif current_user.user_type=="professional":
+        pro = Professional.query.filter_by(name=current_user.username).first()
+        allowed = (pro and row.professional_id == pro.id)
+    if not allowed: abort(403)
+    fpath = PATIENT_FILES_FOLDER / row.stored_name
+    if not fpath.exists():
+        flash("Fichier introuvable.", "warning")
+        return redirect(request.referrer or url_for("index"))
+    return send_from_directory(str(PATIENT_FILES_FOLDER), row.stored_name,
+                               as_attachment=True, download_name=(row.original_name or row.stored_name))
+
+@app.route("/pro/office/patient/<int:patient_id>/export-pdf", methods=["GET"], endpoint="pro_office_export_pdf")
+@login_required
+def pro_office_export_pdf(patient_id:int):
+    if current_user.user_type not in ("professional",) and not current_user.is_admin:
+        abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first() if current_user.user_type=="professional" else None
+    patient = User.query.get_or_404(patient_id)
+    profile = PatientProfile.query.filter_by(patient_user_id=patient.id).first()
+    appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.appointment_date.desc()).all()
+    notes = SessionNote.query.filter_by(patient_user_id=patient.id).order_by(SessionNote.created_at.desc()).all() if not pro else \
+            SessionNote.query.filter_by(patient_user_id=patient.id, professional_id=pro.id).order_by(SessionNote.created_at.desc()).all()
+    files = PatientFile.query.filter_by(patient_user_id=patient.id).order_by(PatientFile.uploaded_at.desc()).all() if not pro else \
+            PatientFile.query.filter_by(patient_user_id=patient.id, professional_id=pro.id).order_by(PatientFile.uploaded_at.desc()).all()
+    return render_template("pro/office/dossier_print.html",
+                           patient=patient, profile=profile, appts=appts, notes=notes, files=files)
 
 # =========================
 #   ESPACE PRO / RDV
@@ -1898,26 +2018,9 @@ def professional_edit_profile():
         flash("Profil mis à jour.", "success")
         return redirect(url_for("professional_dashboard"))
 
-    # Villes, spécialités, familles
-    try:
-        cities = [{"id": c.id, "name": c.name} for c in City.query.order_by(City.name.asc()).all()]
-    except Exception:
-        cities = []
-    try:
-        specialties = [{"id": s.id, "name": s.name, "category": s.category} for s in Specialty.query.order_by(Specialty.name.asc()).all()]
-    except Exception:
-        specialties = []
-    try:
-        rows = (
-            db.session.query(Specialty.category)
-            .filter(Specialty.category.isnot(None), Specialty.category != "")
-            .distinct()
-            .order_by(Specialty.category.asc())
-            .all()
-        )
-        families = [{"id": i+1, "name": r[0]} for i, r in enumerate(rows)]
-    except Exception:
-        families = []
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = _ui_families_rows()
 
     return render_template("professional_edit_profile.html",
                            professional=professional,
@@ -2192,6 +2295,33 @@ def api_available_slots(professional_id: int):
         "available_slots": _slots()
     })
 
+@app.route("/reviews/new/<int:appointment_id>", methods=["GET","POST"], endpoint="review_new")
+@login_required
+def review_new(appointment_id:int):
+    ap = Appointment.query.get_or_404(appointment_id)
+    if current_user.user_type!="patient" or ap.patient_id != current_user.id:
+        abort(403)
+    # doit être passé
+    if ap.appointment_date >= datetime.utcnow():
+        flash("Vous pourrez noter après la séance.", "warning")
+        return redirect(url_for("my_appointments"))
+    if Review.query.filter_by(appointment_id=ap.id).first():
+        flash("Avis déjà envoyé.", "info")
+        return redirect(url_for("my_appointments"))
+
+    if request.method=="POST":
+        rating = max(1, min(5, int(request.form.get("rating", "0") or 0)))
+        comment = (request.form.get("comment") or "").strip() or None
+        db.session.add(Review(
+            appointment_id=ap.id, patient_user_id=current_user.id,
+            professional_id=ap.professional_id, rating=rating, comment=comment
+        ))
+        db.session.commit()
+        flash("Merci pour votre avis ! Il sera publié après validation.", "success")
+        return redirect(url_for("my_appointments"))
+
+    return render_template("reviews/new.html", ap=ap)
+
 @app.route("/admin/reviews/<int:rid>/publish", methods=["POST"], endpoint="admin_publish_review")
 @login_required
 def admin_publish_review(rid:int):
@@ -2229,12 +2359,6 @@ def _bootstrap_taxonomy():
     inserted_cities = 0
     inserted_specs = 0
     updated_categ = 0
-
-    try:
-        from seeds_taxonomy import CITY_OBJECTS, SPECIALTY_FAMILIES
-    except Exception:
-        CITY_OBJECTS = []
-        SPECIALTY_FAMILIES = []
 
     try:
         for obj in CITY_OBJECTS:
@@ -2314,11 +2438,15 @@ with app.app_context():
             # Photos secondaires
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
+
+            # ✅ Ajout : colonne avis pour compatibilité (évite l'erreur UndefinedColumn)
+            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS professional_id INTEGER;",
+            "CREATE INDEX IF NOT EXISTS ix_reviews_professional_id ON reviews(professional_id);",
         ]
         for sql in stmts:
             db.session.execute(text(sql))
 
-        # Normalisation douce sur consultation_fee
+        # Normalisation douce sur consultation_fee (évite crash si NULL historique)
         try:
             db.session.execute(text("UPDATE professionals SET consultation_fee = 0 WHERE consultation_fee IS NULL;"))
             db.session.execute(text("ALTER TABLE professionals ALTER COLUMN consultation_fee SET DEFAULT 0;"))
@@ -2326,6 +2454,21 @@ with app.app_context():
             current_app.logger.warning(f"consultation_fee default/normalize: {e}")
 
         db.session.commit()
+
+        # ✅ Backfill reviews.professional_id à partir des rendez-vous
+        try:
+            db.session.execute(text("""
+                UPDATE reviews r
+                SET professional_id = a.professional_id
+                FROM appointments a
+                WHERE r.appointment_id = a.id
+                  AND (r.professional_id IS NULL OR r.professional_id = 0)
+            """))
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.warning("Backfill reviews.professional_id: %s", e)
+
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
 
@@ -2365,6 +2508,7 @@ with app.app_context():
         for sql in stmts_phase1:
             db.session.execute(text(sql))
 
+        # seeds idempotents (✅ corrigé : pas de SQL brut hors string)
         seed_sqls = [
             "INSERT INTO exercise_types (name) VALUES ('Exercice'),('Fiche'),('Protocole'),('Questionnaire') ON CONFLICT (name) DO NOTHING;",
             "INSERT INTO techniques (name) VALUES ('CBT'),('Hypnose'),('Relaxation'),('Pleine conscience'),('Coaching') ON CONFLICT (name) DO NOTHING;",
@@ -2383,14 +2527,14 @@ with app.app_context():
     except Exception as e:
         app.logger.warning("Bootstrap taxonomy failed, fallback minimal: %s", e)
         if Specialty.query.count() == 0:
-            for name in ["Psychologue", "Psychiatre", "Psychothérapeute", "Coach", "Orthophoniste", "Psychomotricien", "Kinésithérapeute"]:
+            for name in SEED_SPECIALTIES:
                 try:
                     db.session.add(Specialty(name=name))
                 except Exception:
                     pass
             db.session.commit()
         if City.query.count() == 0:
-            for name in ["Casablanca", "Rabat", "Marrakech", "Fès", "Tanger", "Agadir"]:
+            for name in SEED_CITIES:
                 try:
                     db.session.add(City(name=name))
                 except Exception:
@@ -2415,9 +2559,9 @@ with app.app_context():
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
 
-# Blueprints espace pro et patient
 from pro_office import pro_office_bp      # nouveau blueprint "Bureau virtuel"
 from patient_portal import patient_bp     # nouveau blueprint "Espace patient"
+
 app.register_blueprint(pro_office_bp, url_prefix="/pro/office")
 app.register_blueprint(patient_bp,    url_prefix="/patient")
 
