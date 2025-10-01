@@ -562,6 +562,19 @@ class PatientFile(db.Model):
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     professional = db.relationship("Professional", lazy="joined")
     patient = db.relationship("User", lazy="joined")
+class Review(db.Model):
+    __tablename__ = "reviews"
+    id = db.Column(db.Integer, primary_key=True)
+    appointment_id = db.Column(db.Integer, db.ForeignKey("appointments.id", ondelete="CASCADE"),
+                               unique=True, nullable=False, index=True)
+    patient_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                                nullable=False, index=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="CASCADE"),
+                                nullable=False, index=True)
+    rating = db.Column(db.Integer, nullable=False)  # 1..5
+    comment = db.Column(db.Text)
+    is_public = db.Column(db.Boolean, default=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # Suivi de progression d’un exercice
 class ExerciseProgress(db.Model):
