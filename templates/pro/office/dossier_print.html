@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Export dossier — {{ patient.full_name or patient.username }}</title>
+<style>
+  body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;margin:24px;color:#222}
+  h1,h2{margin:.2rem 0;color:#333}
+  .sec{margin:1rem 0}
+  .muted{color:#666}
+  @media print {.noprint{display:none}}
+</style>
+</head>
+<body>
+  <div class="noprint" style="text-align:right;margin-bottom:8px">
+    <button onclick="window.print()">Imprimer / PDF</button>
+  </div>
+  <h1>Dossier patient</h1>
+  <div class="muted">{{ patient.full_name or patient.username }} — ID {{ patient.id }}</div>
+
+  <div class="sec">
+    <h2>Fiche</h2>
+    <div>Langue : {{ profile and profile.preferred_lang or '—' }}</div>
+    <div>Préférences :</div>
+    <pre>{{ profile and profile.preferences or '—' }}</pre>
+    <div>Antécédents :</div>
+    <pre>{{ profile and profile.medical_history or '—' }}</pre>
+  </div>
+
+  <div class="sec">
+    <h2>Historique des séances</h2>
+    {% if appts %}
+      <ul>
+        {% for a in appts %}
+          <li>{{ a.appointment_date.strftime("%d/%m/%Y %H:%M") }} — {{ a.consultation_type }} — {{ a.status }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="muted">—</div>{% endif %}
+  </div>
+
+  <div class="sec">
+    <h2>Notes</h2>
+    {% if notes %}
+      {% for n in notes %}
+        <div style="margin-bottom:.5rem"><strong>{{ n.created_at.strftime("%d/%m/%Y %H:%M") }}</strong>
+          <div>{{ n.note_text | replace('\n','<br>') | safe }}</div>
+        </div>
+      {% endfor %}
+    {% else %}<div class="muted">—</div>{% endif %}
+  </div>
+
+  <div class="sec">
+    <h2>Documents</h2>
+    {% if files %}
+      <ul>
+        {% for f in files %}
+          <li>{{ f.original_name or f.stored_name }} ({{ f.mime_type or '—' }}) — {{ f.uploaded_at.strftime("%d/%m/%Y") }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}<div class="muted">—</div>{% endif %}
+  </div>
+</body>
+</html>
