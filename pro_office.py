@@ -185,6 +185,32 @@ def exercises_edit(item_id: int):
     techniques = Technique.query.order_by(Technique.name.asc()).all()
     return render_template("pro/office/exercises_form.html",
                            pro=pro, item=item, families=families, specialties=specialties, types=types, techniques=techniques)
+@pro_office_bp.route("/journal/<int:patient_user_id>", methods=["GET","POST"])
+@login_required
+def journal(patient_user_id: int):
+    pro = _current_pro_or_403()
+    pat = User.query.get_or_404(patient_user_id)
+
+    journal = TherapeuticJournal.query.filter_by(professional_id=pro.id, patient_user_id=pat.id).first()
+    if not journal:
+        journal = TherapeuticJournal(professional_id=pro.id, patient_user_id=pat.id)
+        db.session.add(journal); db.session.commit()
+
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        content = (request.form.get("content") or "").strip()
+        checklist_json = None
+        mood = request.form.get("mood", type=int)
+        db.session.add(JournalEntry(
+            journal_id=journal.id, author_role="pro",
+            title=title or None, content=content or None,
+            checklist_json=checklist_json, mood_score=mood
+        ))
+        db.session.commit()
+        return redirect(url_for("pro_office.journal", patient_user_id=pat.id))
+
+    entries = JournalEntry.query.filter_by(journal_id=journal.id).order_by(JournalEntry.created_at.asc()).all()
+    return render_template("pro/office/journal.html", pro=pro, patient=pat, entries=entries)
 
 # === Partage / assignation (simplifié phase 1) ===
 @pro_office_bp.route("/exercises/<int:item_id>/assign", methods=["POST"])
