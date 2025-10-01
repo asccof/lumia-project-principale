@@ -193,6 +193,59 @@ def _load_user(user_id: str):
         return db.session.get(User, int(user_id))
     except Exception:
         return None
+@app.route("/messages")
+@login_required
+def messages_index():
+    if current_user.user_type == "professional":
+        threads = (MessageThread.query
+                   .filter_by(professional_id=current_user.id)
+                   .order_by(MessageThread.created_at.desc()).all())
+    else:
+        threads = (MessageThread.query
+                   .filter_by(patient_user_id=current_user.id)
+                   .order_by(MessageThread.created_at.desc()).all())
+    return render_template("messages/index.html", threads=threads)
+
+@app.route("/messages/start", methods=["POST"])
+@login_required
+def messages_start():
+    # body: {patient_id?, pro_id?} — selon le rôle, on fixe l'autre
+    if current_user.user_type == "professional":
+        require_role("professional")
+        patient_id = int(request.form.get("patient_id"))
+        if not pro_can_access_patient(current_user.id, patient_id): abort(403)
+        pro_id = current_user.id
+    else:
+        require_role("patient")
+        pro_id = int(request.form.get("pro_id"))
+        # on laisse le patient démarrer avec un pro connu (par RDV ou lien)
+        if not pro_can_access_patient(pro_id, current_user.id): abort(403)
+        patient_id = current_user.id
+
+    t = MessageThread.query.filter_by(professional_id=pro_id, patient_user_id=patient_id).first()
+    if not t:
+        t = MessageThread(professional_id=pro_id, patient_user_id=patient_id)
+        db.session.add(t); db.session.commit()
+    return redirect(url_for("messages_thread", thread_id=t.id))
+
+@app.route("/messages/<int:thread_id>", methods=["GET","POST"])
+@login_required
+def messages_thread(thread_id):
+    t = MessageThread.query.get_or_404(thread_id)
+    # accès
+    if current_user.user_type == "professional" and t.professional_id != current_user.id: abort(403)
+    if current_user.user_type == "patient" and t.patient_user_id != current_user.id: abort(403)
+
+    if request.method == "POST":
+        body = (request.form.get("body") or "").strip()
+        if body:
+            m = Message(thread_id=t.id, sender_user_id=current_user.id, body=body)
+            db.session.add(m); db.session.commit()
+            flash("Message envoyé.", "success")
+        return redirect(url_for("messages_thread", thread_id=t.id))
+
+    msgs = Message.query.filter_by(thread_id=t.id).order_by(Message.created_at.asc()).all()
+    return render_template("messages/thread.html", thread=t, messages=msgs)
 
 # =========================
 #   I18N / LANG
