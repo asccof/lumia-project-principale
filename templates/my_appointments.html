@@ -92,6 +92,14 @@
               </div>
             </div>
 
+            <!-- AJOUT 5 : bouton Google Meet si lien présent -->
+            {% if appointment.meet_url %}
+              <div style="margin:.5rem 0 1rem;">
+                <a class="btn-primary" target="_blank" rel="noopener" href="{{ appointment.meet_url }}">Rejoindre Google Meet</a>
+              </div>
+            {% endif %}
+            <!-- /AJOUT 5 -->
+
             {% if current_user.user_type == 'patient' %}
               <div class="info-box">
                 <img class="avatar"
