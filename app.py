@@ -56,6 +56,30 @@ try:
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 except Exception as e:
     app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
+# === AJOUT : répertoire fichiers patients ===
+PATIENT_FILES_FOLDER = UPLOAD_ROOT / "patient_files"
+try:
+    PATIENT_FILES_FOLDER.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    app.logger.warning("Impossible de créer patient_files: %s", e)
+
+ALLOWED_DOC_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".mp3", ".wav"}
+
+def _secure_save_patient_file(file_storage):
+    filename = getattr(file_storage, "filename", None)
+    if not filename:
+        raise ValueError("Aucun fichier sélectionné.")
+    ext = os.path.splitext(filename.lower())[1]
+    if ext not in (ALLOWED_IMAGE_EXT | ALLOWED_DOC_EXT):
+        raise ValueError("Extension non autorisée.")
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError("Fichier vide.")
+    out_name = f"{uuid.uuid4().hex}{ext}"
+    out_path = PATIENT_FILES_FOLDER / out_name
+    with open(out_path, "wb") as f:
+        f.write(raw)
+    return out_name, len(raw)
 
 # =========================
 #   DB / MODELS
