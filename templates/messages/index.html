@@ -1,0 +1,25 @@
+<h2>Mes conversations</h2>
+
+{% if current_user.user_type == "professional" %}
+<form method="post" action="{{ url_for('messages_start') }}" style="margin:10px 0">
+  <input name="patient_id" placeholder="ID patient">
+  <button>Démarrer un thread</button>
+</form>
+{% else %}
+<form method="post" action="{{ url_for('messages_start') }}" style="margin:10px 0">
+  <input name="pro_id" placeholder="ID pro">
+  <button>Contacter le pro</button>
+</form>
+{% endif %}
+
+<ul>
+  {% for t in threads %}
+    <li>
+      <a href="{{ url_for('messages_thread', thread_id=t.id) }}">
+        Thread #{{ t.id }} — Pro: {{ t.professional_id }} / Patient: {{ t.patient_user_id }} — {{ t.created_at }}
+      </a>
+    </li>
+  {% else %}
+    <li>Aucun thread.</li>
+  {% endfor %}
+</ul>
