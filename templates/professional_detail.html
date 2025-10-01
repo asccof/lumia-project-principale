@@ -59,6 +59,21 @@
   .lightbox-backdrop.is-open{display:flex}
   .lightbox-img{max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   .lightbox-close{position:absolute;top:10px;right:10px;border:none;background:#fff;border-radius:999px;padding:.4rem .6rem;cursor:pointer}
+
+  /* --- Avis / étoiles (ajout) --- */
+  .rating{display:flex;align-items:center;gap:.4rem;margin-top:.35rem}
+  .stars .star{color:#F59E0B;font-size:1rem;margin-right:2px;line-height:1}
+  .stars .star.off{color:#e6dcff}
+  .rating-num{font-weight:700;color:#6D28D9}
+  .rating-count{color:#4B3869;opacity:.85}
+
+  .reviews{display:grid;gap:.75rem}
+  .review{border:1.5px solid #e6dcff;border-radius:12px;padding:.75rem;background:#fff}
+  .r-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+  .r-stars .star{color:#F59E0B;font-size:.95rem;margin-right:2px}
+  .r-stars .star.off{color:#e6dcff}
+  .r-date{color:#6b5a82;font-size:.9rem;white-space:nowrap}
+  .r-body{color:#4B3869;white-space:pre-wrap;margin-top:.35rem}
 </style>
 {% endblock %}
 
@@ -141,6 +156,19 @@
         {% endif %}
       </div>
 
+      {# === NOTE MOYENNE (ajout) === #}
+      {% if avg_rating is defined and avg_rating > 0 %}
+        <div class="rating" aria-label="Note moyenne {{ '%.1f' % avg_rating }} sur 5">
+          {% set full = avg_rating|int %}
+          <span class="stars">
+            {% for _ in range(full) %}<span class="star">★</span>{% endfor %}
+            {% for _ in range(5-full) %}<span class="star off">★</span>{% endfor %}
+          </span>
+          <span class="rating-num">{{ '%.1f' % avg_rating }}/5</span>
+          <span class="rating-count">({{ public_reviews|length if (public_reviews is defined) else 0 }})</span>
+        </div>
+      {% endif %}
+
       <div class="actions">
         <a class="btn" href="{{ url_for('book_appointment', professional_id=professional.id) }}">Réserver un rendez-vous</a>
         {% if professional.phone %}
@@ -200,6 +228,31 @@
         {% for u in imgs[1:] %}
           <img class="gimg js-zoom" src="{{ u }}" data-full="{{ u }}" alt="Photo — {{ professional.name|e }}"
                loading="lazy" onerror="this.style.display='none'">
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# === AVIS PUBLICS (ajout) — placé avant "Réserver" === #}
+  {% if public_reviews is defined and public_reviews %}
+  <div class="section">
+    <h2>Avis de patients</h2>
+    <div class="box">
+      <div class="reviews">
+        {% for r in public_reviews %}
+          <div class="review">
+            <div class="r-head">
+              <span class="r-stars" aria-label="Note {{ r.rating }}/5">
+                {% for _ in range(r.rating) %}<span class="star">★</span>{% endfor %}
+                {% for _ in range(5-r.rating) %}<span class="star off">★</span>{% endfor %}
+              </span>
+              <span class="r-date">{{ r.created_at.strftime('%d/%m/%Y') }}</span>
+            </div>
+            {% if r.comment %}
+              <div class="r-body">{{ r.comment }}</div>
+            {% endif %}
+          </div>
         {% endfor %}
       </div>
     </div>
