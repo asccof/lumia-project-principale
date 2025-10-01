@@ -1,0 +1,8 @@
+<h2>Fichiers</h2>
+<ul>
+  {% for f in files %}
+    <li>#{{ f.id }} — P{{ f.patient_user_id }} — Pro{{ f.professional_id or "-" }} — {{ f.filename }} — {{ f.created_at }}</li>
+  {% else %}
+    <li>Aucun fichier.</li>
+  {% endfor %}
+</ul>
