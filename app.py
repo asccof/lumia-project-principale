@@ -20,6 +20,63 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
+from flask import render_template, request, redirect, url_for, abort, flash, send_from_directory
+from flask_login import login_required, current_user
+from werkzeug.utils import secure_filename
+import os
+from datetime import datetime
+
+from models import (
+    db, User, Professional, PatientCase, PatientProfile, PatientFile,
+    MessageThread, Message, Review, TherapeuticJournal, JournalEntry,
+    ExerciseItem, ExerciseAssignment, ExerciseProgress, Appointment, Specialty
+)
+# --- Rôles
+def require_role(*roles):
+    if not current_user.is_authenticated or current_user.user_type not in roles:
+        abort(403)
+
+def require_admin():
+    if not current_user.is_authenticated or not current_user.is_admin:
+        abort(403)
+
+# --- Dossier d'upload (persistant local ; pour le cloud, adapte ici)
+UPLOAD_ROOT = os.environ.get("UPLOAD_ROOT", os.path.join(os.getcwd(), "uploads"))
+os.makedirs(UPLOAD_ROOT, exist_ok=True)
+
+ALLOWED_EXTS = {"pdf","png","jpg","jpeg","mp3","wav","mp4","doc","docx","txt"}
+
+def allowed_file(filename):
+    return "." in filename and filename.rsplit(".",1)[1].lower() in ALLOWED_EXTS
+
+# --- Sécurité d'accès: le pro ne voit ce patient que s'il est lié ou a un RDV
+def pro_can_access_patient(pro_id:int, patient_id:int)->bool:
+    if PatientCase.query.filter_by(professional_id=pro_id, patient_user_id=patient_id).first():
+        return True
+    appt_exists = Appointment.query.filter_by(professional_id=pro_id, patient_id=patient_id).first()
+    return bool(appt_exists)
+
+# --- Assure une ligne Professional "placeholder" sans violer les contraintes (ex. consultation_fee)
+def ensure_professional_row_for_user(user: User) -> Professional|None:
+    if user.user_type != "professional":
+        return None
+    pro = Professional.query.get(user.id)
+    if not pro:
+        # Valeurs par défaut non destructives (DB legacy: consultation_fee NOT NULL)
+        pro = Professional(
+            id=user.id,  # on suit ton mapping actuel user.id == professional.id
+            name=user.full_name or user.username or f"Pro#{user.id}",
+            description="Profil en cours de complétion.",
+            consultation_fee=0.0,  # évite l'IntegrityError vu dans tes logs
+            availability="disponible",
+            status="en_attente",
+            consultation_duration_minutes=45,
+            buffer_between_appointments_minutes=15,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(pro)
+        db.session.commit()
+    return pro
 
 # =========================
 #   CONSTANTES / DOSSIERS
