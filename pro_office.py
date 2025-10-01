@@ -206,6 +206,77 @@ def exercises_assign(item_id: int):
     db.session.add(assign); db.session.commit()
     flash("Exercice assigné au patient.", "success")
     return redirect(url_for("pro_office.exercises_index"))
+# === Messagerie — boîte du pro (liste des fils) ===
+@pro_office_bp.route("/messages", methods=["GET"])
+@login_required
+def messages_inbox():
+    pro = _current_pro_or_403()
+    threads = MessageThread.query.filter_by(professional_id=pro.id).order_by(MessageThread.created_at.desc()).all()
+    return render_template("pro/office/messages_inbox.html", pro=pro, threads=threads)
+
+# === Messagerie — fil avec un patient ===
+@pro_office_bp.route("/messages/<int:patient_user_id>", methods=["GET","POST"])
+@login_required
+def messages_thread(patient_user_id: int):
+    pro = _current_pro_or_403()
+    user = User.query.get_or_404(patient_user_id)
+
+    # récupère ou crée le thread
+    thread = MessageThread.query.filter_by(professional_id=pro.id, patient_user_id=user.id).first()
+    if not thread:
+        thread = MessageThread(professional_id=pro.id, patient_user_id=user.id)
+        db.session.add(thread); db.session.commit()
+
+    # envoi message
+    if request.method == "POST":
+        body = (request.form.get("body") or "").strip()
+        att = request.files.get("attachment")
+        attachment_url = None
+        if att and getattr(att, "filename", ""):
+            from pathlib import Path
+            from werkzeug.utils import secure_filename
+            root = Path(os.getenv("UPLOAD_ROOT", Path(current_app.root_path).parent / "uploads"))
+            files_dir = root / "patient_files"
+            files_dir.mkdir(parents=True, exist_ok=True)
+            safe = secure_filename(att.filename)
+            unique = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{safe}"
+            fpath = files_dir / unique
+            att.save(fpath)
+            attachment_url = url_for("pro_office.secure_file", filename=unique)
+
+        if body or attachment_url:
+            db.session.add(Message(
+                thread_id=thread.id, sender_user_id=current_user.id,
+                body=body or None, attachment_url=attachment_url
+            ))
+            db.session.commit()
+        flash("Message envoyé.", "success")
+        # (option) notifier le patient par email via safe_send_email ici
+        return redirect(url_for("pro_office.messages_thread", patient_user_id=user.id))
+
+    msgs = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
+
+    # anonymat : si PatientCase.is_anonymous = True, on prépare un alias
+    case = PatientCase.query.filter_by(professional_id=pro.id, patient_user_id=user.id).first()
+    alias = (case.display_name or "Patient anonyme") if (case and case.is_anonymous) else (user.username or f"Patient {user.id}")
+
+    return render_template("pro/office/messages_thread.html",
+                           pro=pro, patient=user, alias=alias, thread=thread, messages=msgs)
+
+# === Service de fichier protégé du chat (autorisation par thread) ===
+@pro_office_bp.route("/files/<path:filename>")
+@login_required
+def secure_file(filename: str):
+    from pathlib import Path
+    # autoriser uniquement si current_user est pro OU patient du thread de la pièce jointe
+    # (simplifié : on sert si connecté pro — pour la V1. Pour plus fin: stocker thread_id dans le nom, etc.)
+    if current_user.user_type not in ("professional", "patient"):
+        abort(403)
+    root = Path(os.getenv("UPLOAD_ROOT", Path(current_app.root_path).parent / "uploads")) / "patient_files"
+    target = root / filename
+    if not target.exists():
+        abort(404)
+    return send_from_directory(str(root), filename, as_attachment=True, conditional=True)
 
 # === Attacher/éditer le lien Google Meet sur une séance ===
 @pro_office_bp.route("/sessions/<int:appointment_id>/meet", methods=["POST"])
