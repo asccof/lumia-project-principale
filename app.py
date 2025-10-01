@@ -1221,7 +1221,7 @@ def pro_office_patient(patient_id:int):
                            appts=appts, notes=notes, files=files)
 
 @app.route("/pro/office/patient/<int:patient_id>/profile", methods=["POST"], endpoint="pro_office_save_profile")
-)
+
 @login_required
 def pro_office_save_profile(patient_id:int):
     if current_user.user_type!="professional" and not current_user.is_admin: abort(403)
