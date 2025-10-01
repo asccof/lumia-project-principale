@@ -645,6 +645,18 @@ def professionals():
 def professional_detail(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
     return render_template("professional_detail.html", professional=professional)
+from models import Review  # en haut si pas déjà
+@app.route("/professional/<int:professional_id>", endpoint="professional_detail")
+def professional_detail(professional_id: int):
+    professional = Professional.query.get_or_404(professional_id)
+    avg = db.session.query(db.func.avg(Review.rating)).filter(
+        Review.professional_id==professional_id, Review.is_public==True
+    ).scalar() or 0
+    reviews = Review.query.filter_by(professional_id=professional_id, is_public=True)\
+                          .order_by(Review.created_at.desc()).limit(10).all()
+    return render_template("professional_detail.html",
+                           professional=professional, avg_rating=round(float(avg),1),
+                           public_reviews=reviews)
 
 # =========================
 #   MÉDIAS / PHOTOS
