@@ -83,6 +83,12 @@ professional_specialties = db.Table(
     db.Index("ix_prof_spec_professional", "professional_id"),
     db.Index("ix_prof_spec_specialty", "specialty_id"),
 )
+class NewsletterSubscriber(db.Model):
+    __tablename__ = "newsletter_subscribers"
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    lang = db.Column(db.String(5), default="fr")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # ======================
 # Professionnels
