@@ -1,0 +1,18 @@
+<h2>Ma bibliothèque d'exercices</h2>
+
+<form method="post" style="margin:10px 0;">
+  <input name="title" placeholder="Titre" required>
+  <input name="family" placeholder="Famille (optionnel)">
+  <br>
+  <textarea name="content_text" rows="3" placeholder="Contenu texte (optionnel)"></textarea>
+  <br>
+  <button>Créer (privé)</button>
+</form>
+
+<ul>
+  {% for it in items %}
+    <li>#{{ it.id }} — {{ it.title }} — visib: {{ it.visibility }}{% if it.is_approved %} ✅{% endif %}</li>
+  {% else %}
+    <li>Aucun exercice.</li>
+  {% endfor %}
+</ul>
