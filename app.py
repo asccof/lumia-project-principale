@@ -999,6 +999,24 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for("index"))
+@app.route("/pro/office/stats", endpoint="pro_office_stats")
+@login_required
+def pro_office_stats():
+    if current_user.user_type!="professional": abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro: abort(403)
+    total = Appointment.query.filter_by(professional_id=pro.id, status="confirme").count()
+    visio = Appointment.query.filter_by(professional_id=pro.id, status="confirme", consultation_type="en_ligne").count()
+    cabinet = Appointment.query.filter_by(professional_id=pro.id, status="confirme", consultation_type="cabinet").count()
+    domicile = Appointment.query.filter_by(professional_id=pro.id, status="confirme", consultation_type="domicile").count()
+    duration = int(getattr(pro, "consultation_duration_minutes", 45) or 45)
+    total_minutes = total * duration
+    # revenu estimé (brut)
+    fee = float(getattr(pro, "consultation_fee", 0) or 0)
+    revenue = total * fee
+    return render_template("pro/office/stats.html",
+                           total=total, visio=visio, cabinet=cabinet, domicile=domicile,
+                           total_minutes=total_minutes, revenue=revenue)
 
 # =========================
 #   OAUTH GOOGLE
