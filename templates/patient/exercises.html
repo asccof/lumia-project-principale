@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Mes exercices</h2>
+<ul class="list-group">
+  {% for a in assignments %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <div>
+        <strong>{{ a.exercise.title }}</strong>
+        {% if a.note_pro %}<div class="text-muted small">{{ a.note_pro }}</div>{% endif %}
+      </div>
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('patient_portal.exercise_detail', assignment_id=a.id) }}">Ouvrir</a>
+    </li>
+  {% else %}
+    <li class="list-group-item">Aucun exercice pour l’instant.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
