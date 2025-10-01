@@ -1790,6 +1790,44 @@ def api_available_slots(professional_id: int):
         "buffer_minutes": buffer_m,
         "available_slots": _slots()
     })
+from models import Review  # AJOUT import
+
+@app.route("/reviews/new/<int:appointment_id>", methods=["GET","POST"], endpoint="review_new")
+@login_required
+def review_new(appointment_id:int):
+    ap = Appointment.query.get_or_404(appointment_id)
+    if current_user.user_type!="patient" or ap.patient_id != current_user.id:
+        abort(403)
+    # doit être passé
+    if ap.appointment_date >= datetime.utcnow():
+        flash("Vous pourrez noter après la séance.", "warning")
+        return redirect(url_for("my_appointments"))
+    if Review.query.filter_by(appointment_id=ap.id).first():
+        flash("Avis déjà envoyé.", "info")
+        return redirect(url_for("my_appointments"))
+
+    if request.method=="POST":
+        rating = max(1, min(5, int(request.form.get("rating", "0") or 0)))
+        comment = (request.form.get("comment") or "").strip() or None
+        db.session.add(Review(
+            appointment_id=ap.id, patient_user_id=current_user.id,
+            professional_id=ap.professional_id, rating=rating, comment=comment
+        ))
+        db.session.commit()
+        flash("Merci pour votre avis ! Il sera publié après validation.", "success")
+        return redirect(url_for("my_appointments"))
+
+    return render_template("reviews/new.html", ap=ap)
+
+# Validation simple admin
+@app.route("/admin/reviews/<int:rid>/publish", methods=["POST"], endpoint="admin_publish_review")
+@login_required
+def admin_publish_review(rid:int):
+    if not current_user.is_admin: abort(403)
+    r = Review.query.get_or_404(rid)
+    r.is_public = True; db.session.commit()
+    flash("Avis publié.", "success")
+    return redirect(request.referrer or url_for("site_status"))
 
 # =========================
 #   STATUT / ERREURS
