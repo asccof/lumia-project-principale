@@ -1,0 +1,26 @@
+<h2>Avis</h2>
+<table border="1" cellpadding="4">
+  <tr><th>ID</th><th>Pro</th><th>Patient</th><th>Rating</th><th>Public</th><th>Comment</th><th>Action</th></tr>
+  {% for r in reviews %}
+    <tr>
+      <td>{{ r.id }}</td>
+      <td>{{ r.professional_id }}</td>
+      <td>{{ r.patient_user_id }}</td>
+      <td>{{ r.rating }}</td>
+      <td>{{ r.is_public }}</td>
+      <td>{{ r.comment }}</td>
+      <td>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="review_id" value="{{ r.id }}">
+          <button name="action" value="publish">Publier</button>
+        </form>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="review_id" value="{{ r.id }}">
+          <button name="action" value="hide">Cacher</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7">Aucun avis</td></tr>
+  {% endfor %}
+</table>
