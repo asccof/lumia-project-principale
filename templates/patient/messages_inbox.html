@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Messagerie</h2>
+<ul class="list-group">
+  {% for th in threads %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <span>Professionnel #{{ th.professional_id }}</span>
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('patient_portal.messages_thread_with_pro', pro_id=th.professional_id) }}">Ouvrir</a>
+    </li>
+  {% else %}
+    <li class="list-group-item">Aucun message pour le moment.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
