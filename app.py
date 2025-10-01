@@ -1941,6 +1941,14 @@ with app.app_context():
         from sqlalchemy import text as _sql
         for sql in stmts_phase1:
             try:
+                INSERT INTO exercise_types (name) VALUES
+('Exercice'),('Fiche'),('Protocole'),('Questionnaire')
+ON CONFLICT (name) DO NOTHING;
+
+INSERT INTO techniques (name) VALUES
+('CBT'),('Hypnose'),('Relaxation'),('Pleine conscience'),('Coaching')
+ON CONFLICT (name) DO NOTHING;
+
                 db.session.execute(_sql(sql))
             except Exception as e:
                 current_app.logger.warning("mini-migration phase1: %s", e)
