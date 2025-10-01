@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Consultation en visio</h2>
+{% if ap.meet_url %}
+  <p>La visio démarre à : <strong>{{ ap.appointment_date.strftime("%Y-%m-%d %H:%M") }}</strong></p>
+  <a class="btn btn-success" href="{{ ap.meet_url }}" target="_blank" rel="noopener">Rejoindre Google Meet</a>
+{% else %}
+  <div class="alert alert-warning">Aucun lien Google Meet n'est encore attaché à ce rendez-vous.</div>
+{% endif %}
+{% endblock %}
