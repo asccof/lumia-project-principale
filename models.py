@@ -266,6 +266,8 @@ class PatientProfile(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), unique=True, nullable=False)
+    # Compatibilité : anciens appels utilisent `patient_user_id`
+    patient_user_id = synonym("user_id")
     language = db.Column(db.String(20))             # ex: 'fr', 'ar', 'en'
     preferences = db.Column(db.Text)                # texte libre
     # Antécédents (structure flexible)
