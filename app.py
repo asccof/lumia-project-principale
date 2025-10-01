@@ -1145,6 +1145,130 @@ def reset_password(token: str):
         flash("Mot de passe réinitialisé. Vous pouvez vous connecter.", "success")
         return redirect(url_for("login"))
     return render_template("reset_password.html")
+from models import PatientProfile, SessionNote, PatientFile  # AJOUT import
+
+# Vue dossier
+@app.route("/pro/office/patient/<int:patient_id>", methods=["GET"], endpoint="pro_office_patient")
+@login_required
+def pro_office_patient(patient_id:int):
+    if current_user.user_type not in ("professional",) and not current_user.is_admin:
+        flash("Accès non autorisé"); return redirect(url_for("index"))
+    pro = Professional.query.filter_by(name=current_user.username).first() if current_user.user_type=="professional" else None
+    patient = User.query.get_or_404(patient_id)
+
+    profile = PatientProfile.query.filter_by(patient_user_id=patient.id).first()
+    appts = (Appointment.query
+             .filter_by(patient_id=patient.id)
+             .order_by(Appointment.appointment_date.desc()).all())
+    # Notes/Docs restreints au pro courant (ou admin voit tout)
+    notes_q = SessionNote.query.filter_by(patient_user_id=patient.id)
+    files_q = PatientFile.query.filter_by(patient_user_id=patient.id)
+    if pro and not current_user.is_admin:
+        notes_q = notes_q.filter_by(professional_id=pro.id)
+        files_q = files_q.filter_by(professional_id=pro.id)
+    notes = notes_q.order_by(SessionNote.created_at.desc()).all()
+    files = files_q.order_by(PatientFile.uploaded_at.desc()).all()
+
+    return render_template("pro/office/dossier.html",
+                           patient=patient, profile=profile,
+                           appts=appts, notes=notes, files=files)
+
+# Enregistrer/mettre à jour la fiche (fiche patient)
+@app.route("/pro/office/patient/<int:patient_id>/profile", methods=["POST"], endpoint="pro_office_save_profile")
+@login_required
+def pro_office_save_profile(patient_id:int):
+    if current_user.user_type!="professional" and not current_user.is_admin: abort(403)
+    patient = User.query.get_or_404(patient_id)
+    row = PatientProfile.query.filter_by(patient_user_id=patient.id).first() or PatientProfile(patient_user_id=patient.id)
+    row.preferred_lang = (request.form.get("preferred_lang") or "").strip() or None
+    row.preferences    = (request.form.get("preferences") or "").strip() or None
+    row.medical_history= (request.form.get("medical_history") or "").strip() or None
+    db.session.add(row); db.session.commit()
+    flash("Fiche patient enregistrée.", "success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+
+# Ajouter une note de séance
+@app.route("/pro/office/patient/<int:patient_id>/note", methods=["POST"], endpoint="pro_office_add_note")
+@login_required
+def pro_office_add_note(patient_id:int):
+    if current_user.user_type!="professional": abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro: abort(403)
+    text = (request.form.get("note_text") or "").strip()
+    appt_id = request.form.get("appointment_id", type=int)
+    if not text:
+        flash("Note vide.","warning")
+        return redirect(url_for("pro_office_patient", patient_id=patient_id))
+    db.session.add(SessionNote(
+        professional_id=pro.id, patient_user_id=patient_id,
+        appointment_id=appt_id, note_text=text
+    ))
+    db.session.commit()
+    flash("Note ajoutée.","success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+
+# Upload d’un document
+@app.route("/pro/office/patient/<int:patient_id>/upload", methods=["POST"], endpoint="pro_office_upload_file")
+@login_required
+def pro_office_upload_file(patient_id:int):
+    if current_user.user_type!="professional": abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro: abort(403)
+    f = request.files.get("file")
+    if not f:
+        flash("Sélectionnez un fichier.", "warning")
+        return redirect(url_for("pro_office_patient", patient_id=patient_id))
+    try:
+        saved_name, size = _secure_save_patient_file(f)
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("pro_office_patient", patient_id=patient_id))
+    db.session.add(PatientFile(
+        professional_id=pro.id, patient_user_id=patient_id,
+        stored_name=saved_name, original_name=(f.filename or None),
+        mime_type=(f.mimetype or None), size=size
+    ))
+    db.session.commit()
+    flash("Document ajouté.", "success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+
+# Téléchargement sécurisé
+@app.route("/pro/office/file/<int:file_id>/download", endpoint="pro_office_download_file")
+@login_required
+def pro_office_download_file(file_id:int):
+    row = PatientFile.query.get_or_404(file_id)
+    allowed = False
+    if current_user.is_admin:
+        allowed = True
+    elif current_user.user_type=="patient":
+        allowed = (row.patient_user_id == current_user.id)
+    elif current_user.user_type=="professional":
+        pro = Professional.query.filter_by(name=current_user.username).first()
+        allowed = (pro and row.professional_id == pro.id)
+    if not allowed: abort(403)
+    fpath = PATIENT_FILES_FOLDER / row.stored_name
+    if not fpath.exists():
+        flash("Fichier introuvable.", "warning")
+        return redirect(request.referrer or url_for("index"))
+    return send_from_directory(str(PATIENT_FILES_FOLDER), row.stored_name,
+                               as_attachment=True, download_name=(row.original_name or row.stored_name))
+
+# Export "PDF" V1 = page imprimable
+@app.route("/pro/office/patient/<int:patient_id>/export-pdf", methods=["GET"], endpoint="pro_office_export_pdf")
+@login_required
+def pro_office_export_pdf(patient_id:int):
+    if current_user.user_type not in ("professional",) and not current_user.is_admin:
+        abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first() if current_user.user_type=="professional" else None
+    patient = User.query.get_or_404(patient_id)
+    profile = PatientProfile.query.filter_by(patient_user_id=patient.id).first()
+    appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.appointment_date.desc()).all()
+    notes = SessionNote.query.filter_by(patient_user_id=patient.id).order_by(SessionNote.created_at.desc()).all() if not pro else \
+            SessionNote.query.filter_by(patient_user_id=patient.id, professional_id=pro.id).order_by(SessionNote.created_at.desc()).all()
+    files = PatientFile.query.filter_by(patient_user_id=patient.id).order_by(PatientFile.uploaded_at.desc()).all() if not pro else \
+            PatientFile.query.filter_by(patient_user_id=patient.id, professional_id=pro.id).order_by(PatientFile.uploaded_at.desc()).all()
+    return render_template("pro/office/dossier_print.html",
+                           patient=patient, profile=profile, appts=appts, notes=notes, files=files)
 
 # =========================
 #   ESPACE PRO / RDV
