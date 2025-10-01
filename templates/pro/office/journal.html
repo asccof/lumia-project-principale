@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Carnet thérapeutique — {{ patient.username }}</h2>
+<div class="card p-3 mb-3">
+  {% for e in entries %}
+    <div class="mb-3">
+      <div class="small text-muted">{{ e.created_at.strftime("%Y-%m-%d %H:%M") }} · {{ e.author_role }}</div>
+      {% if e.title %}<strong>{{ e.title }}</strong><br>{% endif %}
+      {% if e.content %}<div>{{ e.content }}</div>{% endif %}
+      {% if e.mood_score is not none %}<div class="small">Humeur: {{ e.mood_score }}/10</div>{% endif %}
+    </div>
+  {% else %}
+    <div class="text-muted">Aucune entrée.</div>
+  {% endfor %}
+</div>
+<form method="post" class="card p-3">
+  <label class="form-label">Titre</label><input name="title" class="form-control">
+  <label class="form-label mt-2">Contenu</label><textarea name="content" class="form-control" rows="4"></textarea>
+  <label class="form-label mt-2">Humeur (0-10)</label><input type="number" min="0" max="10" name="mood" class="form-control" value="5">
+  <button class="btn btn-primary mt-3">Ajouter</button>
+</form>
+{% endblock %}
