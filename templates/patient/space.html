@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Espace patient</h2>
+<div class="mb-3">
+  <a class="btn btn-primary" href="{{ url_for('patient_portal.exercises') }}">Mes exercices</a>
+  <a class="btn btn-outline-primary" href="{{ url_for('my_appointments') }}">Mes rendez-vous</a>
+</div>
+<ul class="list-group">
+  {% for ap in appointments %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <span>{{ ap.appointment_date.strftime("%Y-%m-%d %H:%M") }} — {{ ap.status }}</span>
+      {% if ap.meet_url %}<a class="btn btn-sm btn-success" target="_blank" rel="noopener" href="{{ ap.meet_url }}">Rejoindre Google Meet</a>{% endif %}
+    </li>
+  {% else %}
+    <li class="list-group-item">Aucun RDV pour l’instant.</li>
+  {% endfor %}
+</ul>
+{% endblock %}
