@@ -105,7 +105,8 @@ def _normalize_pg_uri(uri: str) -> str:
 # ⬇️ Importe City / Specialty pour correspondre à ton models.py
 from models import (
     db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
-    City, Specialty
+    City, Specialty, Review, NewsletterSubscriber,  # AJOUT regroupe les imports
+    PatientProfile, SessionNote, PatientFile        # AJOUT
 )
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
@@ -256,8 +257,13 @@ def inject_i18n():
 
 @app.route("/set-language/<lang_code>")
 def set_language(lang_code):
-    nxt = request.args.get("next") or request.referrer or url_for("index")
-    return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
+    # combine l'ancien fallback avec la mise en cookie
+    code = _normalize_lang(lang_code)
+    resp = make_response(redirect(request.referrer or url_for("index")))
+    dom = _cookie_domain_for(request.host)
+    resp.set_cookie(LANG_COOKIE, code, max_age=60*60*24*180, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
+    resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
+    return resp
 
 # --- Helpers SQL utilitaires (gardé si besoin ailleurs)
 from sqlalchemy import text as _t
@@ -272,21 +278,12 @@ def set_language_fallback():
         return redirect(nxt)
     return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
 
-@app.route("/set-language/<code>")
-def set_language_path(code):
-    code = _normalize_lang(code)
-    resp = make_response(redirect(request.referrer or url_for("index")))
-    dom = _cookie_domain_for(request.host)
-    resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
-    resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
-    return resp
-
 @app.route("/set-language")
 def set_language_qs():
     code = _normalize_lang(request.args.get("lang"))
     resp = make_response(redirect(request.args.get("next") or request.referrer or url_for("index")))
     dom = _cookie_domain_for(request.host)
-    resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
+    resp.set_cookie(LANG_COOKIE, code, max_age=60*60*24*180, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
@@ -641,11 +638,7 @@ def professionals():
                            specialty=specialty, search_query=q,
                            cities=cities, families=families, specialties=specialties)
 
-@app.route("/professional/<int:professional_id>", endpoint="professional_detail")
-def professional_detail(professional_id: int):
-    professional = Professional.query.get_or_404(professional_id)
-    return render_template("professional_detail.html", professional=professional)
-from models import Review  # en haut si pas déjà
+# ---------- Détail pro (unique, avec moyenne avis) ----------
 @app.route("/professional/<int:professional_id>", endpoint="professional_detail")
 def professional_detail(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
@@ -999,6 +992,7 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for("index"))
+
 @app.route("/pro/office/stats", endpoint="pro_office_stats")
 @login_required
 def pro_office_stats():
@@ -1199,9 +1193,8 @@ def reset_password(token: str):
         flash("Mot de passe réinitialisé. Vous pouvez vous connecter.", "success")
         return redirect(url_for("login"))
     return render_template("reset_password.html")
-from models import PatientProfile, SessionNote, PatientFile  # AJOUT import
 
-# Vue dossier
+# -------- Dossier patient (fiche + notes + fichiers) --------
 @app.route("/pro/office/patient/<int:patient_id>", methods=["GET"], endpoint="pro_office_patient")
 @login_required
 def pro_office_patient(patient_id:int):
@@ -1227,8 +1220,8 @@ def pro_office_patient(patient_id:int):
                            patient=patient, profile=profile,
                            appts=appts, notes=notes, files=files)
 
-# Enregistrer/mettre à jour la fiche (fiche patient)
-@app.route("/pro/office/patient/<int:patient_id>/profile", methods=["POST"], endpoint="pro_office_save_profile")
+@app.route("/pro/office/patient/<int:patient_id>/profile", methods=["POST"], endpoint="pro_office_save_profile"]
+)
 @login_required
 def pro_office_save_profile(patient_id:int):
     if current_user.user_type!="professional" and not current_user.is_admin: abort(403)
@@ -1241,27 +1234,25 @@ def pro_office_save_profile(patient_id:int):
     flash("Fiche patient enregistrée.", "success")
     return redirect(url_for("pro_office_patient", patient_id=patient_id))
 
-# Ajouter une note de séance
 @app.route("/pro/office/patient/<int:patient_id>/note", methods=["POST"], endpoint="pro_office_add_note")
 @login_required
 def pro_office_add_note(patient_id:int):
     if current_user.user_type!="professional": abort(403)
     pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro: abort(403)
-    text = (request.form.get("note_text") or "").strip()
+    text_note = (request.form.get("note_text") or "").strip()
     appt_id = request.form.get("appointment_id", type=int)
-    if not text:
+    if not text_note:
         flash("Note vide.","warning")
         return redirect(url_for("pro_office_patient", patient_id=patient_id))
     db.session.add(SessionNote(
         professional_id=pro.id, patient_user_id=patient_id,
-        appointment_id=appt_id, note_text=text
+        appointment_id=appt_id, note_text=text_note
     ))
     db.session.commit()
     flash("Note ajoutée.","success")
     return redirect(url_for("pro_office_patient", patient_id=patient_id))
 
-# Upload d’un document
 @app.route("/pro/office/patient/<int:patient_id>/upload", methods=["POST"], endpoint="pro_office_upload_file")
 @login_required
 def pro_office_upload_file(patient_id:int):
@@ -1286,7 +1277,6 @@ def pro_office_upload_file(patient_id:int):
     flash("Document ajouté.", "success")
     return redirect(url_for("pro_office_patient", patient_id=patient_id))
 
-# Téléchargement sécurisé
 @app.route("/pro/office/file/<int:file_id>/download", endpoint="pro_office_download_file")
 @login_required
 def pro_office_download_file(file_id:int):
@@ -1307,7 +1297,6 @@ def pro_office_download_file(file_id:int):
     return send_from_directory(str(PATIENT_FILES_FOLDER), row.stored_name,
                                as_attachment=True, download_name=(row.original_name or row.stored_name))
 
-# Export "PDF" V1 = page imprimable
 @app.route("/pro/office/patient/<int:patient_id>/export-pdf", methods=["GET"], endpoint="pro_office_export_pdf")
 @login_required
 def pro_office_export_pdf(patient_id:int):
@@ -1623,7 +1612,7 @@ def professional_appointment_action(appointment_id, action):
     elif action in ("reject", "cancel"):
         ap.status = "annule"
         flash("Rendez-vous annulé.", "warning")
-    elif action == "ask-reschedule":
+    elif action in ("ask-reschedule", "request_reschedule"):
         ap.status = "en_attente"
         flash("Demande de report envoyée (statut repassé en attente).", "info")
     else:
@@ -1742,15 +1731,15 @@ def book_appointment(professional_id: int):
         db.session.add(appointment); db.session.commit()
 
         try:
-            subject, text = _build_notif("pending", appointment, role="patient")
-            safe_send_email(current_user.email, subject, text)
+            subject, text_body = _build_notif("pending", appointment, role="patient")
+            safe_send_email(current_user.email, subject, text_body)
         except Exception:
             pass
         try:
             pro_user = User.query.filter_by(username=professional.name).first()
             if pro_user and pro_user.email:
-                subject, text = _build_notif("pending", appointment, role="pro")
-                safe_send_email(pro_user.email, subject, text)
+                subject, text_body = _build_notif("pending", appointment, role="pro")
+                safe_send_email(pro_user.email, subject, text_body)
         except Exception:
             pass
 
@@ -1768,7 +1757,6 @@ def book_appointment(professional_id: int):
                            professional=professional,
                            availabilities=availabilities,
                            unavailable_dates=unavailable_dates)
-from models import NewsletterSubscriber  # AJOUT import
 
 @app.route("/newsletter/subscribe", methods=["POST"], endpoint="newsletter_subscribe")
 def newsletter_subscribe():
@@ -1835,7 +1823,6 @@ def api_available_slots(professional_id: int):
         "buffer_minutes": buffer_m,
         "available_slots": _slots()
     })
-from models import Review  # AJOUT import
 
 @app.route("/reviews/new/<int:appointment_id>", methods=["GET","POST"], endpoint="review_new")
 @login_required
@@ -1864,7 +1851,6 @@ def review_new(appointment_id:int):
 
     return render_template("reviews/new.html", ap=ap)
 
-# Validation simple admin
 @app.route("/admin/reviews/<int:rid>/publish", methods=["POST"], endpoint="admin_publish_review")
 @login_required
 def admin_publish_review(rid:int):
@@ -1995,24 +1981,15 @@ with app.app_context():
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
-    # --- Mini-migration Phase 1: bureau virtuel / espace patient / meet_url
+
+    # --- Mini-migration Phase 1: meet_url + tables bibliothèque (facultatives)
     try:
         stmts_phase1 = [
             "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS meet_url TEXT;",
 
             # exercise_types & techniques
-            """
-            CREATE TABLE IF NOT EXISTS exercise_types (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(120) UNIQUE NOT NULL
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS techniques (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(120) UNIQUE NOT NULL
-            );
-            """,
+            "CREATE TABLE IF NOT EXISTS exercise_types (id SERIAL PRIMARY KEY, name VARCHAR(120) UNIQUE NOT NULL);",
+            "CREATE TABLE IF NOT EXISTS techniques (id SERIAL PRIMARY KEY, name VARCHAR(120) UNIQUE NOT NULL);",
 
             # exercise_items
             """
@@ -2034,159 +2011,25 @@ with app.app_context():
             """,
 
             # liens MTM
-            """
-            CREATE TABLE IF NOT EXISTS exercise_specialties (
-                exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE,
-                specialty_id INTEGER REFERENCES specialties(id) ON DELETE CASCADE,
-                PRIMARY KEY (exercise_id, specialty_id)
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS exercise_types_link (
-                exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE,
-                type_id INTEGER REFERENCES exercise_types(id) ON DELETE CASCADE,
-                PRIMARY KEY (exercise_id, type_id)
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS exercise_techniques_link (
-                exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE,
-                technique_id INTEGER REFERENCES techniques(id) ON DELETE CASCADE,
-                PRIMARY KEY (exercise_id, technique_id)
-            );
-            """,
-
-            # assignations + progression
-            """
-            CREATE TABLE IF NOT EXISTS exercise_assignments (
-                id SERIAL PRIMARY KEY,
-                exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE NOT NULL,
-                professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE NOT NULL,
-                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-                note_pro TEXT,
-                due_date TIMESTAMP,
-                visibility VARCHAR(20) DEFAULT 'assigned',
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS exercise_progress (
-                id SERIAL PRIMARY KEY,
-                assignment_id INTEGER REFERENCES exercise_assignments(id) ON DELETE CASCADE NOT NULL,
-                progress_percent INTEGER DEFAULT 0,
-                checklist_json JSON,
-                response_text TEXT,
-                response_file_url TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            """,
-
-            # dossier patient
-            """
-            CREATE TABLE IF NOT EXISTS patient_profiles (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-                language VARCHAR(20),
-                preferences TEXT,
-                medical_history_json JSON,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS patient_cases (
-                id SERIAL PRIMARY KEY,
-                professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE NOT NULL,
-                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-                is_anonymous BOOLEAN DEFAULT FALSE,
-                display_name VARCHAR(120),
-                created_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE (professional_id, patient_user_id)
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS session_notes (
-                id SERIAL PRIMARY KEY,
-                appointment_id INTEGER REFERENCES appointments(id) ON DELETE CASCADE NOT NULL,
-                author_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                content TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS patient_files (
-                id SERIAL PRIMARY KEY,
-                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-                professional_id INTEGER REFERENCES professionals(id) ON DELETE SET NULL,
-                appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
-                filename VARCHAR(255) NOT NULL,
-                file_url TEXT NOT NULL,
-                mime_type VARCHAR(120),
-                sha256 VARCHAR(64),
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            """,
-
-            # messagerie + carnet
-            """
-            CREATE TABLE IF NOT EXISTS message_threads (
-                id SERIAL PRIMARY KEY,
-                professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE NOT NULL,
-                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE (professional_id, patient_user_id)
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS messages (
-                id SERIAL PRIMARY KEY,
-                thread_id INTEGER REFERENCES message_threads(id) ON DELETE CASCADE NOT NULL,
-                sender_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-                body TEXT,
-                attachment_url TEXT,
-                is_read BOOLEAN DEFAULT FALSE,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS therapeutic_journals (
-                id SERIAL PRIMARY KEY,
-                professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE NOT NULL,
-                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE (professional_id, patient_user_id)
-            );
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS journal_entries (
-                id SERIAL PRIMARY KEY,
-                journal_id INTEGER REFERENCES therapeutic_journals(id) ON DELETE CASCADE NOT NULL,
-                author_role VARCHAR(20),
-                title VARCHAR(255),
-                content TEXT,
-                checklist_json JSON,
-                mood_score INTEGER,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            """,
+            "CREATE TABLE IF NOT EXISTS exercise_specialties (exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE, specialty_id INTEGER REFERENCES specialties(id) ON DELETE CASCADE, PRIMARY KEY (exercise_id, specialty_id));",
+            "CREATE TABLE IF NOT EXISTS exercise_types_link (exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE, type_id INTEGER REFERENCES exercise_types(id) ON DELETE CASCADE, PRIMARY KEY (exercise_id, type_id));",
+            "CREATE TABLE IF NOT EXISTS exercise_techniques_link (exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE, technique_id INTEGER REFERENCES techniques(id) ON DELETE CASCADE, PRIMARY KEY (exercise_id, technique_id));",
         ]
-        from sqlalchemy import text as _sql
         for sql in stmts_phase1:
-            try:
-                INSERT INTO exercise_types (name) VALUES
-('Exercice'),('Fiche'),('Protocole'),('Questionnaire')
-ON CONFLICT (name) DO NOTHING;
+            db.session.execute(text(sql))
 
-INSERT INTO techniques (name) VALUES
-('CBT'),('Hypnose'),('Relaxation'),('Pleine conscience'),('Coaching')
-ON CONFLICT (name) DO NOTHING;
+        # seeds idempotents (✅ corrigé : pas de SQL brut hors string)
+        seed_sqls = [
+            "INSERT INTO exercise_types (name) VALUES ('Exercice'),('Fiche'),('Protocole'),('Questionnaire') ON CONFLICT (name) DO NOTHING;",
+            "INSERT INTO techniques (name) VALUES ('CBT'),('Hypnose'),('Relaxation'),('Pleine conscience'),('Coaching') ON CONFLICT (name) DO NOTHING;",
+        ]
+        for s in seed_sqls:
+            db.session.execute(text(s))
 
-                db.session.execute(_sql(sql))
-            except Exception as e:
-                current_app.logger.warning("mini-migration phase1: %s", e)
         db.session.commit()
     except Exception as e:
         db.session.rollback()
-        current_app.logger.warning("mini-migration phase1 (commit): %s", e)
+        current_app.logger.warning("mini-migration phase1: %s", e)
 
     # --- Taxonomy étendue
     try:
@@ -2225,6 +2068,7 @@ ON CONFLICT (name) DO NOTHING;
         )
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
+
 from pro_office import pro_office_bp      # nouveau blueprint "Bureau virtuel"
 from patient_portal import patient_bp     # nouveau blueprint "Espace patient"
 
