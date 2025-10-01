@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ 'Modifier' if item else 'Créer' }} un exercice</h2>
+<form method="post">
+  <div class="mb-3"><label class="form-label">Titre</label><input name="title" class="form-control" value="{{ item.title if item else '' }}" required></div>
+  <div class="mb-3"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="3">{{ item.description if item else '' }}</textarea></div>
+  <div class="row">
+    <div class="col-md-3 mb-3">
+      <label class="form-label">Format</label>
+      <select name="format" class="form-select">
+        {% for f in ['texte','audio','video','pdf'] %}
+          <option value="{{ f }}" {{ 'selected' if item and item.format==f else '' }}>{{ f }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3 mb-3">
+      <label class="form-label">Famille</label>
+      <select name="family" class="form-select">
+        <option value="">—</option>
+        {% for f in families %}
+          <option value="{{ f }}" {{ 'selected' if item and item.family==f else '' }}>{{ f }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3 mb-3">
+      <label class="form-label">Visibilité</label>
+      <select name="visibility" class="form-select">
+        {% for v in ['private','my_patients','by_invite','public_admin'] %}
+          <option value="{{ v }}" {{ 'selected' if item and item.visibility==v else '' }}>{{ v }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="mb-3">
+    <label class="form-label">Texte (si format texte)</label>
+    <textarea name="content_text" class="form-control" rows="5">{{ item.content_text if item else '' }}</textarea>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">URL de contenu (si fichier/audio/vidéo/PDF déjà téléversé)</label>
+    <input name="content_url" class="form-control" value="{{ item.content_url if item else '' }}">
+  </div>
+
+  <div class="row">
+    <div class="col-md-4 mb-3">
+      <label class="form-label">Spécialités</label>
+      <select name="specialty_ids" class="form-select" multiple size="6">
+        {% set selected = item.specialties|map(attribute='id')|list if item else [] %}
+        {% for s in specialties %}
+          <option value="{{ s.id }}" {{ 'selected' if s.id in selected else '' }}>{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4 mb-3">
+      <label class="form-label">Types</label>
+      <select name="type_ids" class="form-select" multiple size="6">
+        {% set sel_types = item.types|map(attribute='id')|list if item else [] %}
+        {% for t in types %}
+          <option value="{{ t.id }}" {{ 'selected' if t.id in sel_types else '' }}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4 mb-3">
+      <label class="form-label">Techniques</label>
+      <select name="technique_ids" class="form-select" multiple size="6">
+        {% set sel_techs = item.techniques|map(attribute='id')|list if item else [] %}
+        {% for k in techniques %}
+          <option value="{{ k.id }}" {{ 'selected' if k.id in sel_techs else '' }}>{{ k.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button class="btn btn-primary">Enregistrer</button>
+    <a class="btn btn-light" href="{{ url_for('pro_office.exercises_index') }}">Annuler</a>
+  </div>
+</form>
+{% endblock %}
