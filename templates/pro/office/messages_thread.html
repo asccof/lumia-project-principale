@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Conversation avec {{ alias }}</h2>
+<div class="card p-3 mb-3" style="max-height:50vh;overflow:auto">
+  {% for m in messages %}
+    <div class="mb-2">
+      <div class="small text-muted">{{ m.created_at.strftime("%Y-%m-%d %H:%M") }} — {{ 'Moi' if m.sender_user_id==current_user.id else 'Patient' }}</div>
+      {% if m.body %}<div>{{ m.body }}</div>{% endif %}
+      {% if m.attachment_url %}<div><a href="{{ m.attachment_url }}" target="_blank">📎 Pièce jointe</a></div>{% endif %}
+    </div>
+  {% else %}
+    <div class="text-muted">Aucun message.</div>
+  {% endfor %}
+</div>
+<form method="post" enctype="multipart/form-data" class="d-flex gap-2">
+  <input name="body" class="form-control" placeholder="Écrire un message…">
+  <input type="file" name="attachment" class="form-control">
+  <button class="btn btn-primary">Envoyer</button>
+</form>
+{% endblock %}
