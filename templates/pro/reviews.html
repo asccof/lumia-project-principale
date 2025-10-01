@@ -1,0 +1,8 @@
+<h2>Mes avis reçus</h2>
+<ul>
+  {% for r in reviews %}
+    <li>⭐ {{ r.rating }}/5 — {{ r.created_at }} {% if r.is_public %} (public){% else %} (privé){% endif %}<br>{{ r.comment }}</li>
+  {% else %}
+    <li>Aucun avis.</li>
+  {% endfor %}
+</ul>
