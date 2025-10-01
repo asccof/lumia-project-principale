@@ -1,0 +1,33 @@
+<h2>Assignations — Patient #{{ patient_id }}</h2>
+
+<form method="post" style="margin:10px 0;">
+  <label>Exercice :</label>
+  <select name="exercise_id" required>
+    <optgroup label="Mes exercices">
+      {% for it in my_items %}
+        <option value="{{ it.id }}">#{{ it.id }} — {{ it.title }}</option>
+      {% else %}
+        <option disabled>(aucun)</option>
+      {% endfor %}
+    </optgroup>
+    <optgroup label="Public approuvé">
+      {% for it in public_items %}
+        <option value="{{ it.id }}">#{{ it.id }} — {{ it.title }}</option>
+      {% endfor %}
+    </optgroup>
+  </select>
+  <label>Due date:</label>
+  <input type="datetime-local" name="due_date">
+  <br>
+  <textarea name="note_pro" rows="2" placeholder="Note pour le patient (optionnel)"></textarea>
+  <br>
+  <button>Assigner</button>
+</form>
+
+<ul>
+  {% for a in assignments %}
+    <li>#{{ a.id }} — Ex {{ a.exercise_id }} — créé {{ a.created_at }} — due {{ a.due_date or "—" }}</li>
+  {% else %}
+    <li>Pas d’assignations.</li>
+  {% endfor %}
+</ul>
