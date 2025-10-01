@@ -1,0 +1,8 @@
+<h2>Conversations</h2>
+<ul>
+  {% for t in threads %}
+    <li>Thread #{{ t.id }} — Pro {{ t.professional_id }} / Patient {{ t.patient_user_id }} — {{ t.created_at }}</li>
+  {% else %}
+    <li>Aucun thread.</li>
+  {% endfor %}
+</ul>
