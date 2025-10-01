@@ -57,6 +57,55 @@ def exercise_detail(assignment_id: int):
         return redirect(url_for("patient_portal.exercises"))
 
     return render_template("patient/exercise_detail.html", assign=assign)
+# === Messagerie — boîte patient ===
+@patient_bp.route("/messages", methods=["GET"])
+@login_required
+def messages_inbox():
+    _ensure_patient()
+    # lister les fils où je suis patient
+    from models import MessageThread, Professional
+    threads = MessageThread.query.filter_by(patient_user_id=current_user.id).order_by(MessageThread.created_at.desc()).all()
+    return render_template("patient/messages_inbox.html", threads=threads)
+
+# === Messagerie — fil avec un pro ===
+@patient_bp.route("/messages/with/<int:pro_id>", methods=["GET","POST"])
+@login_required
+def messages_thread_with_pro(pro_id: int):
+    _ensure_patient()
+    from models import MessageThread, Message, Professional
+    pro = Professional.query.get_or_404(pro_id)
+    thread = MessageThread.query.filter_by(professional_id=pro.id, patient_user_id=current_user.id).first()
+    if not thread:
+        thread = MessageThread(professional_id=pro.id, patient_user_id=current_user.id)
+        db.session.add(thread); db.session.commit()
+
+    if request.method == "POST":
+        body = (request.form.get("body") or "").strip()
+        att = request.files.get("attachment")
+        attachment_url = None
+        if att and getattr(att, "filename", ""):
+            from pathlib import Path
+            from werkzeug.utils import secure_filename
+            root = Path(os.getenv("UPLOAD_ROOT", Path(current_app.root_path).parent / "uploads"))
+            files_dir = root / "patient_files"
+            files_dir.mkdir(parents=True, exist_ok=True)
+            safe = secure_filename(att.filename)
+            unique = f"{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{safe}"
+            fpath = files_dir / unique
+            att.save(fpath)
+            attachment_url = url_for("pro_office.secure_file", filename=unique)  # on réutilise la route sécurisée du BP pro
+
+        if body or attachment_url:
+            db.session.add(Message(
+                thread_id=thread.id, sender_user_id=current_user.id,
+                body=body or None, attachment_url=attachment_url
+            ))
+            db.session.commit()
+        flash("Message envoyé.", "success")
+        return redirect(url_for("patient_portal.messages_thread_with_pro", pro_id=pro.id))
+
+    msgs = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
+    return render_template("patient/messages_thread.html", pro=pro, thread=thread, messages=msgs)
 
 @patient_bp.route("/visio/<int:appointment_id>", methods=["GET"])
 @login_required
