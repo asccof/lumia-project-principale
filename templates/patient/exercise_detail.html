@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ assign.exercise.title }}</h2>
+<p class="text-muted">{{ assign.exercise.description }}</p>
+
+{% if assign.exercise.content_text %}
+<pre class="p-3 bg-light border rounded">{{ assign.exercise.content_text }}</pre>
+{% endif %}
+{% if assign.exercise.content_url %}
+<p><a href="{{ assign.exercise.content_url }}" target="_blank" rel="noopener">Ouvrir la ressource ➜</a></p>
+{% endif %}
+
+<form method="post" class="mt-4">
+  <label class="form-label">Votre réponse</label>
+  <textarea name="response_text" class="form-control" rows="5"></textarea>
+  <button class="btn btn-primary mt-3">Envoyer</button>
+</form>
+{% endblock %}
