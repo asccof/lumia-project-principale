@@ -521,6 +521,47 @@ class ExerciseAssignment(db.Model):
         db.Index('ix_ex_assign_professional', 'professional_id'),
         db.UniqueConstraint('exercise_id', 'patient_user_id', 'professional_id', name='uq_exercise_assignment_unique'),
     )
+# ===== Dossier Patient =====
+class PatientProfile(db.Model):
+    __tablename__ = "patient_profiles"
+    id = db.Column(db.Integer, primary_key=True)
+    patient_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                                unique=True, nullable=False, index=True)
+    preferred_lang = db.Column(db.String(5))     # fr / ar / en
+    preferences = db.Column(db.Text)             # horaires, mode, etc.
+    medical_history = db.Column(db.Text)         # antécédents (texte libre)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    patient = db.relationship("User", lazy="joined")
+
+class SessionNote(db.Model):
+    __tablename__ = "session_notes"
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="CASCADE"),
+                                nullable=False, index=True)
+    patient_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                                nullable=False, index=True)
+    appointment_id = db.Column(db.Integer, db.ForeignKey("appointments.id", ondelete="SET NULL"))
+    note_text = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    professional = db.relationship("Professional", lazy="joined")
+    patient = db.relationship("User", lazy="joined")
+    appointment = db.relationship("Appointment", lazy="joined")
+
+class PatientFile(db.Model):
+    __tablename__ = "patient_files"
+    id = db.Column(db.Integer, primary_key=True)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"),
+                                index=True)
+    patient_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                                nullable=False, index=True)
+    stored_name = db.Column(db.String(255), nullable=False)  # nom sur disque (UUID.ext)
+    original_name = db.Column(db.String(255))
+    mime_type = db.Column(db.String(120))
+    size = db.Column(db.Integer)
+    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    professional = db.relationship("Professional", lazy="joined")
+    patient = db.relationship("User", lazy="joined")
 
 # Suivi de progression d’un exercice
 class ExerciseProgress(db.Model):
