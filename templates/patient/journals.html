@@ -1,0 +1,22 @@
+<h2>Mes carnets</h2>
+
+{% for j in journals %}
+  <h3>Journal #{{ j.id }} avec Pro #{{ j.professional_id }}</h3>
+  <form method="post" style="margin:8px 0;">
+    <input type="hidden" name="journal_id" value="{{ j.id }}">
+    <input name="title" placeholder="Titre">
+    <br>
+    <textarea name="content" rows="3" placeholder="Contenu"></textarea>
+    <br>
+    <button>Ajouter une entrée</button>
+  </form>
+  <ul>
+    {% for e in entries_by_j[j.id] %}
+      <li><strong>[{{ e.author_role }}]</strong> {{ e.title or "(sans titre)" }} — {{ e.created_at }}<br>{{ e.content }}</li>
+    {% else %}
+      <li>Aucune entrée encore.</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>Pas encore de carnets.</p>
+{% endfor %}
