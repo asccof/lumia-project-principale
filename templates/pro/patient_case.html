@@ -1,0 +1,52 @@
+<h2>Patient: {{ patient.full_name or patient.username }} (#{{ patient.id }})</h2>
+
+<h3>Dossier</h3>
+<p>Langue: {{ profile and profile.language or "—" }}</p>
+
+<h3>Fichiers récents</h3>
+<ul>
+  {% for f in files %}
+    <li>{{ f.filename }} — {{ f.created_at }} [<a href="{{ url_for('media_patient_file', file_id=f.id) }}">dl</a>]</li>
+  {% else %}
+    <li>Aucun fichier.</li>
+  {% endfor %}
+</ul>
+<p><a href="{{ url_for('pro_files_for_patient', patient_id=patient.id) }}">Tous les fichiers</a></p>
+
+<h3>Carnet</h3>
+{% if journal %}
+  <ul>
+    {% for e in last_entries %}
+      <li><strong>{{ e.title or "(sans titre)" }}</strong> — {{ e.created_at }}</li>
+    {% else %}
+      <li>Pas d’entrées.</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p>Pas encore de journal.</p>
+{% endif %}
+<p><a href="{{ url_for('pro_patient_journal', patient_id=patient.id) }}">Ouvrir le carnet</a></p>
+
+<h3>Assignations</h3>
+<ul>
+  {% for a in assigns %}
+    <li>Ex #{{ a.exercise_id }} — {{ a.created_at }}</li>
+  {% else %}
+    <li>—</li>
+  {% endfor %}
+</ul>
+<p><a href="{{ url_for('pro_assignments_for_patient', patient_id=patient.id) }}">Gérer les assignations</a></p>
+
+<h3>Conversation</h3>
+{% if thread %}
+  <p><a href="{{ url_for('messages_thread', thread_id=thread.id) }}">Ouvrir</a></p>
+{% else %}
+  <form method="post" action="{{ url_for('messages_start') }}">
+    <input type="hidden" name="patient_id" value="{{ patient.id }}">
+    <button>Démarrer une conversation</button>
+  </form>
+{% endif %}
+
+<form method="post" action="{{ url_for('pro_link_patient', patient_id=patient.id) }}" style="margin-top:10px">
+  <button>Lier ce patient (PatientCase)</button>
+</form>
