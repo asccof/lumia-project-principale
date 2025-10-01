@@ -21,6 +21,7 @@ from flask_login import (
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
 from werkzeug.utils import secure_filename
+from sqlalchemy.exc import ProgrammingError
 
 # =========================
 #   CONSTANTES / DOSSIERS
@@ -184,6 +185,12 @@ def _load_user(user_id: str):
         return db.session.get(User, int(user_id))
     except Exception:
         return None
+# --- Alias legacy pour les templates : "Mes patients"
+@app.route("/pro/patients", endpoint="pro_list_patients")
+@login_required
+def pro_list_patients():
+    # Redirige vers le bureau pro (la liste patients y vit déjà)
+    return redirect("/pro/office/")
 
 # =========================
 #   MESSAGERIE
