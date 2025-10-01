@@ -227,6 +227,350 @@ def messages_start():
         t = MessageThread(professional_id=pro_id, patient_user_id=patient_id)
         db.session.add(t); db.session.commit()
     return redirect(url_for("messages_thread", thread_id=t.id))
+@app.route("/pro/patient/link/<int:patient_id>", methods=["POST"])
+@login_required
+def pro_link_patient(patient_id):
+    require_role("professional")
+    # Permet au pro d'établir un lien (ex: après 1er RDV)
+    if not pro_can_access_patient(current_user.id, patient_id):
+        # on autorise tout de même la création de lien si RDV existe, sinon refuse
+        abort(403)
+    pc = PatientCase.query.filter_by(professional_id=current_user.id, patient_user_id=patient_id).first()
+    if not pc:
+        pc = PatientCase(professional_id=current_user.id, patient_user_id=patient_id, is_anonymous=False)
+        db.session.add(pc); db.session.commit()
+        flash("Patient lié.", "success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+@app.route("/patient/files", methods=["GET","POST"])
+@login_required
+def patient_files_me():
+    require_role("patient")
+    if request.method == "POST":
+        f = request.files.get("file")
+        if not f or f.filename == "":
+            flash("Fichier manquant.", "warning"); return redirect(url_for("patient_files_me"))
+        if not allowed_file(f.filename):
+            flash("Extension non autorisée.", "danger"); return redirect(url_for("patient_files_me"))
+        filename = secure_filename(f.filename)
+        stored = f"{current_user.id}_{int(datetime.utcnow().timestamp())}_{filename}"
+        path = os.path.join(UPLOAD_ROOT, stored)
+        f.save(path)
+        pf = PatientFile(
+            patient_user_id=current_user.id,
+            professional_id=None,  # upload patient autonome
+            filename=filename,
+            file_url=stored,
+            mime_type=f.mimetype
+        )
+        db.session.add(pf); db.session.commit()
+        flash("Fichier envoyé.", "success")
+        return redirect(url_for("patient_files_me"))
+
+    files = (PatientFile.query
+             .filter_by(patient_user_id=current_user.id)
+             .order_by(PatientFile.created_at.desc()).all())
+    return render_template("patient/files.html", files=files)
+
+@app.route("/pro/patient/<int:patient_id>/files", methods=["GET","POST"])
+@login_required
+def pro_files_for_patient(patient_id):
+    require_role("professional")
+    if not pro_can_access_patient(current_user.id, patient_id): abort(403)
+
+    if request.method == "POST":
+        f = request.files.get("file")
+        if not f or f.filename == "":
+            flash("Fichier manquant.", "warning"); return redirect(url_for("pro_files_for_patient", patient_id=patient_id))
+        if not allowed_file(f.filename):
+            flash("Extension non autorisée.", "danger"); return redirect(url_for("pro_files_for_patient", patient_id=patient_id))
+        filename = secure_filename(f.filename)
+        stored = f"pro{current_user.id}_p{patient_id}_{int(datetime.utcnow().timestamp())}_{filename}"
+        path = os.path.join(UPLOAD_ROOT, stored)
+        f.save(path)
+        pf = PatientFile(
+            patient_user_id=patient_id,
+            professional_id=current_user.id,
+            filename=filename,
+            file_url=stored,
+            mime_type=f.mimetype
+        )
+        db.session.add(pf); db.session.commit()
+        flash("Fichier partagé avec le patient.", "success")
+        return redirect(url_for("pro_files_for_patient", patient_id=patient_id))
+
+    files = (PatientFile.query
+             .filter_by(patient_user_id=patient_id)
+             .order_by(PatientFile.created_at.desc()).all())
+    return render_template("pro/patient_files.html", files=files, patient_id=patient_id)
+def _get_or_create_journal(pro_id, patient_id):
+    j = TherapeuticJournal.query.filter_by(professional_id=pro_id, patient_user_id=patient_id).first()
+    if not j:
+        j = TherapeuticJournal(professional_id=pro_id, patient_user_id=patient_id)
+        db.session.add(j); db.session.commit()
+    return j
+
+@app.route("/patient/journal", methods=["GET","POST"])
+@login_required
+def patient_journal_me():
+    require_role("patient")
+    # le patient peut poster dans tous ses journaux
+    journals = (TherapeuticJournal.query
+                .filter_by(patient_user_id=current_user.id)
+                .order_by(TherapeuticJournal.created_at.desc()).all())
+    if request.method == "POST":
+        journal_id = int(request.form.get("journal_id"))
+        title = (request.form.get("title") or "").strip()
+        content = (request.form.get("content") or "").strip()
+        j = TherapeuticJournal.query.get_or_404(journal_id)
+        if j.patient_user_id != current_user.id: abort(403)
+        if title or content:
+            e = JournalEntry(journal_id=j.id, author_role="patient", title=title, content=content)
+            db.session.add(e); db.session.commit()
+            flash("Entrée ajoutée.", "success")
+        return redirect(url_for("patient_journal_me"))
+    # entries par journal
+    entries_by_j = {j.id: JournalEntry.query.filter_by(journal_id=j.id).order_by(JournalEntry.created_at.desc()).all()
+                    for j in journals}
+    return render_template("patient/journals.html", journals=journals, entries_by_j=entries_by_j)
+# --- Bibliothèque personnelle du pro + création simple d'un item privé
+@app.route("/pro/exercises", methods=["GET","POST"])
+@login_required
+def pro_exercise_library():
+    require_role("professional")
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        content_text = (request.form.get("content_text") or "").strip()
+        family = (request.form.get("family") or "").strip() or None
+        if title:
+            item = ExerciseItem(title=title, content_text=content_text, format="texte",
+                                owner_id=current_user.id, family=family, visibility="private")
+            db.session.add(item); db.session.commit()
+            flash("Exercice créé (privé).", "success")
+        return redirect(url_for("pro_exercise_library"))
+    items = (ExerciseItem.query
+             .filter_by(owner_id=current_user.id)
+             .order_by(ExerciseItem.created_at.desc()).all())
+    return render_template("pro/exercises.html", items=items)
+
+# --- Assignations par le pro à un patient
+@app.route("/pro/patient/<int:patient_id>/assignments", methods=["GET","POST"])
+@login_required
+def pro_assignments_for_patient(patient_id):
+    require_role("professional")
+    if not pro_can_access_patient(current_user.id, patient_id): abort(403)
+    if request.method == "POST":
+        exercise_id = int(request.form.get("exercise_id"))
+        due_date_str = (request.form.get("due_date") or "").strip()
+        due_date = datetime.fromisoformat(due_date_str) if due_date_str else None
+        note_pro = (request.form.get("note_pro") or "").strip() or None
+        ex = ExerciseItem.query.get_or_404(exercise_id)
+        # le pro peut assigner ses propres items, ou publics approuvés (admin)
+        if not (ex.owner_id == current_user.id or ex.visibility == "public_admin"):
+            abort(403)
+        a = ExerciseAssignment(exercise_id=exercise_id, professional_id=current_user.id,
+                               patient_user_id=patient_id, note_pro=note_pro, due_date=due_date)
+        db.session.add(a); db.session.commit()
+        flash("Exercice assigné.", "success")
+        return redirect(url_for("pro_assignments_for_patient", patient_id=patient_id))
+
+    assigns = (ExerciseAssignment.query
+               .filter_by(patient_user_id=patient_id, professional_id=current_user.id)
+               .order_by(ExerciseAssignment.created_at.desc()).all())
+    my_items = ExerciseItem.query.filter_by(owner_id=current_user.id).order_by(ExerciseItem.title.asc()).all()
+    public_items = ExerciseItem.query.filter_by(visibility="public_admin", is_approved=True).order_by(ExerciseItem.title.asc()).all()
+    return render_template("pro/assignments.html", assignments=assigns, patient_id=patient_id,
+                           my_items=my_items, public_items=public_items)
+
+# --- Vue patient de ses assignations + dépôt de progression
+@app.route("/patient/assignments")
+@login_required
+def patient_assignments():
+    require_role("patient")
+    assigns = (ExerciseAssignment.query
+               .filter_by(patient_user_id=current_user.id)
+               .order_by(ExerciseAssignment.created_at.desc()).all())
+    latest_progress = {}
+    for a in assigns:
+        p = (ExerciseProgress.query
+             .filter_by(assignment_id=a.id)
+             .order_by(ExerciseProgress.created_at.desc())
+             .first())
+        latest_progress[a.id] = p
+    return render_template("patient/assignments.html", assignments=assigns, latest_progress=latest_progress)
+@app.route("/professional/reviews")
+@login_required
+def professional_reviews():
+    require_role("professional")
+    reviews = Review.query.filter_by(professional_id=current_user.id).order_by(Review.created_at.desc()).all()
+    return render_template("pro/reviews.html", reviews=reviews)
+
+@app.route("/reviews/new/<int:appointment_id>", methods=["GET","POST"])
+@login_required
+def review_new(appointment_id):
+    require_role("patient")
+    appt = Appointment.query.get_or_404(appointment_id)
+    if appt.patient_id != current_user.id: abort(403)
+    if request.method == "POST":
+        rating = int(request.form.get("rating", "0") or 0)
+        comment = (request.form.get("comment") or "").strip()
+        # unique par RDV
+        if Review.query.filter_by(appointment_id=appointment_id).first():
+            flash("Un avis existe déjà pour ce rendez-vous.", "warning")
+            return redirect(url_for("patient_assignments"))
+        rev = Review(appointment_id=appointment_id,
+                     patient_user_id=current_user.id,
+                     professional_id=appt.professional_id,
+                     rating=rating,
+                     comment=comment,
+                     is_public=True)
+        db.session.add(rev); db.session.commit()
+        flash("Merci pour votre avis.", "success")
+        return redirect(url_for("patient_assignments"))
+    return render_template("reviews/new.html", appointment=appt)
+@app.route("/pro/office/patient/<int:patient_id>")
+@login_required
+def pro_office_patient(patient_id):
+    require_role("professional")
+    if not pro_can_access_patient(current_user.id, patient_id): abort(403)
+
+    ensure_professional_row_for_user(current_user)  # sécurise profil pro
+
+    patient = User.query.get_or_404(patient_id)
+    profile = PatientProfile.query.filter_by(user_id=patient.id).first()  # NOTE: champ = user_id (contrat-fix)
+    files = (PatientFile.query
+             .filter_by(patient_user_id=patient.id)
+             .order_by(PatientFile.created_at.desc()).limit(10).all())
+    cases = PatientCase.query.filter_by(professional_id=current_user.id, patient_user_id=patient.id).all()
+    assigns = (ExerciseAssignment.query
+               .filter_by(patient_user_id=patient.id, professional_id=current_user.id)
+               .order_by(ExerciseAssignment.created_at.desc()).limit(10).all())
+    journal = TherapeuticJournal.query.filter_by(professional_id=current_user.id, patient_user_id=patient.id).first()
+    last_entries = (JournalEntry.query.filter_by(journal_id=journal.id)
+                    .order_by(JournalEntry.created_at.desc()).limit(5).all()) if journal else []
+    thread = MessageThread.query.filter_by(professional_id=current_user.id, patient_user_id=patient.id).first()
+
+    return render_template("pro/patient_case.html",
+                           patient=patient, profile=profile, files=files, cases=cases,
+                           assigns=assigns, journal=journal, last_entries=last_entries, thread=thread)
+@app.route("/admin")
+@login_required
+def admin_home():
+    require_admin()
+    return render_template("admin/home.html")
+
+@app.route("/admin/exercises", methods=["GET","POST"])
+@login_required
+def admin_exercises():
+    require_admin()
+    if request.method == "POST":
+        item_id = int(request.form.get("item_id"))
+        action = (request.form.get("action") or "").strip()
+        item = ExerciseItem.query.get_or_404(item_id)
+        if action == "approve":
+            item.visibility = "public_admin"
+            item.is_approved = True
+        elif action == "revoke":
+            item.is_approved = False
+            item.visibility = "private"
+        db.session.commit()
+        flash("Mise à jour de l'exercice.", "success")
+        return redirect(url_for("admin_exercises"))
+    items = ExerciseItem.query.order_by(ExerciseItem.created_at.desc()).all()
+    return render_template("admin/exercises.html", items=items)
+
+@app.route("/admin/reviews", methods=["GET","POST"])
+@login_required
+def admin_reviews():
+    require_admin()
+    if request.method == "POST":
+        review_id = int(request.form.get("review_id"))
+        action = (request.form.get("action") or "")
+        r = Review.query.get_or_404(review_id)
+        if action == "publish":
+            r.is_public = True
+        elif action == "hide":
+            r.is_public = False
+        db.session.commit()
+        flash("Mise à jour de l'avis.", "success")
+        return redirect(url_for("admin_reviews"))
+    reviews = Review.query.order_by(Review.created_at.desc()).all()
+    return render_template("admin/reviews.html", reviews=reviews)
+
+@app.route("/admin/threads")
+@login_required
+def admin_threads():
+    require_admin()
+    threads = MessageThread.query.order_by(MessageThread.created_at.desc()).all()
+    return render_template("admin/threads.html", threads=threads)
+
+@app.route("/admin/files")
+@login_required
+def admin_files():
+    require_admin()
+    files = PatientFile.query.order_by(PatientFile.created_at.desc()).all()
+    return render_template("admin/files.html", files=files)
+
+@app.route("/patient/progress/new/<int:assignment_id>", methods=["GET","POST"])
+@login_required
+def patient_progress_new(assignment_id):
+    require_role("patient")
+    a = ExerciseAssignment.query.get_or_404(assignment_id)
+    if a.patient_user_id != current_user.id: abort(403)
+    if request.method == "POST":
+        progress_percent = int(request.form.get("progress_percent") or 0)
+        response_text = (request.form.get("response_text") or "").strip() or None
+        ep = ExerciseProgress(assignment_id=a.id, progress_percent=progress_percent, response_text=response_text)
+        db.session.add(ep); db.session.commit()
+        flash("Progression envoyée.", "success")
+        return redirect(url_for("patient_assignments"))
+    return render_template("patient/progress_new.html", assignment=a)
+
+@app.route("/pro/patient/<int:patient_id>/journal", methods=["GET","POST"])
+@login_required
+def pro_patient_journal(patient_id):
+    require_role("professional")
+    if not pro_can_access_patient(current_user.id, patient_id): abort(403)
+    j = _get_or_create_journal(current_user.id, patient_id)
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        content = (request.form.get("content") or "").strip()
+        if title or content:
+            e = JournalEntry(journal_id=j.id, author_role="pro", title=title, content=content)
+            db.session.add(e); db.session.commit()
+            flash("Entrée ajoutée.", "success")
+        return redirect(url_for("pro_patient_journal", patient_id=patient_id))
+    entries = JournalEntry.query.filter_by(journal_id=j.id).order_by(JournalEntry.created_at.desc()).all()
+    return render_template("pro/journal.html", journal=j, entries=entries, patient_id=patient_id)
+
+@app.route("/media/patient_file/<int:file_id>")
+@login_required
+def media_patient_file(file_id):
+    pf = PatientFile.query.get_or_404(file_id)
+    # sécurité d'accès
+    if current_user.is_admin:
+        pass
+    elif current_user.user_type == "patient":
+        if pf.patient_user_id != current_user.id: abort(403)
+    elif current_user.user_type == "professional":
+        # accès si pro lié ou auteur
+        if pf.professional_id != current_user.id and not pro_can_access_patient(current_user.id, pf.patient_user_id):
+            abort(403)
+    else:
+        abort(403)
+
+    return send_from_directory(UPLOAD_ROOT, pf.file_url, as_attachment=True)
+
+@app.route("/pro/patients")
+@login_required
+def pro_list_patients():
+    require_role("professional")
+    # patients liés via PatientCase
+    cases = (PatientCase.query
+             .filter_by(professional_id=current_user.id)
+             .order_by(PatientCase.created_at.desc()).all())
+    patient_ids = [c.patient_user_id for c in cases]
+    patients = User.query.filter(User.id.in_(patient_ids)).all() if patient_ids else []
+    return render_template("pro/patients.html", cases=cases, patients=patients)
 
 @app.route("/messages/<int:thread_id>", methods=["GET","POST"])
 @login_required
