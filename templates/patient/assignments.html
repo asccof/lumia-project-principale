@@ -1,0 +1,13 @@
+<h2>Mes exercices</h2>
+<ul>
+  {% for a in assignments %}
+    {% set p = latest_progress.get(a.id) %}
+    <li>
+      #{{ a.id }} — Ex {{ a.exercise_id }} — Pro {{ a.professional_id }}
+      — Due {{ a.due_date or "—" }} — Progression: {{ p and (p.progress_percent|string + "%") or "0%" }}
+      [<a href="{{ url_for('patient_progress_new', assignment_id=a.id) }}">mettre à jour</a>]
+    </li>
+  {% else %}
+    <li>Aucune assignation.</li>
+  {% endfor %}
+</ul>
