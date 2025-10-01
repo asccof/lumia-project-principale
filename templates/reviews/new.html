@@ -1,0 +1,10 @@
+<h2>Donner un avis</h2>
+<p>RDV #{{ appointment.id }} ({{ appointment.appointment_date }})</p>
+<form method="post">
+  <label>Note (1..5)</label>
+  <input name="rating" type="number" min="1" max="5" required>
+  <br>
+  <textarea name="comment" rows="4" placeholder="Votre commentaire"></textarea>
+  <br>
+  <button>Envoyer</button>
+</form>
