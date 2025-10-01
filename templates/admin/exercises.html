@@ -1,0 +1,25 @@
+<h2>Exercices</h2>
+<table border="1" cellpadding="4">
+  <tr><th>ID</th><th>Titre</th><th>Owner</th><th>Visibility</th><th>Approved</th><th>Action</th></tr>
+  {% for it in items %}
+    <tr>
+      <td>{{ it.id }}</td>
+      <td>{{ it.title }}</td>
+      <td>{{ it.owner_id }}</td>
+      <td>{{ it.visibility }}</td>
+      <td>{{ it.is_approved }}</td>
+      <td>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="item_id" value="{{ it.id }}">
+          <button name="action" value="approve">Publier</button>
+        </form>
+        <form method="post" style="display:inline">
+          <input type="hidden" name="item_id" value="{{ it.id }}">
+          <button name="action" value="revoke">Révoquer</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">Aucun item</td></tr>
+  {% endfor %}
+</table>
