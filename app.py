@@ -1220,7 +1220,7 @@ def pro_office_patient(patient_id:int):
                            patient=patient, profile=profile,
                            appts=appts, notes=notes, files=files)
 
-@app.route("/pro/office/patient/<int:patient_id>/profile", methods=["POST"], endpoint="pro_office_save_profile"]
+@app.route("/pro/office/patient/<int:patient_id>/profile", methods=["POST"], endpoint="pro_office_save_profile")
 )
 @login_required
 def pro_office_save_profile(patient_id:int):
