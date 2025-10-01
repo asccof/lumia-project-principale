@@ -1764,6 +1764,190 @@ with app.app_context():
         db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
+    # --- Mini-migration Phase 1: bureau virtuel / espace patient / meet_url
+    try:
+        stmts_phase1 = [
+            "ALTER TABLE appointments ADD COLUMN IF NOT EXISTS meet_url TEXT;",
+
+            # exercise_types & techniques
+            """
+            CREATE TABLE IF NOT EXISTS exercise_types (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(120) UNIQUE NOT NULL
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS techniques (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(120) UNIQUE NOT NULL
+            );
+            """,
+
+            # exercise_items
+            """
+            CREATE TABLE IF NOT EXISTS exercise_items (
+                id SERIAL PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                format VARCHAR(20),
+                content_url TEXT,
+                content_text TEXT,
+                owner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                family VARCHAR(120),
+                visibility VARCHAR(20) DEFAULT 'private',
+                is_approved BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW(),
+                deleted_at TIMESTAMP
+            );
+            """,
+
+            # liens MTM
+            """
+            CREATE TABLE IF NOT EXISTS exercise_specialties (
+                exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE,
+                specialty_id INTEGER REFERENCES specialties(id) ON DELETE CASCADE,
+                PRIMARY KEY (exercise_id, specialty_id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS exercise_types_link (
+                exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE,
+                type_id INTEGER REFERENCES exercise_types(id) ON DELETE CASCADE,
+                PRIMARY KEY (exercise_id, type_id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS exercise_techniques_link (
+                exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE,
+                technique_id INTEGER REFERENCES techniques(id) ON DELETE CASCADE,
+                PRIMARY KEY (exercise_id, technique_id)
+            );
+            """,
+
+            # assignations + progression
+            """
+            CREATE TABLE IF NOT EXISTS exercise_assignments (
+                id SERIAL PRIMARY KEY,
+                exercise_id INTEGER REFERENCES exercise_items(id) ON DELETE CASCADE NOT NULL,
+                professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE NOT NULL,
+                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+                note_pro TEXT,
+                due_date TIMESTAMP,
+                visibility VARCHAR(20) DEFAULT 'assigned',
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS exercise_progress (
+                id SERIAL PRIMARY KEY,
+                assignment_id INTEGER REFERENCES exercise_assignments(id) ON DELETE CASCADE NOT NULL,
+                progress_percent INTEGER DEFAULT 0,
+                checklist_json JSON,
+                response_text TEXT,
+                response_file_url TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            """,
+
+            # dossier patient
+            """
+            CREATE TABLE IF NOT EXISTS patient_profiles (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+                language VARCHAR(20),
+                preferences TEXT,
+                medical_history_json JSON,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS patient_cases (
+                id SERIAL PRIMARY KEY,
+                professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE NOT NULL,
+                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+                is_anonymous BOOLEAN DEFAULT FALSE,
+                display_name VARCHAR(120),
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (professional_id, patient_user_id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS session_notes (
+                id SERIAL PRIMARY KEY,
+                appointment_id INTEGER REFERENCES appointments(id) ON DELETE CASCADE NOT NULL,
+                author_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                content TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS patient_files (
+                id SERIAL PRIMARY KEY,
+                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+                professional_id INTEGER REFERENCES professionals(id) ON DELETE SET NULL,
+                appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL,
+                filename VARCHAR(255) NOT NULL,
+                file_url TEXT NOT NULL,
+                mime_type VARCHAR(120),
+                sha256 VARCHAR(64),
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            """,
+
+            # messagerie + carnet
+            """
+            CREATE TABLE IF NOT EXISTS message_threads (
+                id SERIAL PRIMARY KEY,
+                professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE NOT NULL,
+                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (professional_id, patient_user_id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                thread_id INTEGER REFERENCES message_threads(id) ON DELETE CASCADE NOT NULL,
+                sender_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                body TEXT,
+                attachment_url TEXT,
+                is_read BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS therapeutic_journals (
+                id SERIAL PRIMARY KEY,
+                professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE NOT NULL,
+                patient_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (professional_id, patient_user_id)
+            );
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS journal_entries (
+                id SERIAL PRIMARY KEY,
+                journal_id INTEGER REFERENCES therapeutic_journals(id) ON DELETE CASCADE NOT NULL,
+                author_role VARCHAR(20),
+                title VARCHAR(255),
+                content TEXT,
+                checklist_json JSON,
+                mood_score INTEGER,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+            """,
+        ]
+        from sqlalchemy import text as _sql
+        for sql in stmts_phase1:
+            try:
+                db.session.execute(_sql(sql))
+            except Exception as e:
+                current_app.logger.warning("mini-migration phase1: %s", e)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.warning("mini-migration phase1 (commit): %s", e)
 
     # --- Taxonomy étendue
     try:
