@@ -1750,6 +1750,21 @@ def book_appointment(professional_id: int):
                            professional=professional,
                            availabilities=availabilities,
                            unavailable_dates=unavailable_dates)
+from models import NewsletterSubscriber  # AJOUT import
+
+@app.route("/newsletter/subscribe", methods=["POST"], endpoint="newsletter_subscribe")
+def newsletter_subscribe():
+    email = (request.form.get("email") or "").strip().lower()
+    lang = (request.form.get("lang") or "fr").strip().lower()
+    if not email:
+        flash("Email requis.", "warning"); return redirect(request.referrer or url_for("index"))
+    row = NewsletterSubscriber.query.filter_by(email=email).first()
+    if row:
+        flash("Vous êtes déjà inscrit(e).", "info")
+    else:
+        db.session.add(NewsletterSubscriber(email=email, lang=lang)); db.session.commit()
+        flash("Inscription à la newsletter confirmée.", "success")
+    return redirect(request.referrer or url_for("index"))
 
 @app.route("/api/professional/<int:professional_id>/available-slots", endpoint="api_available_slots")
 def api_available_slots(professional_id: int):
