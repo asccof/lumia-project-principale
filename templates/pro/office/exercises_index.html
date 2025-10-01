@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Bibliothèque d’exercices</h2>
+
+<form class="row g-2 mb-3">
+  <div class="col-md-3"><input name="q" value="{{ q }}" class="form-control" placeholder="Rechercher..."></div>
+  <div class="col-md-2">
+    <select name="family" class="form-select">
+      <option value="">Famille (toutes)</option>
+      {% for f in families %}
+        <option value="{{ f }}" {{ 'selected' if family==f else '' }}>{{ f }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="specialty_id" class="form-select">
+      <option value="">Spécialité (toutes)</option>
+      {% for s in specialties %}
+        <option value="{{ s.id }}" {{ 'selected' if specialty_id==s.id else '' }}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="type_id" class="form-select">
+      <option value="">Type</option>
+      {% for t in types %}
+        <option value="{{ t.id }}" {{ 'selected' if type_id==t.id else '' }}>{{ t.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="technique_id" class="form-select">
+      <option value="">Technique</option>
+      {% for t in techniques %}
+        <option value="{{ t.id }}" {{ 'selected' if technique_id==t.id else '' }}>{{ t.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-1">
+    <select name="format" class="form-select">
+      <option value="">Format</option>
+      {% for f in ['texte','audio','video','pdf'] %}
+        <option value="{{ f }}" {{ 'selected' if fmt==f else '' }}>{{ f }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-2">
+    <select name="owner" class="form-select">
+      <option value="me" {{ 'selected' if owner=='me' else '' }}>Mes créations</option>
+      <option value="all" {{ 'selected' if owner=='all' else '' }}>+ Public (admin)</option>
+    </select>
+  </div>
+  <div class="col-md-2">
+    <select name="sort" class="form-select">
+      <option value="recent" {{ 'selected' if sort=='recent' else '' }}>Récents</option>
+      <option value="title"  {{ 'selected' if sort=='title'  else '' }}>Titre</option>
+      <option value="popular"{{ 'selected' if sort=='popular'else '' }}>Popularité</option>
+    </select>
+  </div>
+  <div class="col-md-2"><button class="btn btn-primary w-100">Filtrer</button></div>
+  <div class="col-md-2"><a class="btn btn-outline-secondary w-100" href="{{ url_for('pro_office.exercises_new') }}">Créer</a></div>
+</form>
+
+<div class="row">
+  {% for it in rows %}
+  <div class="col-md-6 mb-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title mb-1">{{ it.title }}</h5>
+        <div class="small text-muted">
+          {{ it.family or '—' }} ·
+          {% for s in it.specialties %}<span class="badge bg-light text-dark">{{ s.name }}</span>{% endfor %}
+          {% for t in it.types %}<span class="badge bg-info text-dark">{{ t.name }}</span>{% endfor %}
+          {% for k in it.techniques %}<span class="badge bg-secondary">{{ k.name }}</span>{% endfor %}
+          <span class="badge bg-outline-dark">{{ it.format or 'texte' }}</span>
+        </div>
+        <p class="mt-2">{{ (it.description or it.content_text or '')[:220] }}{% if (it.description or it.content_text or '')|length>220 %}…{% endif %}</p>
+        <div class="d-flex gap-2">
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_office.exercises_edit', item_id=it.id) }}">Éditer</a>
+          <form method="post" action="{{ url_for('pro_office.exercises_assign', item_id=it.id) }}" class="d-flex ms-auto">
+            <input name="patient_user_id" class="form-control form-control-sm" placeholder="ID patient">
+            <button class="btn btn-sm btn-success ms-2">Assigner</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+    <div class="col-12"><div class="alert alert-light">Aucun exercice.</div></div>
+  {% endfor %}
+</div>
+{% endblock %}
