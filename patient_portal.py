@@ -106,6 +106,30 @@ def messages_thread_with_pro(pro_id: int):
 
     msgs = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
     return render_template("patient/messages_thread.html", pro=pro, thread=thread, messages=msgs)
+@patient_bp.route("/journal/<int:pro_id>", methods=["GET","POST"])
+@login_required
+def journal_with(pro_id: int):
+    _ensure_patient()
+    pro = Professional.query.get_or_404(pro_id)
+    journal = TherapeuticJournal.query.filter_by(professional_id=pro.id, patient_user_id=current_user.id).first()
+    if not journal:
+        journal = TherapeuticJournal(professional_id=pro.id, patient_user_id=current_user.id)
+        db.session.add(journal); db.session.commit()
+
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        content = (request.form.get("content") or "").strip()
+        mood = request.form.get("mood", type=int)
+        db.session.add(JournalEntry(
+            journal_id=journal.id, author_role="patient",
+            title=title or None, content=content or None,
+            mood_score=mood
+        ))
+        db.session.commit()
+        return redirect(url_for("patient_portal.journal_with", pro_id=pro.id))
+
+    entries = JournalEntry.query.filter_by(journal_id=journal.id).order_by(JournalEntry.created_at.asc()).all()
+    return render_template("patient/journal.html", pro=pro, entries=entries)
 
 @patient_bp.route("/visio/<int:appointment_id>", methods=["GET"])
 @login_required
