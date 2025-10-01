@@ -1,0 +1,16 @@
+<h2>Conversation #{{ thread.id }}</h2>
+<div>
+  {% for m in messages %}
+    <div style="border-bottom:1px solid #ddd;padding:6px 0;">
+      <strong>{{ m.sender_user_id == current_user.id and "Moi" or ("User " ~ m.sender_user_id) }}</strong>
+      <small>{{ m.created_at }}</small>
+      <p>{{ m.body }}</p>
+    </div>
+  {% else %}
+    <p>Pas encore de messages.</p>
+  {% endfor %}
+</div>
+<form method="post" style="margin-top:10px">
+  <textarea name="body" rows="3" style="width:100%;" placeholder="Votre message"></textarea>
+  <button>Envoyer</button>
+</form>
