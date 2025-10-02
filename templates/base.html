@@ -71,6 +71,16 @@
 </head>
 <body>
 
+  {# =========================================
+     CHANGE: Point d’entrée unique “Espace pro”
+     - Si pas connecté en pro → login?next=/professional_dashboard
+     - Si connecté en pro → /professional_dashboard
+     ========================================= #}
+  {% set pro_dashboard = url_for('professional_dashboard') %}
+  {% set pro_entry = (url_for('login', next=pro_dashboard)
+                      if (not current_user.is_authenticated or current_user.user_type != 'professional')
+                      else pro_dashboard) %}
+
   <!-- NAVBAR -->
   <nav class="navbar navbar-expand-lg navbar-dark">
     <div class="container align-items-center justify-content-between">
@@ -127,7 +137,8 @@
                 <a class="nav-link" href="{{ url_for('index') }}"><i class="fa-solid fa-house me-1"></i>{{ t('nav.home','Accueil') }}</a>
               </li>
               <li class="nav-item d-none d-lg-block">
-                <a class="nav-link" href="{{ url_for('professional_dashboard') }}"><i class="fa-solid fa-briefcase me-1"></i>{{ t('cards.pro','Espace Professionnel') }}</a>
+                {# CHANGE: on passe par pro_entry (reste /professional_dashboard si déjà connecté pro) #}
+                <a class="nav-link" href="{{ pro_entry }}"><i class="fa-solid fa-briefcase me-1"></i>{{ t('cards.pro','Espace Professionnel') }}</a>
               </li>
             {% endif %}
           {% endif %}
@@ -143,7 +154,8 @@
                   <li><a class="dropdown-item" href="/patient/"><i class="fa-solid fa-user me-2"></i>{{ t('cards.patient','Espace Patient') }}</a></li>
                   <li><a class="dropdown-item" href="{{ url_for('my_appointments') }}"><i class="fa-regular fa-calendar me-2"></i>{{ t('labels.appointments','Mes RDV') }}</a></li>
                 {% elif current_user.user_type == 'professional' %}
-                  <li><a class="dropdown-item" href="{{ url_for('professional_dashboard') }}"><i class="fa-solid fa-briefcase me-2"></i>{{ t('cards.pro','Espace Professionnel') }}</a></li>
+                  {# CHANGE: ici aussi pro_entry #}
+                  <li><a class="dropdown-item" href="{{ pro_entry }}"><i class="fa-solid fa-briefcase me-2"></i>{{ t('cards.pro','Espace Professionnel') }}</a></li>
                 {% endif %}
                 <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>{{ t('auth.profile','Profil') }}</a></li>
                 <li><hr class="dropdown-divider"></li>
@@ -159,7 +171,11 @@
     </div>
   </nav>
 
-  {# ❌ Bloc de liens directs pour pro/patient/admin supprimé ici pour éviter tout accès sans login #}
+  {# =========================================
+     CHANGE: suppression des liens globaux “Messages / Patients / Avis / Bibliothèque / Admin”
+     (Ils doivent vivre dans le tableau de bord pro, pas dans le layout global)
+     ========================================= #}
+  {# (bloc supprimé) #}
 
   <!-- Ruban d’accès rapide sur la page d’accueil après connexion -->
   {% if current_user.is_authenticated and request.endpoint == 'index' %}
@@ -178,7 +194,8 @@
             <a class="btn btn-primary btn-sm" href="/patient/"><i class="fa-solid fa-user me-1"></i>{{ t('cards.patient','Mon espace') }}</a>
             <a class="btn btn-outline-primary btn-sm" href="{{ url_for('my_appointments') }}"><i class="fa-regular fa-calendar me-1"></i>{{ t('labels.appointments','Mes RDV') }}</a>
           {% elif current_user.user_type == 'professional' %}
-            <a class="btn btn-primary btn-sm" href="{{ url_for('professional_dashboard') }}"><i class="fa-solid fa-briefcase me-1"></i>{{ t('cards.pro','Espace pro') }}</a>
+            {# CHANGE: ici aussi pro_entry #}
+            <a class="btn btn-primary btn-sm" href="{{ pro_entry }}"><i class="fa-solid fa-briefcase me-1"></i>{{ t('cards.pro','Espace pro') }}</a>
           {% endif %}
         </div>
       </div>
@@ -213,7 +230,8 @@
           <a class="btn btn-primary w-100 mb-2" href="/patient/"><i class="fa-solid fa-user me-2"></i>{{ t('cards.patient','Mon espace') }}</a>
           <a class="btn btn-outline-primary w-100 mb-3" href="{{ url_for('index') }}"><i class="fa-solid fa-house me-2"></i>{{ t('nav.home','Accueil') }}</a>
         {% elif current_user.user_type == 'professional' %}
-          <a class="btn btn-primary w-100 mb-2" href="{{ url_for('professional_dashboard') }}"><i class="fa-solid fa-briefcase me-2"></i>{{ t('cards.pro','Espace pro') }}</a>
+          {# CHANGE: ici aussi pro_entry #}
+          <a class="btn btn-primary w-100 mb-2" href="{{ pro_entry }}"><i class="fa-solid fa-briefcase me-2"></i>{{ t('cards.pro','Espace pro') }}</a>
           <a class="btn btn-outline-primary w-100 mb-3" href="{{ url_for('index') }}"><i class="fa-solid fa-house me-2"></i>{{ t('nav.home','Accueil') }}</a>
         {% endif %}
         <a class="btn btn-outline-primary w-100" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>{{ t('auth.logout','Déconnexion') }}</a>
