@@ -14,12 +14,12 @@
 <div class="container py-4">
   <h1 class="h3 mb-3">Créer un compte professionnel</h1>
 
-  <form id="pro-register-form" method="post" novalidate>
+  <form id="pro-register-form" method="post" action="{{ url_for('professional_register') }}" novalidate>
     {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
 
     <!-- Fallbacks legacy lus par le backend -->
-    <input type="hidden" name="specialty" id="specialty_hidden"><!-- si “Autre spécialité” -->
-    <input type="hidden" name="city" id="city_hidden"><!-- si “Autre ville” -->
+    <input type="hidden" name="specialty" id="specialty_hidden">
+    <input type="hidden" name="city" id="city_hidden">
 
     <!-- Ajout-si-absent géré par app.py -->
     <input type="hidden" name="new_specialty_name" id="new_specialty_name">
@@ -44,11 +44,9 @@
           <input name="phone" required class="form-control" placeholder="06 12 34 56 78">
         </div>
 
-        <!-- ===== Famille + Spécialités ===== -->
         {% if (families is defined and families) and (specialties is defined and specialties) %}
           <div class="col-md-6">
             <label class="form-label">Famille (catégorie)</label>
-            <!-- contrat-fix: valeur = NOM de catégorie -->
             <select name="family" id="reg_family_name" class="form-select">
               <option value="">Toutes les familles</option>
               {% for f in families %}
@@ -61,7 +59,6 @@
           <div class="col-md-6">
             <label class="form-label">Spécialité principale</label>
             <div class="input-group">
-              <!-- ID lue par backend: primary_specialty_id -->
               <select name="primary_specialty_id" id="reg_primary_specialty_id" class="form-select">
                 <option value="">Choisir dans la liste…</option>
                 {% for s in specialties %}
@@ -85,7 +82,6 @@
             <div class="form-text">Maintenez Ctrl (Windows) ou ⌘ (Mac) pour choisir plusieurs éléments.</div>
           </div>
         {% else %}
-          <!-- Fallback simple : saisie libre + datalist -->
           <div class="col-md-6">
             <label class="form-label">Spécialité</label>
             <input name="specialty" class="form-control" placeholder="Psychologue, Thérapeute, Coach…" list="specialties_list">
@@ -99,7 +95,6 @@
           </div>
         {% endif %}
 
-        <!-- ===== Ville ===== -->
         {% if cities is defined and cities %}
           <div class="col-md-6">
             <label class="form-label">Ville</label>
@@ -137,7 +132,6 @@
           <input name="consultation_fee" type="number" step="0.01" class="form-control" placeholder="300">
         </div>
 
-        <!-- Types de consultation (le backend met actuellement “cabinet” par défaut) -->
         <div class="col-12">
           <label class="form-label">Types de consultation</label>
           <div class="d-flex flex-wrap gap-3">
@@ -182,7 +176,7 @@
 
       <div class="d-flex align-items-center gap-3 mt-3">
         <button class="btn btn-primary">Créer mon compte</button>
-        <a class="btn btn-link" href="{{ url_for('login') }}">J'ai déjà un compte</a>
+        <a class="btn btn-link" href="{{ url_for('login', next=url_for('professional_dashboard')) }}">J'ai déjà un compte</a>
       </div>
     </div>
   </form>
@@ -201,12 +195,11 @@ document.addEventListener('DOMContentLoaded', function(){
       if(!sel) return;
       let firstVisible = null;
       Array.from(sel.options).forEach(function(opt){
-        if(!opt.value) return; // garder placeholder
+        if(!opt.value) return;
         const ok = !cat || (String(opt.dataset.category||'') === cat);
         opt.hidden = !ok;
         if(ok && !firstVisible) firstVisible = opt;
       });
-      // si la sélection est masquée, reset
       if(sel.selectedOptions.length){
         const anyVisibleSelected = Array.from(sel.selectedOptions).some(o => !o.hidden);
         if(!anyVisibleSelected) sel.value = '';
@@ -214,13 +207,12 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
   famSel && famSel.addEventListener('change', filterByFamily);
-  filterByFamily(); // init
+  filterByFamily();
 });
 </script>
 {% endif %}
 
 <script>
-/* Saisie “Autre spécialité / Autre ville” vers les champs lus par le backend */
 document.addEventListener('DOMContentLoaded', function(){
   const form       = document.getElementById('pro-register-form');
 
@@ -236,20 +228,17 @@ document.addEventListener('DOMContentLoaded', function(){
   const cityHidden = document.getElementById('city_hidden');
 
   form && form.addEventListener('submit', function(){
-    // Si pas d'ID sélectionné mais un texte “Autre” -> on crée la spécialité
     const other = (specOther?.value || '').trim();
     if (primarySel && !primarySel.value && other){
-      specHidden && (specHidden.value = other);  // legacy “specialty” (compat)
-      newName   && (newName.value    = other);   // creation si absente
+      specHidden && (specHidden.value = other);
+      newName   && (newName.value    = other);
       newFamily && (newFamily.value  = (famSelName?.value || '').trim());
     } else {
-      // pas d’autre -> on s’assure de ne rien envoyer en doublon
       newName   && (newName.value = '');
       newFamily && (newFamily.value = '');
       specHidden&& (specHidden.value = '');
     }
 
-    // Ville : si pas d'ID mais un texte “Autre”, remplir legacy “city”
     const otherCity = (cityOther?.value || '').trim();
     if (citySelect && !citySelect.value && otherCity){
       cityHidden && (cityHidden.value = otherCity);
