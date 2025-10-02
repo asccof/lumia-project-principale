@@ -1,4 +1,4 @@
-<!-- templates/professional_dashboard.html -->
+<!-- templates/professional_dashboard.html --> 
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -155,7 +155,8 @@
         </div>
       </section>
       <!-- ====== fin Mes Photos ====== -->
-            <!-- ====== Bureau virtuel (nouvelle carte) ====== -->
+
+      <!-- ====== Bureau virtuel (nouvelle carte) ====== -->
       <section class="card">
         <h3>Bureau virtuel</h3>
         <p>Accédez aux dossiers patients, messagerie, exercices & visio.</p>
@@ -166,6 +167,19 @@
         </div>
       </section>
       <!-- ====== fin Bureau virtuel ====== -->
+
+      <!-- ====== Outils (4 liens demandés) ====== -->
+      <section class="card">
+        <h3>Outils</h3>
+        <p>Accès rapide à vos fonctions quotidiennes.</p>
+        <div class="actions">
+          <a class="btn btn-outline" href="{{ url_for('messages_index') }}">Messages</a>
+          <a class="btn btn-outline" href="{{ url_for('pro_list_patients') }}">Mes patients</a>
+          <a class="btn btn-outline" href="{{ url_for('professional_reviews') }}">Avis</a>
+          <a class="btn btn-outline" href="{{ url_for('pro_exercise_library') }}">Ma bibliothèque</a>
+        </div>
+      </section>
+      <!-- ====== fin Outils ====== -->
 
     </div>
   </div>
