@@ -35,7 +35,7 @@
     .hero-section h1{font-size:3.5rem;font-weight:700;margin-bottom:1rem}
     .hero-section p{font-size:1.2rem;margin-bottom:2rem;opacity:.9}
     .btn-primary{background:var(--primary-color);border:none;padding:.75rem 2rem;border-radius:50px;font-weight:600;transition:.3s}
-    .btn-primary:hover{background:var(--secondary-color);transform:translateY(-2px);box-shadow:0 5px 15px rgba(0,120,212,.3)}
+    .btn-primary:hover{background:var(--secondary-color);transform:translateY(-2px);box-shadow:0 5px 15px rgba(0,0,0,.3)}
     .card{border:none;border-radius:15px;box-shadow:0 5px 20px rgba(0,0,0,.1);transition:.3s;overflow:hidden}
     .card:hover{transform:translateY(-5px);box-shadow:0 10px 30px rgba(0,0,0,.15)}
     .card-img-top{height:200px;object-fit:cover}
@@ -158,22 +158,9 @@
       </div>
     </div>
   </nav>
-{% if current_user.is_authenticated %}
-  {% if current_user.user_type == 'professional' %}
-    <a href="{{ url_for('messages_index') }}">Messages</a>
-    <a href="{{ url_for('pro_list_patients') }}">Mes patients</a>
-    <a href="{{ url_for('professional_reviews') }}">Avis</a>
-    <a href="{{ url_for('pro_exercise_library') }}">Ma bibliothèque</a>
-  {% elif current_user.user_type == 'patient' %}
-    <a href="{{ url_for('messages_index') }}">Messages</a>
-    <a href="{{ url_for('patient_files_me') }}">Mes fichiers</a>
-    <a href="{{ url_for('patient_journal_me') }}">Mon carnet</a>
-    <a href="{{ url_for('patient_assignments') }}">Mes exercices</a>
-  {% endif %}
-  {% if current_user.is_admin %}
-    <a href="{{ url_for('admin_home') }}">Admin</a>
-  {% endif %}
-{% endif %}
+
+  {# ⚠️ Liens pro/patient et lien Admin retirés du layout global
+     pour qu’ils n’apparaissent QUE dans le tableau de bord après connexion. #}
 
   <!-- Ruban d’accès rapide sur la page d’accueil après connexion -->
   {% if current_user.is_authenticated and request.endpoint == 'index' %}
