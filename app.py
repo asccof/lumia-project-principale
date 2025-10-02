@@ -1146,6 +1146,17 @@ def professional_detail(professional_id: int):
     return render_template("professional_detail.html",
                            professional=professional, avg_rating=round(float(avg),1),
                            public_reviews=reviews)
+# --- Route canonique "Espace pro" (un seul chemin pour tous les boutons)
+@app.route("/pro", endpoint="pro_space")
+def pro_space():
+    if current_user.is_authenticated:
+        if current_user.user_type == "professional":
+            # Pro connecté → tableau de bord
+            return redirect(url_for("professional_dashboard"))
+        # Patient ou autre rôle connecté → pas d’accès au dashboard pro
+        return redirect(url_for("index"))
+    # Visiteur → demande de connexion avec redirection post-login vers le dashboard pro
+    return redirect(url_for("login", next=url_for("professional_dashboard")))
 
 # =========================
 #   MÉDIAS / PHOTOS
