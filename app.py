@@ -5,12 +5,12 @@ from __future__ import annotations
 import os, io, uuid, secrets, hashlib, requests
 from datetime import datetime, date, timedelta, time as dtime
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode, urljoin
 from typing import Optional
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
-    send_from_directory, Response, current_app, make_response, g, abort
+    send_from_directory, Response, current_app, make_response, g, abort, session
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -88,22 +88,30 @@ def pro_can_access_patient(pro_id:int, patient_id:int)->bool:
 def ensure_professional_row_for_user(user: User) -> Professional|None:
     if user.user_type != "professional":
         return None
+    # 1) convention existante: name == username
+    pro = Professional.query.filter_by(name=user.username).first()
+    if pro:
+        return pro
+    # 2) si une ligne existe avec pk == user.id, la récupérer et harmoniser name
     pro = Professional.query.get(user.id)
-    if not pro:
-        # Valeurs par défaut non destructives (DB legacy: consultation_fee NOT NULL)
-        pro = Professional(
-            id=user.id,  # on suit ton mapping actuel user.id == professional.id
-            name=user.full_name or user.username or f"Pro#{user.id}",
-            description="Profil en cours de complétion.",
-            consultation_fee=0.0,  # évite l'IntegrityError vu dans tes logs
-            availability="disponible",
-            status="en_attente",
-            consultation_duration_minutes=45,
-            buffer_between_appointments_minutes=15,
-            created_at=datetime.utcnow(),
-        )
-        db.session.add(pro)
-        db.session.commit()
+    if pro:
+        if not pro.name:
+            pro.name = user.username
+            db.session.commit()
+        return pro
+    # 3) sinon créer une nouvelle ligne sans imposer le PK
+    pro = Professional(
+        name=user.username,
+        description="Profil en cours de complétion.",
+        consultation_fee=0.0,  # évite l'IntegrityError
+        availability="disponible",
+        status="en_attente",
+        consultation_duration_minutes=45,
+        buffer_between_appointments_minutes=15,
+        created_at=datetime.utcnow(),
+    )
+    db.session.add(pro)
+    db.session.commit()
     return pro
 
 # =========================
@@ -1109,15 +1117,32 @@ def professionals():
                            specialty=specialty, search_query=q,
                            cities=cities, families=families, specialties=specialties)
 
+# ---------- Helper redirection sûre ----------
+def _safe_local_url(target: str | None) -> Optional[str]:
+    if not target:
+        return None
+    try:
+        ref = urlparse(request.host_url)
+        test = urlparse(urljoin(request.host_url, target))
+        if test.scheme in ("http", "https") and ref.netloc == test.netloc:
+            return target
+    except Exception:
+        return None
+    return None
+
 # ---------- Détail pro (unique, avec moyenne avis) ----------
 @app.route("/professional/<int:professional_id>", endpoint="professional_detail")
 def professional_detail(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
-    avg = db.session.query(db.func.avg(Review.rating)).filter(
-        Review.professional_id==professional_id, Review.is_public==True
-    ).scalar() or 0
-    reviews = Review.query.filter_by(professional_id=professional_id, is_public=True)\
-                          .order_by(Review.created_at.desc()).limit(10).all()
+    try:
+        avg = db.session.query(db.func.avg(Review.rating)).filter(
+            Review.professional_id==professional_id, Review.is_public==True
+        ).scalar() or 0
+        reviews = Review.query.filter_by(professional_id=professional_id, is_public=True)\
+                              .order_by(Review.created_at.desc()).limit(10).all()
+    except Exception as e:
+        current_app.logger.warning("AVG/Reviews fallback for pro %s: %s", professional_id, e)
+        avg, reviews = 0, []
     return render_template("professional_detail.html",
                            professional=professional, avg_rating=round(float(avg),1),
                            public_reviews=reviews)
@@ -1439,23 +1464,43 @@ def professional_register():
     return render_template("professional_register.html",
                            cities=cities, families=families, specialties=specialties)
 
+# ---------- Alias d’entrée “Espace pro” unifié ----------
+@app.route("/espace-professionnel", endpoint="espace_professionnel")
+def espace_professionnel():
+    pro_dash = url_for("professional_dashboard")
+    if current_user.is_authenticated and current_user.user_type == "professional":
+        return redirect(pro_dash)
+    return redirect(url_for("login", next=pro_dash))
+
 @app.route("/login", methods=["GET","POST"], endpoint="login")
 def login():
-    if request.method == "POST":
-        username_or_email = (request.form.get("username") or "").strip()
-        password = request.form.get("password", "")
-        remember = bool(request.form.get("remember"))
+    if request.method == "GET":
+        nxt = request.args.get("next")
+        if nxt:
+            session["login_next"] = nxt
+        return render_template("login.html")
 
-        user = User.query.filter(
-            or_(User.username == username_or_email, User.email == username_or_email.lower())
-        ).first()
+    # POST
+    username_or_email = (request.form.get("username") or "").strip()
+    password = request.form.get("password", "")
+    remember = bool(request.form.get("remember"))
 
-        if user and user.password_hash and check_password_hash(user.password_hash, password):
-            login_user(user, remember=remember, duration=timedelta(days=60))
-            flash("Connexion réussie!")
-            return redirect(url_for("professional_dashboard" if user.user_type == "professional" else "index"))
+    user = User.query.filter(
+        or_(User.username == username_or_email, User.email == username_or_email.lower())
+    ).first()
 
-        flash("Nom d'utilisateur / email ou mot de passe incorrect")
+    if user and user.password_hash and check_password_hash(user.password_hash, password):
+        login_user(user, remember=remember, duration=timedelta(days=60))
+        flash("Connexion réussie!")
+
+        raw_next = request.form.get("next") or session.pop("login_next", None) or request.args.get("next")
+        safe_next = _safe_local_url(raw_next)
+        if safe_next:
+            return redirect(safe_next)
+
+        return redirect(url_for("professional_dashboard" if user.user_type == "professional" else "index"))
+
+    flash("Nom d'utilisateur / email ou mot de passe incorrect")
     return render_template("login.html")
 
 @app.route("/logout", endpoint="logout")
@@ -1891,7 +1936,8 @@ def professional_dashboard():
     if current_user.user_type != "professional":
         flash("Accès non autorisé")
         return redirect(url_for("index"))
-    professional = Professional.query.filter_by(name=current_user.username).first()
+    professional = (Professional.query.filter_by(name=current_user.username).first()
+                    or ensure_professional_row_for_user(current_user))
     if not professional:
         flash("Profil professionnel non trouvé")
         return redirect(url_for("index"))
