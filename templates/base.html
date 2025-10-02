@@ -35,7 +35,7 @@
     .hero-section h1{font-size:3.5rem;font-weight:700;margin-bottom:1rem}
     .hero-section p{font-size:1.2rem;margin-bottom:2rem;opacity:.9}
     .btn-primary{background:var(--primary-color);border:none;padding:.75rem 2rem;border-radius:50px;font-weight:600;transition:.3s}
-    .btn-primary:hover{background:var(--secondary-color);transform:translateY(-2px);box-shadow:0 5px 15px rgba(0,0,0,.3)}
+    .btn-primary:hover{background:var(--secondary-color);transform:translateY(-2px);box-shadow:0 5px 15px rgba(0,120,212,.3)}
     .card{border:none;border-radius:15px;box-shadow:0 5px 20px rgba(0,0,0,.1);transition:.3s;overflow:hidden}
     .card:hover{transform:translateY(-5px);box-shadow:0 10px 30px rgba(0,0,0,.15)}
     .card-img-top{height:200px;object-fit:cover}
@@ -159,8 +159,7 @@
     </div>
   </nav>
 
-  {# ⚠️ Liens pro/patient et lien Admin retirés du layout global
-     pour qu’ils n’apparaissent QUE dans le tableau de bord après connexion. #}
+  {# ❌ Bloc de liens directs pour pro/patient/admin supprimé ici pour éviter tout accès sans login #}
 
   <!-- Ruban d’accès rapide sur la page d’accueil après connexion -->
   {% if current_user.is_authenticated and request.endpoint == 'index' %}
