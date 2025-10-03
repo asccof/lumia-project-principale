@@ -2198,55 +2198,111 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return render_or_text("errors/500.html", "500 — Erreur serveur"), 500
-# ====== PLACEHOLDERS SÛRS (à coller en bas de app.py) ======
-from flask import Blueprint
+# ====== MES PATIENTS (pro) ======
+from sqlalchemy import func, case
 
-# -- Bureau virtuel (blueprint minimal) --
-pro_office_bp = Blueprint("pro_office", __name__, url_prefix="/pro-office", template_folder="templates")
-
-@pro_office_bp.route("/")
+@app.route("/pro/patients", methods=["GET"], endpoint="pro_list_patients")
 @login_required
-def index():
+def pro_list_patients():
     if current_user.user_type != "professional":
         flash("Accès réservé aux professionnels.", "warning")
         return redirect(url_for("index"))
-    # Page basique en attendant les modules (dossiers, messagerie, etc.)
-    return render_template("office/index.html")
 
-app.register_blueprint(pro_office_bp)
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "danger")
+        return redirect(url_for("professional_dashboard"))
 
-# -- Liens rapides : pages génériques "à venir" --
-@app.route("/messages", endpoint="messages_index")
+    q = (request.args.get("q") or "").strip()
+    page = max(1, request.args.get("page", type=int) or 1)
+    per_page = 20
+
+    # Sous-requête : agrégats par patient pour CE professionnel
+    subq = (
+        db.session.query(
+            Appointment.patient_id.label("pid"),
+            func.count(Appointment.id).label("total_rdv"),
+            func.sum(case((Appointment.status == "confirme", 1), else_=0)).label("confirme_count"),
+            func.max(Appointment.appointment_date).label("last_date"),
+        )
+        .filter(Appointment.professional_id == pro.id)
+        .group_by(Appointment.patient_id)
+        .subquery()
+    )
+
+    base = (
+        db.session.query(User, subq.c.total_rdv, subq.c.confirme_count, subq.c.last_date)
+        .join(subq, subq.c.pid == User.id)
+        .order_by(subq.c.last_date.desc().nullslast())
+    )
+
+    if q:
+        like = f"%{q}%"
+        base = base.filter(
+            db.or_(
+                User.username.ilike(like),
+                User.full_name.ilike(like),
+                User.email.ilike(like),
+                User.phone.ilike(like),
+            )
+        )
+
+    total = base.count()
+    rows = base.limit(per_page).offset((page - 1) * per_page).all()
+
+    return render_template(
+        "pro_patients.html",
+        rows=rows,
+        q=q,
+        page=page,
+        per_page=per_page,
+        total=total,
+    )
+
+
+@app.route("/pro/patients/<int:patient_id>", methods=["GET"], endpoint="pro_patient_detail")
 @login_required
-def messages_index():
-    return render_template("coming_soon.html",
-                           title="Messages",
-                           lead="Messagerie sécurisée patient ↔ pro",
-                           text="Cette fonctionnalité arrive très bientôt (texte, fichiers, audio, notifications e-mail).")
+def pro_patient_detail(patient_id: int):
+    if current_user.user_type != "professional":
+        flash("Accès réservé aux professionnels.", "warning")
+        return redirect(url_for("index"))
 
-@app.route("/pro/patients", endpoint="pro_list_patients")
-@login_required
-def pro_list_patients():
-    return render_template("coming_soon.html",
-                           title="Mes patients",
-                           lead="Dossiers patients unifiés",
-                           text="Liste/fiche patient, historique de séances, documents, exports PDF sécurisés.")
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "danger")
+        return redirect(url_for("professional_dashboard"))
 
-@app.route("/pro/avis", endpoint="professional_reviews")
-@login_required
-def professional_reviews():
-    return render_template("coming_soon.html",
-                           title="Avis & témoignages",
-                           lead="Collecte et modération",
-                           text="Notes & retours affichés sur votre profil une fois validés.")
+    patient = User.query.get_or_404(patient_id)
 
-@app.route("/pro/bibliotheque", endpoint="pro_exercise_library")
-@login_required
-def pro_exercise_library():
-    return render_template("coming_soon.html",
-                           title="Ma bibliothèque",
-                           lead="Exercices, techniques, protocoles",
-                           text="Création/partage (privé/patients/invitations/public), suivi de progression.")
+    # Sécurité : le patient doit avoir AU MOINS un RDV (même passé) avec ce pro
+    has_link = (
+        db.session.query(Appointment.id)
+        .filter(Appointment.professional_id == pro.id, Appointment.patient_id == patient.id)
+        .first()
+    )
+    if not has_link:
+        abort(404)
+
+    appts = (
+        Appointment.query
+        .filter_by(professional_id=pro.id, patient_id=patient.id)
+        .order_by(Appointment.appointment_date.desc())
+        .all()
+    )
+
+    # Statistiques rapides
+    total_rdv = len(appts)
+    total_conf = sum(1 for a in appts if a.status == "confirme")
+    last_date = appts[0].appointment_date if appts else None
+
+    return render_template(
+        "pro_patient_detail.html",
+        patient=patient,
+        appts=appts,
+        total_rdv=total_rdv,
+        total_conf=total_conf,
+        last_date=last_date,
+    )
 
 # =========================
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
