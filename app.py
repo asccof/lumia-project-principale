@@ -88,10 +88,41 @@ def pro_can_access_patient(pro_id:int, patient_id:int)->bool:
 def ensure_professional_row_for_user(user: User) -> Professional|None:
     if user.user_type != "professional":
         return None
+    # =========================
+#   HELPERS — Professional
+# =========================
+
+def get_or_create_professional_for_user(user):
+    """
+    Récupère la ligne Professional associée à l'utilisateur selon la convention:
+    1) name == user.username
+    2) à défaut, si une ligne existe avec pk == user.id, on l'harmonise (name)
+    3) sinon on crée une nouvelle ligne (sans imposer le PK)
+    """
     # 1) convention existante: name == username
     pro = Professional.query.filter_by(name=user.username).first()
     if pro:
+        # Assurer quelques valeurs par défaut pour éviter des IntegrityError plus tard
+        changed = False
+        if pro.consultation_fee is None:
+            pro.consultation_fee = 0.0
+            changed = True
+        if not getattr(pro, "availability", None):
+            pro.availability = "disponible"
+            changed = True
+        if not getattr(pro, "status", None):
+            pro.status = "en_attente"
+            changed = True
+        if not getattr(pro, "consultation_duration_minutes", None):
+            pro.consultation_duration_minutes = 45
+            changed = True
+        if not getattr(pro, "buffer_between_appointments_minutes", None):
+            pro.buffer_between_appointments_minutes = 15
+            changed = True
+        if changed:
+            db.session.commit()
         return pro
+
     # 2) si une ligne existe avec pk == user.id, la récupérer et harmoniser name
     pro = Professional.query.get(user.id)
     if pro:
@@ -99,6 +130,7 @@ def ensure_professional_row_for_user(user: User) -> Professional|None:
             pro.name = user.username
             db.session.commit()
         return pro
+
     # 3) sinon créer une nouvelle ligne sans imposer le PK
     pro = Professional(
         name=user.username,
@@ -111,10 +143,25 @@ def ensure_professional_row_for_user(user: User) -> Professional|None:
         created_at=datetime.utcnow(),
     )
     db.session.add(pro)
-   def ensure_professional_row_for_user(_user) -> bool:
-    # IMPORTANT : plus aucune auto-création ici
-    return False
+    db.session.commit()
     return pro
+
+
+def ensure_professional_row_for_user(_user) -> bool:
+    """
+    IMPORTANT : ne crée rien. Vérifie seulement si une ligne Professional existe
+    pour l'utilisateur (_user), selon les deux conventions ci-dessus.
+    """
+    if not _user:
+        return False
+    # existe par name == username
+    if Professional.query.filter_by(name=_user.username).first() is not None:
+        return True
+    # existe par pk == _user.id
+    if Professional.query.get(getattr(_user, "id", None)) is not None:
+        return True
+    return False
+
 
 # =========================
 #   FLASK APP
