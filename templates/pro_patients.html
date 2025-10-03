@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Mes patients – Tighri{% endblock %}
+
+{% block content %}
+<div class="container my-4" style="max-width:1100px">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h4 mb-0">Mes patients</h1>
+    <a class="btn btn-outline-secondary" href="{{ url_for('professional_dashboard') }}">← Retour</a>
+  </div>
+
+  <form method="get" class="row g-2 mb-3">
+    <div class="col-md-6">
+      <input class="form-control" name="q" placeholder="Rechercher (nom, e-mail, téléphone)" value="{{ q or '' }}">
+    </div>
+    <div class="col-md-3 d-grid">
+      <button class="btn btn-primary">Rechercher</button>
+    </div>
+  </form>
+
+  {% if total == 0 %}
+    <div class="alert alert-info">Aucun patient trouvé.</div>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Patient</th>
+            <th>E-mail</th>
+            <th>Téléphone</th>
+            <th class="text-center">RDV (confirmés)</th>
+            <th>Dernier RDV</th>
+            <th style="width:140px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user, total_rdv, confirme_count, last_date in rows %}
+          <tr>
+            <td>
+              <div class="fw-semibold">{{ user.full_name or user.username }}</div>
+              {% if user.user_type != 'patient' %}
+                <div class="badge bg-secondary">type: {{ user.user_type }}</div>
+              {% endif %}
+            </td>
+            <td>{{ user.email }}</td>
+            <td>{{ user.phone or '—' }}</td>
+            <td class="text-center">{{ total_rdv or 0 }}{% if confirme_count is not none %} ({{ confirme_count }}){% endif %}</td>
+            <td>
+              {% if last_date %}{{ last_date.strftime('%d/%m/%Y %H:%M') }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_patient_detail', patient_id=user.id) }}">Ouvrir</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination simple -->
+    {% set last_page = (total // per_page) + (1 if total % per_page else 0) %}
+    {% if last_page > 1 %}
+      <nav aria-label="Pagination">
+        <ul class="pagination">
+          <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('pro_list_patients', q=q, page=page-1) }}">Précédent</a>
+          </li>
+          <li class="page-item disabled"><span class="page-link">Page {{ page }} / {{ last_page }}</span></li>
+          <li class="page-item {% if page >= last_page %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('pro_list_patients', q=q, page=page+1) }}">Suivant</a>
+          </li>
+        </ul>
+      </nav>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
