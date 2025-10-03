@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Patient – {{ patient.full_name or patient.username }}{% endblock %}
+
+{% block content %}
+<div class="container my-4" style="max-width:1000px">
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h1 class="h4 mb-0">Patient : {{ patient.full_name or patient.username }}</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('pro_list_patients') }}">← Mes patients</a>
+      <a class="btn btn-primary" href="mailto:{{ patient.email }}">Contacter par e-mail</a>
+    </div>
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-4">
+      <div class="card p-3 h-100">
+        <h2 class="h6 text-uppercase text-muted mb-3">Informations</h2>
+        <div class="mb-2"><strong>Nom :</strong> {{ patient.full_name or '—' }}</div>
+        <div class="mb-2"><strong>Identifiant :</strong> {{ patient.username }}</div>
+        <div class="mb-2"><strong>E-mail :</strong> {{ patient.email }}</div>
+        <div class="mb-2"><strong>Téléphone :</strong> {{ patient.phone or '—' }}</div>
+        <hr>
+        <div class="mb-2"><strong>Total RDV :</strong> {{ total_rdv }}</div>
+        <div class="mb-2"><strong>Confirmés :</strong> {{ total_conf }}</div>
+        <div class="mb-2"><strong>Dernier RDV :</strong> {% if last_date %}{{ last_date.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}</div>
+        <div class="mt-3 small text-muted">
+          (Données liées uniquement à vos RDV avec ce patient.)
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <div class="card p-3">
+        <h2 class="h6 text-uppercase text-muted mb-3">Historique des rendez-vous</h2>
+        {% if appts|length == 0 %}
+          <div class="alert alert-info">Aucun rendez-vous trouvé.</div>
+        {% else %}
+          <div class="table-responsive">
+            <table class="table align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Date & heure</th>
+                  <th>Type</th>
+                  <th>Statut</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for a in appts %}
+                <tr>
+                  <td>{{ a.appointment_date.strftime('%d/%m/%Y %H:%M') }}</td>
+                  <td>{{ a.consultation_type or 'cabinet' }}</td>
+                  <td>
+                    {% set badge = {'en_attente':'warning','confirme':'success','annule':'secondary'}[a.status or 'en_attente'] %}
+                    <span class="badge bg-{{ badge }}">{{ a.status.replace('_',' ') }}</span>
+                  </td>
+                  <td class="small text-muted">{{ a.notes or '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
