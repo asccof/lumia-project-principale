@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 {% block title %}Tighri{% endblock %}
 
@@ -90,12 +91,12 @@
   .about-section p{color:#4B3869;font-size:1.05rem;line-height:1.8;max-width:800px;margin:0 auto 1.25rem}
   .services-section{padding:4rem 2rem;background:var(--bg)}
   .services-container{max-width:1200px;margin:0 auto}
-  .services-section h2{color:#6D28D9;font-size:2.2rem;text-align:center;margin:0 0 2rem}
+  .services-section h2{color:var(--primary);font-size:2.2rem;text-align:center;margin:0 0 2rem}
   .services-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem}
   .service-card{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 2px 8px rgba(139,92,246,.08);text-align:center}
   .service-card h3{color:#6D28D9;margin:.25rem 0 1rem}
   .service-card p{color:#4B3869;margin:0}
-  .contact-section{background:#6D28D9;color:#fff;padding:4rem 2rem;text-align:center}
+  .contact-section{background:var(--primary);color:#fff;padding:4rem 2rem;text-align:center}
   .contact-container{max-width:800px;margin:0 auto}
   .contact-section h2{font-size:2rem;margin:0 0 1rem}
   .contact-section p{font-size:1.05rem;margin:0 0 1.25rem;opacity:.95}
@@ -112,19 +113,6 @@
   .lightbox-backdrop.is-open{display:flex}
   .lightbox-img{max-width:92vw;max-height:92vh;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
   .lightbox-close{position:absolute;top:10px;right:10px;border:none;background:#fff;border-radius:999px;padding:.4rem .6rem;cursor:pointer}
-
-  /* ==== Bandeau accès rapide patient (si réutilisé ici) ==== */
-  .choice-banner{
-    background:#fff;border:1.5px solid #e6dcff;border-radius:14px;
-    padding:12px 14px;margin:10px auto 0;max-width:1100px;
-    display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;justify-content:center;
-    box-shadow:var(--shadow)
-  }
-  .pill{display:inline-block;font-weight:700;border-radius:999px;padding:.6rem 1rem;text-decoration:none}
-  .pill-primary{background:var(--primary);color:#fff;border:2px solid var(--primary)}
-  .pill-primary:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
-  .pill-outline{color:var(--primary);border:2px solid var(--primary);background:#fff}
-  .pill-outline:hover{background:#f4edff}
 </style>
 {% endblock %}
 
@@ -133,6 +121,18 @@
     <h1>{{ t('home.title','Tighri') }}</h1>
     <p>{{ t('home.tagline','La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés') }}</p>
   </header>
+/* ==== Bandeau accès rapide patient ==== */
+.choice-banner{
+  background:#fff;border:1.5px solid #e6dcff;border-radius:14px;
+  padding:12px 14px;margin:10px auto 0;max-width:1100px;
+  display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;justify-content:center;
+  box-shadow:var(--shadow)
+}
+.pill{display:inline-block;font-weight:700;border-radius:999px;padding:.6rem 1rem;text-decoration:none}
+.pill-primary{background:var(--primary);color:#fff;border:2px solid var(--primary)}
+.pill-primary:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
+.pill-outline{color:var(--primary);border:2px solid var(--primary);background:#fff}
+.pill-outline:hover{background:#f4edff}
 
   <div class="search-wrap">
     {# Formulaire (desktop = inline ; mobile = panneau) #}
@@ -221,20 +221,12 @@
     <div class="section">
       <h2>{{ t('cards.patient','Espace Patient') }}</h2>
       <p>{{ t('cards.patient_text','Consultez les profils, prenez rendez-vous en cabinet, à domicile ou en vidéo avec des professionnels certifiés.') }}</p>
-      {% if current_user.is_authenticated and current_user.user_type == 'patient' %}
-        <a href="/patient/">{{ t('cards.patient_btn','Espace Patient') }}</a>
-      {% else %}
-        <a href="{{ url_for('register') }}">{{ t('cards.patient_btn','Espace Patient') }}</a>
-      {% endif %}
+      <a href="{{ url_for('register') }}">{{ t('cards.patient_btn','Espace Patient') }}</a>
     </div>
     <div class="section">
       <h2>{{ t('cards.pro','Espace Professionnel') }}</h2>
       <p>{{ t('cards.pro_text','Rejoignez Tighri pour proposer vos services et gérer vos rendez-vous en toute simplicité.') }}</p>
-      {% if current_user.is_authenticated and current_user.user_type == 'professional' %}
-        <a href="{{ url_for('professional_dashboard') }}">{{ t('cards.pro_btn','Espace Professionnel') }}</a>
-      {% else %}
-        <a href="{{ url_for('professional_register') }}">{{ t('cards.pro_btn','Espace Professionnel') }}</a>
-      {% endif %}
+      <a href="{{ url_for('professional_register') }}">{{ t('cards.pro_btn','Espace Professionnel') }}</a>
     </div>
   </div>
 
@@ -337,17 +329,6 @@
     </div>
   </section>
 
-  {# ===== Newsletter propre (sortie du <script>) ===== #}
-  <div class="container" style="max-width:1100px;margin:0 auto 2.5rem;padding:0 1rem;">
-    <form class="d-flex gap-2 justify-content-center mt-3" method="post" action="{{ url_for('newsletter_subscribe') }}">
-      <input class="form-control" style="max-width:340px" name="email" type="email" placeholder="Email" required>
-      <select class="form-select" name="lang" style="max-width:140px">
-        <option value="fr">FR</option><option value="ar">AR</option><option value="en">EN</option>
-      </select>
-      <button class="btn btn-primary">S’abonner</button>
-    </form>
-  </div>
-
   <section id="contact" class="contact-section">
     <div class="contact-container">
       <h2>{{ t('contact.title','Nous contacter') }}</h2>
@@ -444,6 +425,13 @@
         const inside = e.target.closest('#mobile-advanced-filters') || e.target.closest('#btn-search-submit') || e.target.closest('#switch-advanced');
         if (!inside) closePanel();
       });
+<form class="d-flex gap-2 justify-content-center mt-3" method="post" action="{{ url_for('newsletter_subscribe') }}">
+  <input class="form-control" style="max-width:340px" name="email" type="email" placeholder="Email" required>
+  <select class="form-select" name="lang" style="max-width:140px">
+    <option value="fr">FR</option><option value="ar">AR</option><option value="en">EN</option>
+  </select>
+  <button class="btn btn-primary">S’abonner</button>
+</form>
 
       document.addEventListener('keydown', (e)=>{ if (isMobile() && e.key === 'Escape' && panel.classList.contains('is-open')) closePanel(); });
 
