@@ -113,38 +113,12 @@
             </ul>
           </li>
 
-          <!-- Liens Accueil / Mon espace (ou Espace pro) visibles sur desktop -->
-          {% if current_user.is_authenticated %}
-            {% if current_user.user_type == 'patient' %}
-              <li class="nav-item d-none d-lg-block">
-                <a class="nav-link" href="{{ url_for('index') }}"><i class="fa-solid fa-house me-1"></i>{{ t('nav.home','Accueil') }}</a>
-              </li>
-              <li class="nav-item d-none d-lg-block">
-                <a class="nav-link" href="/patient/"><i class="fa-solid fa-user me-1"></i>{{ t('cards.patient','Espace Patient') }}</a>
-              </li>
-            {% elif current_user.user_type == 'professional' %}
-              <li class="nav-item d-none d-lg-block">
-                <a class="nav-link" href="{{ url_for('index') }}"><i class="fa-solid fa-house me-1"></i>{{ t('nav.home','Accueil') }}</a>
-              </li>
-              <li class="nav-item d-none d-lg-block">
-                <a class="nav-link" href="{{ url_for('professional_dashboard') }}"><i class="fa-solid fa-briefcase me-1"></i>{{ t('cards.pro','Espace Professionnel') }}</a>
-              </li>
-            {% endif %}
-          {% endif %}
-          <!-- /Liens -->
-
           {% if current_user.is_authenticated %}
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                 <i class="fas fa-user me-1"></i>{{ current_user.username }}
               </a>
               <ul class="dropdown-menu dropdown-menu-end">
-                {% if current_user.user_type == 'patient' %}
-                  <li><a class="dropdown-item" href="/patient/"><i class="fa-solid fa-user me-2"></i>{{ t('cards.patient','Espace Patient') }}</a></li>
-                  <li><a class="dropdown-item" href="{{ url_for('my_appointments') }}"><i class="fa-regular fa-calendar me-2"></i>{{ t('labels.appointments','Mes RDV') }}</a></li>
-                {% elif current_user.user_type == 'professional' %}
-                  <li><a class="dropdown-item" href="{{ url_for('professional_dashboard') }}"><i class="fa-solid fa-briefcase me-2"></i>{{ t('cards.pro','Espace Professionnel') }}</a></li>
-                {% endif %}
                 <li><a class="dropdown-item" href="#"><i class="fas fa-user-circle me-2"></i>{{ t('auth.profile','Profil') }}</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li><a class="dropdown-item" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>{{ t('auth.logout','Déconnexion') }}</a></li>
@@ -158,31 +132,6 @@
       </div>
     </div>
   </nav>
-
-  <!-- Ruban d’accès rapide sur la page d’accueil après connexion -->
-  {% if current_user.is_authenticated and request.endpoint == 'index' %}
-    <div class="bg-light border-bottom">
-      <div class="container py-2 d-flex flex-wrap gap-2 align-items-center justify-content-between">
-        <div class="d-flex align-items-center gap-2">
-          <i class="fa-regular fa-circle-check text-success"></i>
-          {% if current_user.user_type == 'patient' %}
-            <span class="fw-semibold">{{ t('cards.patient','Accédez à votre espace patient') }}</span>
-          {% elif current_user.user_type == 'professional' %}
-            <span class="fw-semibold">{{ t('cards.pro','Accédez à votre espace professionnel') }}</span>
-          {% endif %}
-        </div>
-        <div class="d-flex gap-2">
-          {% if current_user.user_type == 'patient' %}
-            <a class="btn btn-primary btn-sm" href="/patient/"><i class="fa-solid fa-user me-1"></i>{{ t('cards.patient','Mon espace') }}</a>
-            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('my_appointments') }}"><i class="fa-regular fa-calendar me-1"></i>{{ t('labels.appointments','Mes RDV') }}</a>
-          {% elif current_user.user_type == 'professional' %}
-            <a class="btn btn-primary btn-sm" href="{{ url_for('professional_dashboard') }}"><i class="fa-solid fa-briefcase me-1"></i>{{ t('cards.pro','Espace pro') }}</a>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-  {% endif %}
-  <!-- /Ruban -->
 
   <!-- Offcanvas mobile -->
   <div class="offcanvas offcanvas-end" tabindex="-1" id="mobileMenu" aria-labelledby="mobileMenuLabel">
@@ -204,24 +153,14 @@
         <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang_code='ar') }}">العربية</a>
         <a class="btn btn-outline-secondary" href="{{ url_for('set_language', lang_code='en') }}">English</a>
       </div>
-
-      {# Boutons de navigation pour utilisateurs connectés (mobile) #}
       {% if current_user.is_authenticated %}
-        {% if current_user.user_type == 'patient' %}
-          <a class="btn btn-primary w-100 mb-2" href="/patient/"><i class="fa-solid fa-user me-2"></i>{{ t('cards.patient','Mon espace') }}</a>
-          <a class="btn btn-outline-primary w-100 mb-3" href="{{ url_for('index') }}"><i class="fa-solid fa-house me-2"></i>{{ t('nav.home','Accueil') }}</a>
-        {% elif current_user.user_type == 'professional' %}
-          <a class="btn btn-primary w-100 mb-2" href="{{ url_for('professional_dashboard') }}"><i class="fa-solid fa-briefcase me-2"></i>{{ t('cards.pro','Espace pro') }}</a>
-          <a class="btn btn-outline-primary w-100 mb-3" href="{{ url_for('index') }}"><i class="fa-solid fa-house me-2"></i>{{ t('nav.home','Accueil') }}</a>
-        {% endif %}
-        <a class="btn btn-outline-primary w-100" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>{{ t('auth.logout','Déconnexion') }}</a>
+        <a class="btn btn-outline-primary w-100 mb-2" href="{{ url_for('logout') }}"><i class="fas fa-sign-out-alt me-2"></i>{{ t('auth.logout','Déconnexion') }}</a>
       {% else %}
         <div class="d-grid gap-2">
           <a class="btn btn-primary" href="{{ url_for('login') }}"><i class="fas fa-sign-in-alt me-2"></i>{{ t('auth.login','Connexion') }}</a>
           <a class="btn btn-outline-primary" href="{{ url_for('register') }}"><i class="fas fa-user-plus me-2"></i>{{ t('auth.register','Inscription') }}</a>
         </div>
       {% endif %}
-      {# /Boutons #}
     </div>
   </div>
 
