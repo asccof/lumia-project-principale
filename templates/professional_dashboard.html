@@ -1,188 +1,141 @@
-<!-- templates/professional_dashboard.html --> 
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Espace Professionnel – Tighri</title>
+{% extends "base.html" %}
+{% block title %}Espace Professionnel – Tighri{% endblock %}
 
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', filename='mobile.css') }}">
+{% block extra_css %}
+<style>
+  :root{--primary:#8B5CF6;--primary-dark:#6D28D9;--ink:#2d1a47;--muted:#4B3869;--bg:#f7f5fa;--card:#fff;--shadow:0 2px 12px rgba(139,92,246,.12);--radius:16px}
+  .container-pro{max-width:1200px;margin:2rem auto;padding:0 1rem}
+  .page-header{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:clamp(1rem,2.5vw,2rem);margin-bottom:1rem}
+  .page-header h1{margin:.25rem 0 .25rem;color:var(--primary)}
+  .page-header p{margin:0;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr;gap:1rem}
+  @media(min-width:760px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(min-width:1024px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem;display:grid;gap:.5rem}
+  .card h3{margin:.25rem 0}
+  .card p{margin:0;color:var(--muted)}
+  .actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem}
+  .btn-pill{display:inline-block;text-decoration:none;text-align:center;font-weight:700;padding:.7rem 1rem;border-radius:999px}
+  .btn-outline{color:var(--primary);border:2px solid var(--primary);background:#fff}
+  .btn-outline:hover{background:#f4edff}
+  .btn-solid{background:var(--primary);color:#fff;border:2px solid var(--primary)}
+  .btn-solid:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
+  .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-top:.25rem}
+  .thumb{aspect-ratio:1/1;border-radius:12px;overflow:hidden;background:#eee}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb-label{font-size:.85rem;color:var(--muted);margin-top:.25rem;text-align:center}
+</style>
+{% endblock %}
 
-  <style>
-    :root{--primary:#8B5CF6;--primary-dark:#6D28D9;--ink:#2d1a47;--muted:#4B3869;--bg:#f7f5fa;--card:#fff;--shadow:0 2px 12px rgba(139,92,246,.12);--radius:16px;--nav-h:64px}
-    *{box-sizing:border-box}
-    html,body{margin:0;padding:0}
-    body{font-family:'Montserrat',system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.45;padding-top:var(--nav-h)}
-
-    /* Nav simple */
-    .navbar{position:fixed;inset:0 0 auto 0;height:var(--nav-h);background:rgba(255,255,255,.98);
-      backdrop-filter:saturate(140%) blur(10px);border-bottom:1px solid rgba(139,92,246,.12);z-index:1000}
-    .nav-inner{height:100%;max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:0 .75rem}
-    .brand{color:var(--primary);text-decoration:none;font-weight:700;font-size:1.2rem}
-
-    .container{max-width:1200px;margin:0 auto;padding:1rem}
-    .page-header{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:clamp(1rem,2.5vw,2rem);margin-bottom:1rem}
-    .page-header h1{margin:.25rem 0 .25rem;color:var(--primary)}
-    .page-header p{margin:0;color:var(--muted)}
-
-    .grid{display:grid;grid-template-columns:1fr;gap:1rem}
-    @media(min-width:760px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(min-width:1024px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-
-    .card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem;display:grid;gap:.5rem}
-    .card h3{margin:.25rem 0}
-    .card p{margin:0;color:var(--muted)}
-    .actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem}
-    .btn{display:inline-block;text-decoration:none;text-align:center;font-weight:700;padding:.7rem 1rem;border-radius:999px}
-    .btn-outline{color:var(--primary);border:2px solid var(--primary);background:#fff}
-    .btn-outline:hover{background:#f4edff}
-    .btn-solid{background:var(--primary);color:#fff;border:2px solid var(--primary)}
-    .btn-solid:hover{background:var(--primary-dark);border-color:var(--primary-dark)}
-
-    /* Mini galerie (aperçus) */
-    .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-top:.25rem}
-    .thumb{aspect-ratio:1/1;border-radius:12px;overflow:hidden;background:#eee}
-    .thumb img{width:100%;height:100%;object-fit:cover;display:block}
-    .thumb-label{font-size:.85rem;color:var(--muted);margin-top:.25rem;text-align:center}
-  </style>
-</head>
-<body>
-
-  <nav class="navbar">
-    <div class="nav-inner">
-      <a class="brand" href="{{ url_for('index') }}">Tighri</a>
-      <div>
-        <a class="btn btn-outline" href="{{ url_for('logout') }}">Déconnexion</a>
-      </div>
-    </div>
-  </nav>
-
-  <div class="container">
-    <div class="page-header">
-      <h1>Mon espace professionnel</h1>
-      <p>Gérez vos rendez-vous, disponibilités et informations de profil.</p>
-    </div>
-
-    <div class="grid">
-      <!-- Mes RDV -->
-      <section class="card">
-        <h3>Mes Rendez-vous</h3>
-        <p>Consultez et gérez vos demandes de rendez-vous.</p>
-        <div class="actions">
-          <a class="btn btn-solid" href="{{ url_for('professional_appointments') }}">Voir mes RDV</a>
-        </div>
-      </section>
-
-      <!-- Disponibilités -->
-      <section class="card">
-        <h3>Mes Disponibilités</h3>
-        <p>Définissez vos horaires de disponibilité.</p>
-        <div class="actions">
-          <a class="btn btn-solid" href="{{ url_for('professional_availability') }}">Gérer disponibilités</a>
-        </div>
-      </section>
-
-      <!-- Indisponibilités -->
-      <section class="card">
-        <h3>Créneaux Indisponibles</h3>
-        <p>Bloquez des dates/heures spécifiques.</p>
-        <div class="actions">
-          <a class="btn btn-solid" href="{{ url_for('professional_unavailable_slots') }}">Gérer indisponibilités</a>
-        </div>
-      </section>
-
-      <!-- Profil -->
-      <section class="card">
-        <h3>Mon Profil</h3>
-        <p>Modifiez vos informations professionnelles.</p>
-        <div class="actions">
-          <a class="btn btn-solid" href="/professional/profile">Modifier mon profil</a>
-          <!-- Bouton "Mettre à jour la photo" MASQUÉ comme demandé -->
-          <!--
-          <a class="btn btn-outline" href="{{ url_for('professional_upload_photo') }}">
-            Mettre à jour la photo
-          </a>
-          -->
-        </div>
-      </section>
-
-      <!-- ====== Mes Photos (principal + secondaires) ====== -->
-      <section class="card">
-        <h3>Mes Photos</h3>
-        <p>Photo principale et 2 photos secondaires (aperçu + raccourcis d’upload).</p>
-
-        {% set u1 = professional_photo_url(professional, 1) %}
-        {% set u2 = professional_photo_url(professional, 2) %}
-        {% set u3 = professional_photo_url(professional, 3) %}
-
-        <div class="thumbs" aria-label="Aperçu photos">
-          <div>
-            <div class="thumb">
-              <img src="{{ u1 }}" alt="Photo principale"
-                   onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
-            </div>
-            <div class="thumb-label">Principale</div>
-          </div>
-          <div>
-            <div class="thumb">
-              {% if u2 %}
-                <img src="{{ u2 }}" alt="Photo #2"
-                     onerror="this.style.display='none'">
-              {% else %}
-                <img src="https://placehold.co/300x300?text=Aucune" alt="Aucune photo #2">
-              {% endif %}
-            </div>
-            <div class="thumb-label">#2</div>
-          </div>
-          <div>
-            <div class="thumb">
-              {% if u3 %}
-                <img src="{{ u3 }}" alt="Photo #3"
-                     onerror="this.style.display='none'">
-              {% else %}
-                <img src="https://placehold.co/300x300?text=Aucune" alt="Aucune photo #3">
-              {% endif %}
-            </div>
-            <div class="thumb-label">#3</div>
-          </div>
-        </div>
-
-        <div class="actions" style="margin-top:.5rem">
-          <a class="btn btn-outline" href="{{ url_for('professional_upload_photo') }}">Changer la principale</a>
-          <a class="btn btn-outline" href="{{ url_for('professional_upload_photo_n', index=2) }}">Téléverser #2</a>
-          <a class="btn btn-outline" href="{{ url_for('professional_upload_photo_n', index=3) }}">Téléverser #3</a>
-        </div>
-      </section>
-      <!-- ====== fin Mes Photos ====== -->
-
-      <!-- ====== Bureau virtuel (nouvelle carte) ====== -->
-      <section class="card">
-        <h3>Bureau virtuel</h3>
-        <p>Accédez aux dossiers patients, messagerie, exercices & visio.</p>
-        <div class="actions">
-          <a class="btn btn-solid" href="{{ url_for('pro_office.index') }}">
-            Ouvrir le bureau
-          </a>
-        </div>
-      </section>
-      <!-- ====== fin Bureau virtuel ====== -->
-
-      <!-- ====== Outils (4 liens demandés) ====== -->
-      <section class="card">
-        <h3>Outils</h3>
-        <p>Accès rapide à vos fonctions quotidiennes.</p>
-        <div class="actions">
-          <a class="btn btn-outline" href="{{ url_for('messages_index') }}">Messages</a>
-          <a class="btn btn-outline" href="{{ url_for('pro_list_patients') }}">Mes patients</a>
-          <a class="btn btn-outline" href="{{ url_for('professional_reviews') }}">Avis</a>
-          <a class="btn btn-outline" href="{{ url_for('pro_exercise_library') }}">Ma bibliothèque</a>
-        </div>
-      </section>
-      <!-- ====== fin Outils ====== -->
-
-    </div>
+{% block content %}
+<div class="container-pro">
+  <div class="page-header">
+    <h1>Mon espace professionnel</h1>
+    <p>Gérez vos rendez-vous, disponibilités et informations de profil.</p>
   </div>
 
-</body>
-</html>
+  <div class="grid">
+    <!-- Mes RDV -->
+    <section class="card">
+      <h3>Mes Rendez-vous</h3>
+      <p>Consultez et gérez vos demandes de rendez-vous.</p>
+      <div class="actions">
+        <a class="btn-pill btn-solid" href="{{ url_for('professional_appointments') }}">Voir mes RDV</a>
+      </div>
+    </section>
+
+    <!-- Disponibilités -->
+    <section class="card">
+      <h3>Mes Disponibilités</h3>
+      <p>Définissez vos horaires de disponibilité.</p>
+      <div class="actions">
+        <a class="btn-pill btn-solid" href="{{ url_for('professional_availability') }}">Gérer disponibilités</a>
+      </div>
+    </section>
+
+    <!-- Indisponibilités -->
+    <section class="card">
+      <h3>Créneaux Indisponibles</h3>
+      <p>Bloquez des dates/heures spécifiques.</p>
+      <div class="actions">
+        <a class="btn-pill btn-solid" href="{{ url_for('professional_unavailable_slots') }}">Gérer indisponibilités</a>
+      </div>
+    </section>
+
+    <!-- Profil -->
+    <section class="card">
+      <h3>Mon Profil</h3>
+      <p>Modifiez vos informations professionnelles.</p>
+      <div class="actions">
+        <a class="btn-pill btn-solid" href="{{ url_for('professional_edit_profile') }}">Modifier mon profil</a>
+      </div>
+    </section>
+
+    <!-- Mes Photos (principal + secondaires) -->
+    <section class="card">
+      <h3>Mes Photos</h3>
+      <p>Photo principale et 2 photos secondaires (aperçu + raccourcis d’upload).</p>
+      {% set u1 = professional_photo_url(professional, 1) %}
+      {% set u2 = professional_photo_url(professional, 2) %}
+      {% set u3 = professional_photo_url(professional, 3) %}
+
+      <div class="thumbs" aria-label="Aperçu photos">
+        <div>
+          <div class="thumb">
+            <img src="{{ u1 }}" alt="Photo principale"
+                 onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
+          </div>
+          <div class="thumb-label">Principale</div>
+        </div>
+        <div>
+          <div class="thumb">
+            {% if u2 %}
+              <img src="{{ u2 }}" alt="Photo #2" onerror="this.style.display='none'">
+            {% else %}
+              <img src="https://placehold.co/300x300?text=Aucune" alt="Aucune photo #2">
+            {% endif %}
+          </div>
+          <div class="thumb-label">#2</div>
+        </div>
+        <div>
+          <div class="thumb">
+            {% if u3 %}
+              <img src="{{ u3 }}" alt="Photo #3" onerror="this.style.display='none'">
+            {% else %}
+              <img src="https://placehold.co/300x300?text=Aucune" alt="Aucune photo #3">
+            {% endif %}
+          </div>
+          <div class="thumb-label">#3</div>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:.5rem">
+        <a class="btn-pill btn-outline" href="{{ url_for('professional_upload_photo') }}">Changer la principale</a>
+        <a class="btn-pill btn-outline" href="{{ url_for('professional_upload_photo_n', index=2) }}">Téléverser #2</a>
+        <a class="btn-pill btn-outline" href="{{ url_for('professional_upload_photo_n', index=3) }}">Téléverser #3</a>
+      </div>
+    </section>
+
+    <!-- Bureau virtuel -->
+    <section class="card">
+      <h3>Bureau virtuel</h3>
+      <p>Accédez aux dossiers patients, messagerie, exercices & visio.</p>
+      <div class="actions">
+        <a class="btn-pill btn-solid" href="{{ url_for('pro_office.index') }}">Ouvrir le bureau</a>
+      </div>
+    </section>
+
+    <!-- Outils (liens rapides) -->
+    <section class="card">
+      <h3>Outils</h3>
+      <p>Accès rapide à vos fonctions quotidiennes.</p>
+      <div class="actions">
+        <a class="btn-pill btn-outline" href="{{ url_for('messages_index') }}">Messages</a>
+        <a class="btn-pill btn-outline" href="{{ url_for('pro_list_patients') }}">Mes patients</a>
+        <a class="btn-pill btn-outline" href="{{ url_for('professional_reviews') }}">Avis</a>
+        <a class="btn-pill btn-outline" href="{{ url_for('pro_exercise_library') }}">Ma bibliothèque</a>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
