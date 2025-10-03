@@ -5,12 +5,12 @@ from __future__ import annotations
 import os, io, uuid, secrets, hashlib, requests
 from datetime import datetime, date, timedelta, time as dtime
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse, parse_qs, urlencode, urljoin
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 from typing import Optional
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
-    send_from_directory, Response, current_app, make_response, g, abort, session
+    send_from_directory, Response, current_app, make_response, g, abort
 )
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -20,31 +20,18 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
+from sqlalchemy.exc import ProgrammingError  # ✅ ajout : pour le fallback reviews.professional_id
+from flask import render_template, request, redirect, url_for, abort, flash, send_from_directory
+from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
-from jinja2 import TemplateNotFound
+import os
+from datetime import datetime
 
-# =========================
-#   MODELS (import unique)
-# =========================
 from models import (
-    db,
-    # Utilisateurs/Prof
-    User, Professional,
-    # Appointments / Dispos
-    Appointment, ProfessionalAvailability, UnavailableSlot,
-    # Taxonomie
-    City, Specialty,
-    # Avis / Newsletter
-    Review, NewsletterSubscriber,
-    # Patient dossier
-    PatientCase, PatientProfile, PatientFile, SessionNote,
-    # Messagerie
-    MessageThread, Message,
-    # Journal thérapeutique / Exercices
-    TherapeuticJournal, JournalEntry,
-    ExerciseItem, ExerciseAssignment, ExerciseProgress
+    db, User, Professional, PatientCase, PatientProfile, PatientFile,
+    MessageThread, Message, Review, TherapeuticJournal, JournalEntry,
+    ExerciseItem, ExerciseAssignment, ExerciseProgress, Appointment, Specialty
 )
-
 # --- Rôles
 def require_role(*roles):
     if not current_user.is_authenticated or current_user.user_type not in roles:
@@ -54,23 +41,9 @@ def require_admin():
     if not current_user.is_authenticated or not current_user.is_admin:
         abort(403)
 
-# =========================
-#   CONSTANTES / DOSSIERS
-# =========================
-BASE_DIR = Path(__file__).resolve().parent
-BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
-
-UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
-UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
-ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
-ALLOWED_DOC_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".mp3", ".wav"}
-MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
-
-# Crée les dossiers d’upload si besoin
-UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
-UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-PATIENT_FILES_FOLDER = UPLOAD_ROOT / "patient_files"
-PATIENT_FILES_FOLDER.mkdir(parents=True, exist_ok=True)
+# --- Dossier d'upload (persistant local ; pour le cloud, adapte ici)
+UPLOAD_ROOT = os.environ.get("UPLOAD_ROOT", os.path.join(os.getcwd(), "uploads"))
+os.makedirs(UPLOAD_ROOT, exist_ok=True)
 
 ALLOWED_EXTS = {"pdf","png","jpg","jpeg","mp3","wav","mp4","doc","docx","txt"}
 
@@ -88,80 +61,34 @@ def pro_can_access_patient(pro_id:int, patient_id:int)->bool:
 def ensure_professional_row_for_user(user: User) -> Professional|None:
     if user.user_type != "professional":
         return None
-    # =========================
-#   HELPERS — Professional
-# =========================
-
-def get_or_create_professional_for_user(user):
-    """
-    Récupère la ligne Professional associée à l'utilisateur selon la convention:
-    1) name == user.username
-    2) à défaut, si une ligne existe avec pk == user.id, on l'harmonise (name)
-    3) sinon on crée une nouvelle ligne (sans imposer le PK)
-    """
-    # 1) convention existante: name == username
-    pro = Professional.query.filter_by(name=user.username).first()
-    if pro:
-        # Assurer quelques valeurs par défaut pour éviter des IntegrityError plus tard
-        changed = False
-        if pro.consultation_fee is None:
-            pro.consultation_fee = 0.0
-            changed = True
-        if not getattr(pro, "availability", None):
-            pro.availability = "disponible"
-            changed = True
-        if not getattr(pro, "status", None):
-            pro.status = "en_attente"
-            changed = True
-        if not getattr(pro, "consultation_duration_minutes", None):
-            pro.consultation_duration_minutes = 45
-            changed = True
-        if not getattr(pro, "buffer_between_appointments_minutes", None):
-            pro.buffer_between_appointments_minutes = 15
-            changed = True
-        if changed:
-            db.session.commit()
-        return pro
-
-    # 2) si une ligne existe avec pk == user.id, la récupérer et harmoniser name
     pro = Professional.query.get(user.id)
-    if pro:
-        if not pro.name:
-            pro.name = user.username
-            db.session.commit()
-        return pro
-
-    # 3) sinon créer une nouvelle ligne sans imposer le PK
-    pro = Professional(
-        name=user.username,
-        description="Profil en cours de complétion.",
-        consultation_fee=0.0,  # évite l'IntegrityError
-        availability="disponible",
-        status="en_attente",
-        consultation_duration_minutes=45,
-        buffer_between_appointments_minutes=15,
-        created_at=datetime.utcnow(),
-    )
-    db.session.add(pro)
-    db.session.commit()
+    if not pro:
+        # Valeurs par défaut non destructives (DB legacy: consultation_fee NOT NULL)
+        pro = Professional(
+            id=user.id,  # on suit ton mapping actuel user.id == professional.id
+            name=user.full_name or user.username or f"Pro#{user.id}",
+            description="Profil en cours de complétion.",
+            consultation_fee=0.0,  # évite l'IntegrityError vu dans tes logs
+            availability="disponible",
+            status="en_attente",
+            consultation_duration_minutes=45,
+            buffer_between_appointments_minutes=15,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(pro)
+        db.session.commit()
     return pro
 
+# =========================
+#   CONSTANTES / DOSSIERS
+# =========================
+BASE_DIR = Path(__file__).resolve().parent
+BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
 
-def ensure_professional_row_for_user(_user) -> bool:
-    """
-    IMPORTANT : ne crée rien. Vérifie seulement si une ligne Professional existe
-    pour l'utilisateur (_user), selon les deux conventions ci-dessus.
-    """
-    if not _user:
-        return False
-    # existe par name == username
-    if Professional.query.filter_by(name=_user.username).first() is not None:
-        return True
-    # existe par pk == _user.id
-    if Professional.query.get(getattr(_user, "id", None)) is not None:
-        return True
-    return False
-
+UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
+UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
+ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
+MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
 
 # =========================
 #   FLASK APP
@@ -181,6 +108,37 @@ app.config["PREFERRED_URL_SCHEME"] = "https"
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
 
+# Crée les dossiers d’upload si besoin
+try:
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    app.logger.warning("Impossible de créer le dossier d'upload: %s", e)
+# === AJOUT : répertoire fichiers patients ===
+PATIENT_FILES_FOLDER = UPLOAD_ROOT / "patient_files"
+try:
+    PATIENT_FILES_FOLDER.mkdir(parents=True, exist_ok=True)
+except Exception as e:
+    app.logger.warning("Impossible de créer patient_files: %s", e)
+
+ALLOWED_DOC_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".mp3", ".wav"}
+
+def _secure_save_patient_file(file_storage):
+    filename = getattr(file_storage, "filename", None)
+    if not filename:
+        raise ValueError("Aucun fichier sélectionné.")
+    ext = os.path.splitext(filename.lower())[1]
+    if ext not in (ALLOWED_IMAGE_EXT | ALLOWED_DOC_EXT):
+        raise ValueError("Extension non autorisée.")
+    raw = file_storage.read()
+    if not raw:
+        raise ValueError("Fichier vide.")
+    out_name = f"{uuid.uuid4().hex}{ext}"
+    out_path = PATIENT_FILES_FOLDER / out_name
+    with open(out_path, "wb") as f:
+        f.write(raw)
+    return out_name, len(raw)
+
 # =========================
 #   DB / MODELS
 # =========================
@@ -189,16 +147,25 @@ def _normalize_pg_uri(uri: str) -> str:
         return uri
     if uri.startswith("postgres://"):
         uri = "postgresql://" + uri[len("postgres://"):]
+    # forcer psycopg3
     if uri.startswith("postgresql+psycopg2://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
     elif uri.startswith("postgresql://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
+    # sslmode=require si absent
     parsed = urlparse(uri)
     q = parse_qs(parsed.query)
     if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
         q["sslmode"] = ["require"]
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
+
+# ⬇️ Importe City / Specialty pour correspondre à ton models.py
+from models import (
+    db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
+    City, Specialty, Review, NewsletterSubscriber,  # AJOUT regroupe les imports
+    PatientProfile, SessionNote, PatientFile        # AJOUT
+)
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
 if not uri:
@@ -227,10 +194,6 @@ def _load_user(user_id: str):
         return db.session.get(User, int(user_id))
     except Exception:
         return None
-
-# =========================
-#   MESSAGES (patient/pro)
-# =========================
 @app.route("/messages")
 @login_required
 def messages_index():
@@ -256,6 +219,7 @@ def messages_start():
     else:
         require_role("patient")
         pro_id = int(request.form.get("pro_id"))
+        # on laisse le patient démarrer avec un pro connu (par RDV ou lien)
         if not pro_can_access_patient(pro_id, current_user.id): abort(403)
         patient_id = current_user.id
 
@@ -264,33 +228,13 @@ def messages_start():
         t = MessageThread(professional_id=pro_id, patient_user_id=patient_id)
         db.session.add(t); db.session.commit()
     return redirect(url_for("messages_thread", thread_id=t.id))
-
-@app.route("/messages/<int:thread_id>", methods=["GET","POST"])
-@login_required
-def messages_thread(thread_id):
-    t = MessageThread.query.get_or_404(thread_id)
-    if current_user.user_type == "professional" and t.professional_id != current_user.id: abort(403)
-    if current_user.user_type == "patient" and t.patient_user_id != current_user.id: abort(403)
-
-    if request.method == "POST":
-        body = (request.form.get("body") or "").strip()
-        if body:
-            m = Message(thread_id=t.id, sender_user_id=current_user.id, body=body)
-            db.session.add(m); db.session.commit()
-            flash("Message envoyé.", "success")
-        return redirect(url_for("messages_thread", thread_id=t.id))
-
-    msgs = Message.query.filter_by(thread_id=t.id).order_by(Message.created_at.asc()).all()
-    return render_template("messages/thread.html", thread=t, messages=msgs)
-
-# =========================
-#   LIENS PRO/PATIENT
-# =========================
 @app.route("/pro/patient/link/<int:patient_id>", methods=["POST"])
 @login_required
 def pro_link_patient(patient_id):
     require_role("professional")
+    # Permet au pro d'établir un lien (ex: après 1er RDV)
     if not pro_can_access_patient(current_user.id, patient_id):
+        # on autorise tout de même la création de lien si RDV existe, sinon refuse
         abort(403)
     pc = PatientCase.query.filter_by(professional_id=current_user.id, patient_user_id=patient_id).first()
     if not pc:
@@ -298,26 +242,6 @@ def pro_link_patient(patient_id):
         db.session.add(pc); db.session.commit()
         flash("Patient lié.", "success")
     return redirect(url_for("pro_office_patient", patient_id=patient_id))
-
-# =========================
-#   FICHIERS PATIENT
-# =========================
-def _secure_save_patient_file(file_storage):
-    filename = getattr(file_storage, "filename", None)
-    if not filename:
-        raise ValueError("Aucun fichier sélectionné.")
-    ext = os.path.splitext(filename.lower())[1]
-    if ext not in (ALLOWED_IMAGE_EXT | ALLOWED_DOC_EXT):
-        raise ValueError("Extension non autorisée.")
-    raw = file_storage.read()
-    if not raw:
-        raise ValueError("Fichier vide.")
-    out_name = f"{uuid.uuid4().hex}{ext}"
-    out_path = PATIENT_FILES_FOLDER / out_name
-    with open(out_path, "wb") as f:
-        f.write(raw)
-    return out_name, len(raw)
-
 @app.route("/patient/files", methods=["GET","POST"])
 @login_required
 def patient_files_me():
@@ -334,7 +258,7 @@ def patient_files_me():
         f.save(path)
         pf = PatientFile(
             patient_user_id=current_user.id,
-            professional_id=None,
+            professional_id=None,  # upload patient autonome
             filename=filename,
             file_url=stored,
             mime_type=f.mimetype
@@ -345,7 +269,7 @@ def patient_files_me():
 
     files = (PatientFile.query
              .filter_by(patient_user_id=current_user.id)
-             .order_by(getattr(PatientFile, "created_at", PatientFile.uploaded_at).desc()).all())
+             .order_by(PatientFile.created_at.desc()).all())
     return render_template("patient/files.html", files=files)
 
 @app.route("/pro/patient/<int:patient_id>/files", methods=["GET","POST"])
@@ -377,12 +301,8 @@ def pro_files_for_patient(patient_id):
 
     files = (PatientFile.query
              .filter_by(patient_user_id=patient_id)
-             .order_by(getattr(PatientFile, "created_at", PatientFile.uploaded_at).desc()).all())
+             .order_by(PatientFile.created_at.desc()).all())
     return render_template("pro/patient_files.html", files=files, patient_id=patient_id)
-
-# =========================
-#   JOURNAL THÉRAPEUTIQUE
-# =========================
 def _get_or_create_journal(pro_id, patient_id):
     j = TherapeuticJournal.query.filter_by(professional_id=pro_id, patient_user_id=patient_id).first()
     if not j:
@@ -394,6 +314,7 @@ def _get_or_create_journal(pro_id, patient_id):
 @login_required
 def patient_journal_me():
     require_role("patient")
+    # le patient peut poster dans tous ses journaux
     journals = (TherapeuticJournal.query
                 .filter_by(patient_user_id=current_user.id)
                 .order_by(TherapeuticJournal.created_at.desc()).all())
@@ -408,13 +329,11 @@ def patient_journal_me():
             db.session.add(e); db.session.commit()
             flash("Entrée ajoutée.", "success")
         return redirect(url_for("patient_journal_me"))
+    # entries par journal
     entries_by_j = {j.id: JournalEntry.query.filter_by(journal_id=j.id).order_by(JournalEntry.created_at.desc()).all()
                     for j in journals}
     return render_template("patient/journals.html", journals=journals, entries_by_j=entries_by_j)
-
-# =========================
-#   EXERCICES (bibliothèque/assignations)
-# =========================
+# --- Bibliothèque personnelle du pro + création simple d'un item privé
 @app.route("/pro/exercises", methods=["GET","POST"])
 @login_required
 def pro_exercise_library():
@@ -434,6 +353,7 @@ def pro_exercise_library():
              .order_by(ExerciseItem.created_at.desc()).all())
     return render_template("pro/exercises.html", items=items)
 
+# --- Assignations par le pro à un patient
 @app.route("/pro/patient/<int:patient_id>/assignments", methods=["GET","POST"])
 @login_required
 def pro_assignments_for_patient(patient_id):
@@ -445,6 +365,7 @@ def pro_assignments_for_patient(patient_id):
         due_date = datetime.fromisoformat(due_date_str) if due_date_str else None
         note_pro = (request.form.get("note_pro") or "").strip() or None
         ex = ExerciseItem.query.get_or_404(exercise_id)
+        # le pro peut assigner ses propres items, ou publics approuvés (admin)
         if not (ex.owner_id == current_user.id or ex.visibility == "public_admin"):
             abort(403)
         a = ExerciseAssignment(exercise_id=exercise_id, professional_id=current_user.id,
@@ -461,6 +382,7 @@ def pro_assignments_for_patient(patient_id):
     return render_template("pro/assignments.html", assignments=assigns, patient_id=patient_id,
                            my_items=my_items, public_items=public_items)
 
+# --- Vue patient de ses assignations + dépôt de progression
 @app.route("/patient/assignments")
 @login_required
 def patient_assignments():
@@ -476,10 +398,6 @@ def patient_assignments():
              .first())
         latest_progress[a.id] = p
     return render_template("patient/assignments.html", assignments=assigns, latest_progress=latest_progress)
-
-# =========================
-#   AVIS
-# =========================
 @app.route("/professional/reviews")
 @login_required
 def professional_reviews():
@@ -489,107 +407,52 @@ def professional_reviews():
 
 @app.route("/reviews/new/<int:appointment_id>", methods=["GET","POST"])
 @login_required
-def review_new(appointment_id: int):
-    # Déduplication et version stricte (RDV passé, unique, publication modérée)
+def review_new(appointment_id):
     require_role("patient")
-    ap = Appointment.query.get_or_404(appointment_id)
-    if ap.patient_id != current_user.id:
-        abort(403)
-    if ap.appointment_date >= datetime.utcnow():
-        flash("Vous pourrez noter après la séance.", "warning")
-        return redirect(url_for("my_appointments"))
-    if Review.query.filter_by(appointment_id=ap.id).first():
-        flash("Avis déjà envoyé.", "info")
-        return redirect(url_for("my_appointments"))
-
+    appt = Appointment.query.get_or_404(appointment_id)
+    if appt.patient_id != current_user.id: abort(403)
     if request.method == "POST":
-        rating = max(1, min(5, int(request.form.get("rating", "0") or 0)))
-        comment = (request.form.get("comment") or "").strip() or None
-        r = Review(
-            appointment_id=ap.id,
-            patient_user_id=current_user.id,
-            professional_id=ap.professional_id,
-            rating=rating,
-            comment=comment,
-            is_public=False
-        )
-        db.session.add(r); db.session.commit()
-        flash("Merci pour votre avis ! Il sera publié après validation.", "success")
-        return redirect(url_for("my_appointments"))
-
-    # Fournit les deux noms de variable pour compat avec tes templates
-    return render_template("reviews/new.html", ap=ap, appointment=ap)
-
-# =========================
-#   PRO — DOSSIER PATIENT (vue fusionnée, unique)
-# =========================
-@app.route("/pro/office/patient/<int:patient_id>", methods=["GET"], endpoint="pro_office_patient")
+        rating = int(request.form.get("rating", "0") or 0)
+        comment = (request.form.get("comment") or "").strip()
+        # unique par RDV
+        if Review.query.filter_by(appointment_id=appointment_id).first():
+            flash("Un avis existe déjà pour ce rendez-vous.", "warning")
+            return redirect(url_for("patient_assignments"))
+        rev = Review(appointment_id=appointment_id,
+                     patient_user_id=current_user.id,
+                     professional_id=appt.professional_id,
+                     rating=rating,
+                     comment=comment,
+                     is_public=True)
+        db.session.add(rev); db.session.commit()
+        flash("Merci pour votre avis.", "success")
+        return redirect(url_for("patient_assignments"))
+    return render_template("reviews/new.html", appointment=appt)
+@app.route("/pro/office/patient/<int:patient_id>")
 @login_required
-def pro_office_patient(patient_id: int):
-    if current_user.user_type == "professional":
-        pro = Professional.query.filter_by(name=current_user.username).first()
-        if not pro or not pro_can_access_patient(pro.id, patient_id):
-            abort(403)
-    elif current_user.is_admin:
-        pro = None
-    else:
-        abort(403)
+def pro_office_patient(patient_id):
+    require_role("professional")
+    if not pro_can_access_patient(current_user.id, patient_id): abort(403)
 
-    ensure_professional_row_for_user(current_user) if current_user.user_type == "professional" else None
+    ensure_professional_row_for_user(current_user)  # sécurise profil pro
 
     patient = User.query.get_or_404(patient_id)
-    profile = PatientProfile.query.filter_by(patient_user_id=patient.id).first()
-
-    # Fichiers / Notes restreints au pro courant sauf admin
-    files_q = PatientFile.query.filter_by(patient_user_id=patient.id)
-    notes_q = SessionNote.query.filter_by(patient_user_id=patient.id)
-    if pro and not current_user.is_admin:
-        files_q = files_q.filter_by(professional_id=pro.id)
-        notes_q = notes_q.filter_by(professional_id=pro.id)
-    files = files_q.order_by(getattr(PatientFile, "uploaded_at", PatientFile.created_at).desc()).limit(50).all()
-    notes = notes_q.order_by(SessionNote.created_at.desc()).all()
-
-    # RDV
-    appts = (Appointment.query
-             .filter_by(patient_id=patient.id)
-             .order_by(Appointment.appointment_date.desc()).all())
-
-    # Lien / cas
-    cases = PatientCase.query.filter_by(
-        professional_id=(pro.id if pro else None),
-        patient_user_id=patient.id
-    ).all() if pro else []
-
-    # Assignations
+    profile = PatientProfile.query.filter_by(user_id=patient.id).first()  # NOTE: champ = user_id (contrat-fix)
+    files = (PatientFile.query
+             .filter_by(patient_user_id=patient.id)
+             .order_by(PatientFile.created_at.desc()).limit(10).all())
+    cases = PatientCase.query.filter_by(professional_id=current_user.id, patient_user_id=patient.id).all()
     assigns = (ExerciseAssignment.query
-               .filter_by(patient_user_id=patient.id, professional_id=(pro.id if pro else None))
-               .order_by(ExerciseAssignment.created_at.desc()).limit(10).all()) if pro else []
-
-    # Journal + entrées récentes
-    journal = TherapeuticJournal.query.filter_by(
-        professional_id=(pro.id if pro else None),
-        patient_user_id=patient.id
-    ).first() if pro else None
+               .filter_by(patient_user_id=patient.id, professional_id=current_user.id)
+               .order_by(ExerciseAssignment.created_at.desc()).limit(10).all())
+    journal = TherapeuticJournal.query.filter_by(professional_id=current_user.id, patient_user_id=patient.id).first()
     last_entries = (JournalEntry.query.filter_by(journal_id=journal.id)
                     .order_by(JournalEntry.created_at.desc()).limit(5).all()) if journal else []
+    thread = MessageThread.query.filter_by(professional_id=current_user.id, patient_user_id=patient.id).first()
 
-    # Thread messages
-    thread = (MessageThread.query
-              .filter_by(professional_id=(pro.id if pro else None), patient_user_id=patient.id)
-              .first()) if pro else None
-
-    ctx = dict(
-        patient=patient, profile=profile, files=files, notes=notes, appts=appts,
-        cases=cases, assigns=assigns, journal=journal, last_entries=last_entries, thread=thread
-    )
-    try:
-        return render_template("pro/patient_case.html", **ctx)
-    except TemplateNotFound:
-        return render_template("pro/office/dossier.html", **ctx)
-
-# =========================
-#   ADMIN PAGES
-# =========================
+    return render_template("pro/patient_case.html",
+                           patient=patient, profile=profile, files=files, cases=cases,
+                           assigns=assigns, journal=journal, last_entries=last_entries, thread=thread)
 @app.route("/admin")
 @login_required
 def admin_home():
@@ -645,12 +508,9 @@ def admin_threads():
 @login_required
 def admin_files():
     require_admin()
-    files = PatientFile.query.order_by(getattr(PatientFile, "created_at", PatientFile.uploaded_at).desc()).all()
+    files = PatientFile.query.order_by(PatientFile.created_at.desc()).all()
     return render_template("admin/files.html", files=files)
 
-# =========================
-#   PROGRESSION D’EXERCICES (patient)
-# =========================
 @app.route("/patient/progress/new/<int:assignment_id>", methods=["GET","POST"])
 @login_required
 def patient_progress_new(assignment_id):
@@ -665,6 +525,72 @@ def patient_progress_new(assignment_id):
         flash("Progression envoyée.", "success")
         return redirect(url_for("patient_assignments"))
     return render_template("patient/progress_new.html", assignment=a)
+
+@app.route("/pro/patient/<int:patient_id>/journal", methods=["GET","POST"])
+@login_required
+def pro_patient_journal(patient_id):
+    require_role("professional")
+    if not pro_can_access_patient(current_user.id, patient_id): abort(403)
+    j = _get_or_create_journal(current_user.id, patient_id)
+    if request.method == "POST":
+        title = (request.form.get("title") or "").strip()
+        content = (request.form.get("content") or "").strip()
+        if title or content:
+            e = JournalEntry(journal_id=j.id, author_role="pro", title=title, content=content)
+            db.session.add(e); db.session.commit()
+            flash("Entrée ajoutée.", "success")
+        return redirect(url_for("pro_patient_journal", patient_id=patient_id))
+    entries = JournalEntry.query.filter_by(journal_id=j.id).order_by(JournalEntry.created_at.desc()).all()
+    return render_template("pro/journal.html", journal=j, entries=entries, patient_id=patient_id)
+
+@app.route("/media/patient_file/<int:file_id>")
+@login_required
+def media_patient_file(file_id):
+    pf = PatientFile.query.get_or_404(file_id)
+    # sécurité d'accès
+    if current_user.is_admin:
+        pass
+    elif current_user.user_type == "patient":
+        if pf.patient_user_id != current_user.id: abort(403)
+    elif current_user.user_type == "professional":
+        # accès si pro lié ou auteur
+        if pf.professional_id != current_user.id and not pro_can_access_patient(current_user.id, pf.patient_user_id):
+            abort(403)
+    else:
+        abort(403)
+
+    return send_from_directory(UPLOAD_ROOT, pf.file_url, as_attachment=True)
+
+@app.route("/pro/patients")
+@login_required
+def pro_list_patients():
+    require_role("professional")
+    # patients liés via PatientCase
+    cases = (PatientCase.query
+             .filter_by(professional_id=current_user.id)
+             .order_by(PatientCase.created_at.desc()).all())
+    patient_ids = [c.patient_user_id for c in cases]
+    patients = User.query.filter(User.id.in_(patient_ids)).all() if patient_ids else []
+    return render_template("pro/patients.html", cases=cases, patients=patients)
+
+@app.route("/messages/<int:thread_id>", methods=["GET","POST"])
+@login_required
+def messages_thread(thread_id):
+    t = MessageThread.query.get_or_404(thread_id)
+    # accès
+    if current_user.user_type == "professional" and t.professional_id != current_user.id: abort(403)
+    if current_user.user_type == "patient" and t.patient_user_id != current_user.id: abort(403)
+
+    if request.method == "POST":
+        body = (request.form.get("body") or "").strip()
+        if body:
+            m = Message(thread_id=t.id, sender_user_id=current_user.id, body=body)
+            db.session.add(m); db.session.commit()
+            flash("Message envoyé.", "success")
+        return redirect(url_for("messages_thread", thread_id=t.id))
+
+    msgs = Message.query.filter_by(thread_id=t.id).order_by(Message.created_at.asc()).all()
+    return render_template("messages/thread.html", thread=t, messages=msgs)
 
 # =========================
 #   I18N / LANG
@@ -786,14 +712,15 @@ def inject_i18n():
 
 @app.route("/set-language/<lang_code>")
 def set_language(lang_code):
+    # combine l'ancien fallback avec la mise en cookie
     code = _normalize_lang(lang_code)
     resp = make_response(redirect(request.referrer or url_for("index")))
     dom = _cookie_domain_for(request.host)
-    resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
+    resp.set_cookie(LANG_COOKIE, code, max_age=60*60*24*180, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
-# --- Helpers SQL utilitaires
+# --- Helpers SQL utilitaires (gardé si besoin ailleurs)
 from sqlalchemy import text as _t
 def _fetch_list(sql):
     return [dict(r) for r in db.session.execute(_t(sql))]
@@ -811,7 +738,7 @@ def set_language_qs():
     code = _normalize_lang(request.args.get("lang"))
     resp = make_response(redirect(request.args.get("next") or request.referrer or url_for("index")))
     dom = _cookie_domain_for(request.host)
-    resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
+    resp.set_cookie(LANG_COOKIE, code, max_age=60*60*24*180, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
@@ -1166,46 +1093,34 @@ def professionals():
                            specialty=specialty, search_query=q,
                            cities=cities, families=families, specialties=specialties)
 
-# ---------- Helper redirection sûre ----------
-def _safe_local_url(target: str | None) -> Optional[str]:
-    if not target:
-        return None
-    try:
-        ref = urlparse(request.host_url)
-        test = urlparse(urljoin(request.host_url, target))
-        if test.scheme in ("http", "https") and ref.netloc == test.netloc:
-            return target
-    except Exception:
-        return None
-    return None
-
 # ---------- Détail pro (unique, avec moyenne avis) ----------
 @app.route("/professional/<int:professional_id>", endpoint="professional_detail")
 def professional_detail(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
+    # ✅ Fallback robuste si la colonne reviews.professional_id n'existe pas encore
     try:
         avg = db.session.query(db.func.avg(Review.rating)).filter(
-            Review.professional_id==professional_id, Review.is_public==True
+            Review.professional_id == professional_id, Review.is_public == True
         ).scalar() or 0
-        reviews = Review.query.filter_by(professional_id=professional_id, is_public=True)\
-                              .order_by(Review.created_at.desc()).limit(10).all()
-    except Exception as e:
-        current_app.logger.warning("AVG/Reviews fallback for pro %s: %s", professional_id, e)
-        avg, reviews = 0, []
+        reviews = (Review.query
+                   .filter_by(professional_id=professional_id, is_public=True)
+                   .order_by(Review.created_at.desc())
+                   .limit(10).all())
+    except ProgrammingError:
+        # Colonne absente : calcule en joignant appointments
+        avg = (db.session.query(db.func.avg(Review.rating))
+               .join(Appointment, Review.appointment_id == Appointment.id)
+               .filter(Appointment.professional_id == professional_id,
+                       Review.is_public == True)
+               .scalar() or 0)
+        reviews = (Review.query
+                   .join(Appointment, Review.appointment_id == Appointment.id)
+                   .filter(Appointment.professional_id == professional_id,
+                           Review.is_public == True)
+                   .order_by(Review.created_at.desc()).limit(10).all())
     return render_template("professional_detail.html",
                            professional=professional, avg_rating=round(float(avg),1),
                            public_reviews=reviews)
-# --- Route canonique "Espace pro" (un seul chemin pour tous les boutons)
-@app.route("/pro", endpoint="pro_space")
-def pro_space():
-    if current_user.is_authenticated:
-        if current_user.user_type == "professional":
-            # Pro connecté → tableau de bord
-            return redirect(url_for("professional_dashboard"))
-        # Patient ou autre rôle connecté → pas d’accès au dashboard pro
-        return redirect(url_for("index"))
-    # Visiteur → demande de connexion avec redirection post-login vers le dashboard pro
-    return redirect(url_for("login", next=url_for("professional_dashboard")))
 
 # =========================
 #   MÉDIAS / PHOTOS
@@ -1228,9 +1143,9 @@ def profile_photo(professional_id: int):
     if not raw_url:
         file_path = _avatar_file_for(professional_id)
         if file_path and os.path.isfile(file_path):
-            return send_from_directory(AVATAR_DIR, os.path.basename(file_path))
+            return send_from_directory(AVATAR_DIR, os.path.basename(file_path), max_age=60*60*24*7)
         if os.path.isfile(PLACEHOLDER_AVATAR):
-            return send_from_directory(os.path.join(app.root_path, "static"), "avatar_default.webp")
+            return send_from_directory(os.path.join(app.root_path, "static"), "avatar_default.webp", max_age=86400)
         return _avatar_fallback_response()
 
     if raw_url.startswith("http://"):
@@ -1524,43 +1439,23 @@ def professional_register():
     return render_template("professional_register.html",
                            cities=cities, families=families, specialties=specialties)
 
-# ---------- Alias d’entrée “Espace pro” unifié ----------
-@app.route("/espace-professionnel", endpoint="espace_professionnel")
-def espace_professionnel():
-    pro_dash = url_for("professional_dashboard")
-    if current_user.is_authenticated and current_user.user_type == "professional":
-        return redirect(pro_dash)
-    return redirect(url_for("login", next=pro_dash))
-
 @app.route("/login", methods=["GET","POST"], endpoint="login")
 def login():
-    if request.method == "GET":
-        nxt = request.args.get("next")
-        if nxt:
-            session["login_next"] = nxt
-        return render_template("login.html")
+    if request.method == "POST":
+        username_or_email = (request.form.get("username") or "").strip()
+        password = request.form.get("password", "")
+        remember = bool(request.form.get("remember"))
 
-    # POST
-    username_or_email = (request.form.get("username") or "").strip()
-    password = request.form.get("password", "")
-    remember = bool(request.form.get("remember"))
+        user = User.query.filter(
+            or_(User.username == username_or_email, User.email == username_or_email.lower())
+        ).first()
 
-    user = User.query.filter(
-        or_(User.username == username_or_email, User.email == username_or_email.lower())
-    ).first()
+        if user and user.password_hash and check_password_hash(user.password_hash, password):
+            login_user(user, remember=remember, duration=timedelta(days=60))
+            flash("Connexion réussie!")
+            return redirect(url_for("professional_dashboard" if user.user_type == "professional" else "index"))
 
-    if user and user.password_hash and check_password_hash(user.password_hash, password):
-        login_user(user, remember=remember, duration=timedelta(days=60))
-        flash("Connexion réussie!")
-
-        raw_next = request.form.get("next") or session.pop("login_next", None) or request.args.get("next")
-        safe_next = _safe_local_url(raw_next)
-        if safe_next:
-            return redirect(safe_next)
-
-        return redirect(url_for("professional_dashboard" if user.user_type == "professional" else "index"))
-
-    flash("Nom d'utilisateur / email ou mot de passe incorrect")
+        flash("Nom d'utilisateur / email ou mot de passe incorrect")
     return render_template("login.html")
 
 @app.route("/logout", endpoint="logout")
@@ -1581,6 +1476,7 @@ def pro_office_stats():
     domicile = Appointment.query.filter_by(professional_id=pro.id, status="confirme", consultation_type="domicile").count()
     duration = int(getattr(pro, "consultation_duration_minutes", 45) or 45)
     total_minutes = total * duration
+    # revenu estimé (brut)
     fee = float(getattr(pro, "consultation_fee", 0) or 0)
     revenue = total * fee
     return render_template("pro/office/stats.html",
@@ -1729,7 +1625,7 @@ def forgot_password():
             subj = f"{BRAND_NAME} — Réinitialisation du mot de passe"
             txt = (
                 f"Bonjour,\n\nVous avez demandé à réinitialiser votre mot de passe {BRAND_NAME}.\n"
-                f"Cliquer sur ce lien (valable 24h) : {reset_link}\n\n"
+                f"Cliquez sur ce lien (valable 24h) : {reset_link}\n\n"
                 f"Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail."
             )
             html = (
@@ -1769,44 +1665,468 @@ def reset_password(token: str):
         return redirect(url_for("login"))
     return render_template("reset_password.html")
 
-# =========================
-#   PRO — LISTE PATIENTS
-# =========================
-@app.route("/pro/patients")
+# -------- Dossier patient (fiche + notes + fichiers) --------
+@app.route("/pro/office/patient/<int:patient_id>", methods=["GET"], endpoint="pro_office_patient")
 @login_required
-def pro_list_patients():
-    require_role("professional")
-    cases = (PatientCase.query
-             .filter_by(professional_id=current_user.id)
-             .order_by(PatientCase.created_at.desc()).all())
-    patient_ids = [c.patient_user_id for c in cases]
-    patients = User.query.filter(User.id.in_(patient_ids)).all() if patient_ids else []
-    return render_template("pro/patients.html", cases=cases, patients=patients)
+def pro_office_patient(patient_id:int):
+    if current_user.user_type not in ("professional",) and not current_user.is_admin:
+        flash("Accès non autorisé"); return redirect(url_for("index"))
+    pro = Professional.query.filter_by(name=current_user.username).first() if current_user.user_type=="professional" else None
+    patient = User.query.get_or_404(patient_id)
+
+    profile = PatientProfile.query.filter_by(patient_user_id=patient.id).first()
+    appts = (Appointment.query
+             .filter_by(patient_id=patient.id)
+             .order_by(Appointment.appointment_date.desc()).all())
+    # Notes/Docs restreints au pro courant (ou admin voit tout)
+    notes_q = SessionNote.query.filter_by(patient_user_id=patient.id)
+    files_q = PatientFile.query.filter_by(patient_user_id=patient.id)
+    if pro and not current_user.is_admin:
+        notes_q = notes_q.filter_by(professional_id=pro.id)
+        files_q = files_q.filter_by(professional_id=pro.id)
+    notes = notes_q.order_by(SessionNote.created_at.desc()).all()
+    files = files_q.order_by(PatientFile.uploaded_at.desc()).all()
+
+    return render_template("pro/office/dossier.html",
+                           patient=patient, profile=profile,
+                           appts=appts, notes=notes, files=files)
+
+@app.route("/pro/office/patient/<int:patient_id>/profile", methods=["POST"], endpoint="pro_office_save_profile")
+
+@login_required
+def pro_office_save_profile(patient_id:int):
+    if current_user.user_type!="professional" and not current_user.is_admin: abort(403)
+    patient = User.query.get_or_404(patient_id)
+    row = PatientProfile.query.filter_by(patient_user_id=patient.id).first() or PatientProfile(patient_user_id=patient.id)
+    row.preferred_lang = (request.form.get("preferred_lang") or "").strip() or None
+    row.preferences    = (request.form.get("preferences") or "").strip() or None
+    row.medical_history= (request.form.get("medical_history") or "").strip() or None
+    db.session.add(row); db.session.commit()
+    flash("Fiche patient enregistrée.", "success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+
+@app.route("/pro/office/patient/<int:patient_id>/note", methods=["POST"], endpoint="pro_office_add_note")
+@login_required
+def pro_office_add_note(patient_id:int):
+    if current_user.user_type!="professional": abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro: abort(403)
+    text_note = (request.form.get("note_text") or "").strip()
+    appt_id = request.form.get("appointment_id", type=int)
+    if not text_note:
+        flash("Note vide.","warning")
+        return redirect(url_for("pro_office_patient", patient_id=patient_id))
+    db.session.add(SessionNote(
+        professional_id=pro.id, patient_user_id=patient_id,
+        appointment_id=appt_id, note_text=text_note
+    ))
+    db.session.commit()
+    flash("Note ajoutée.","success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+
+@app.route("/pro/office/patient/<int:patient_id>/upload", methods=["POST"], endpoint="pro_office_upload_file")
+@login_required
+def pro_office_upload_file(patient_id:int):
+    if current_user.user_type!="professional": abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro: abort(403)
+    f = request.files.get("file")
+    if not f:
+        flash("Sélectionnez un fichier.", "warning")
+        return redirect(url_for("pro_office_patient", patient_id=patient_id))
+    try:
+        saved_name, size = _secure_save_patient_file(f)
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("pro_office_patient", patient_id=patient_id))
+    db.session.add(PatientFile(
+        professional_id=pro.id, patient_user_id=patient_id,
+        stored_name=saved_name, original_name=(f.filename or None),
+        mime_type=(f.mimetype or None), size=size
+    ))
+    db.session.commit()
+    flash("Document ajouté.", "success")
+    return redirect(url_for("pro_office_patient", patient_id=patient_id))
+
+@app.route("/pro/office/file/<int:file_id>/download", endpoint="pro_office_download_file")
+@login_required
+def pro_office_download_file(file_id:int):
+    row = PatientFile.query.get_or_404(file_id)
+    allowed = False
+    if current_user.is_admin:
+        allowed = True
+    elif current_user.user_type=="patient":
+        allowed = (row.patient_user_id == current_user.id)
+    elif current_user.user_type=="professional":
+        pro = Professional.query.filter_by(name=current_user.username).first()
+        allowed = (pro and row.professional_id == pro.id)
+    if not allowed: abort(403)
+    fpath = PATIENT_FILES_FOLDER / row.stored_name
+    if not fpath.exists():
+        flash("Fichier introuvable.", "warning")
+        return redirect(request.referrer or url_for("index"))
+    return send_from_directory(str(PATIENT_FILES_FOLDER), row.stored_name,
+                               as_attachment=True, download_name=(row.original_name or row.stored_name))
+
+@app.route("/pro/office/patient/<int:patient_id>/export-pdf", methods=["GET"], endpoint="pro_office_export_pdf")
+@login_required
+def pro_office_export_pdf(patient_id:int):
+    if current_user.user_type not in ("professional",) and not current_user.is_admin:
+        abort(403)
+    pro = Professional.query.filter_by(name=current_user.username).first() if current_user.user_type=="professional" else None
+    patient = User.query.get_or_404(patient_id)
+    profile = PatientProfile.query.filter_by(patient_user_id=patient.id).first()
+    appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.appointment_date.desc()).all()
+    notes = SessionNote.query.filter_by(patient_user_id=patient.id).order_by(SessionNote.created_at.desc()).all() if not pro else \
+            SessionNote.query.filter_by(patient_user_id=patient.id, professional_id=pro.id).order_by(SessionNote.created_at.desc()).all()
+    files = PatientFile.query.filter_by(patient_user_id=patient.id).order_by(PatientFile.uploaded_at.desc()).all() if not pro else \
+            PatientFile.query.filter_by(patient_user_id=patient.id, professional_id=pro.id).order_by(PatientFile.uploaded_at.desc()).all()
+    return render_template("pro/office/dossier_print.html",
+                           patient=patient, profile=profile, appts=appts, notes=notes, files=files)
 
 # =========================
-#   SITE STATUS / ERRORS
+#   ESPACE PRO / RDV
 # =========================
-@app.route("/site-status", endpoint="site_status")
-def site_status():
-    status = app.config.get("SITE_STATUS", {})
-    stats = {
-        "total_professionals": Professional.query.count(),
-        "total_users": User.query.count(),
-        "total_appointments": Appointment.query.count(),
-    }
-    return render_template("site_status.html", status=status, stats=stats)
+@app.route("/professional_dashboard", endpoint="professional_dashboard")
+@login_required
+def professional_dashboard():
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé")
+        return redirect(url_for("index"))
+    professional = Professional.query.filter_by(name=current_user.username).first()
+    if not professional:
+        flash("Profil professionnel non trouvé")
+        return redirect(url_for("index"))
+    appointments = Appointment.query.filter_by(professional_id=professional.id)\
+        .order_by(Appointment.appointment_date.desc()).all()
+    return render_template("professional_dashboard.html",
+                           professional=professional, appointments=appointments)
 
-@app.errorhandler(404)
-def not_found(e):
-    return render_template("errors/404.html"), 404
+@app.route("/professional/availability", methods=["GET","POST"], endpoint="professional_availability")
+@login_required
+def professional_availability():
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé"); return redirect(url_for("index"))
+    professional = Professional.query.filter_by(name=current_user.username).first()
+    if not professional:
+        flash("Profil professionnel non trouvé"); return redirect(url_for("index"))
 
-@app.errorhandler(500)
-def server_error(e):
-    return render_template("errors/500.html"), 500
+    if request.method == "POST":
+        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
 
-# =========================
-#   RDV / PRISE DE RDV
-# =========================
+        def add_window(day, s, e, flag):
+            s = (s or "").strip(); e = (e or "").strip()
+            if flag and s and e:
+                db.session.add(ProfessionalAvailability(
+                    professional_id=professional.id, day_of_week=day,
+                    start_time=s, end_time=e, is_available=True
+                ))
+
+        for day in range(7):
+            base_flag = request.form.get(f"available_{day}") == "on"
+            add_window(day, request.form.get(f"start_time_{day}", ""), request.form.get(f"end_time_{day}", ""), base_flag)
+            add_window(day, request.form.get(f"start_time_{day}_2", ""), request.form.get(f"end_time_{day}_2", ""), request.form.get(f"available_{day}_2") == "on" or base_flag)
+            add_window(day, request.form.get(f"start_time_{day}_3", ""), request.form.get(f"end_time_{day}_3", ""), request.form.get(f"available_{day}_3") == "on" or base_flag)
+
+        db.session.commit()
+        flash("Disponibilités mises à jour avec succès!")
+        return redirect(url_for("professional_availability"))
+
+    all_avs = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
+    windows_by_day = {d: [] for d in range(7)}
+    for av in all_avs:
+        windows_by_day.get(av.day_of_week, []).append(av)
+    availability_dict = {d: (windows_by_day[d][0] if windows_by_day[d] else None) for d in range(7)}
+
+    return render_template("professional_availability.html",
+                           professional=professional,
+                           availabilities=availability_dict,
+                           windows_by_day=windows_by_day)
+
+@app.route("/professional/unavailable-slots", methods=["GET","POST"], endpoint="professional_unavailable_slots")
+@login_required
+def professional_unavailable_slots():
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé"); return redirect(url_for("index"))
+    professional = Professional.query.filter_by(name=current_user.username).first()
+    if not professional:
+        flash("Profil professionnel non trouvé"); return redirect(url_for("index"))
+
+    if request.method == "POST":
+        date_str = request.form.get("date", "")
+        start_time = request.form.get("start_time", "")
+        end_time = request.form.get("end_time", "")
+        reason = (request.form.get("reason") or "").strip()
+        try:
+            slot_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            flash("Format de date invalide"); return redirect(url_for("professional_unavailable_slots"))
+        if slot_date < date.today():
+            flash("Vous ne pouvez pas bloquer une date dans le passé"); return redirect(url_for("professional_unavailable_slots"))
+        if not start_time or not end_time:
+            flash("Heure de début et de fin obligatoires."); return redirect(url_for("professional_unavailable_slots"))
+
+        db.session.add(UnavailableSlot(
+            professional_id=professional.id,
+            date=slot_date, start_time=start_time, end_time=end_time, reason=reason
+        ))
+        db.session.commit()
+        flash("Créneau indisponible ajouté avec succès!")
+        return redirect(url_for("professional_unavailable_slots"))
+
+    unavailable_slots = UnavailableSlot.query.filter_by(professional_id=professional.id)\
+        .order_by(UnavailableSlot.date.desc()).all()
+    return render_template("professional_unavailable_slots.html",
+                           professional=professional, unavailable_slots=unavailable_slots)
+
+@app.route("/professional/unavailable-slots/<int:slot_id>/delete", methods=["POST"], endpoint="delete_unavailable_slot")
+@login_required
+def delete_unavailable_slot(slot_id: int):
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé"); return redirect(url_for("index"))
+    professional = Professional.query.filter_by(name=current_user.username).first()
+    if not professional:
+        flash("Profil professionnel non trouvé"); return redirect(url_for("index"))
+    slot = UnavailableSlot.query.get_or_404(slot_id)
+    if slot.professional_id != professional.id:
+        flash("Accès non autorisé"); return redirect(url_for("professional_unavailable_slots"))
+    db.session.delete(slot); db.session.commit()
+    flash("Créneau indisponible supprimé!")
+    return redirect(url_for("professional_unavailable_slots"))
+
+# Edition profil pro (conservatif, avec grâce sur les numériques)
+@app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
+@login_required
+def professional_edit_profile():
+    professional = Professional.query.filter_by(name=current_user.username).first()
+    if not professional:
+        professional = Professional(name=current_user.username, description="Profil en cours de complétion.", status="en_attente")
+        db.session.add(professional); db.session.commit()
+
+    if request.method == "POST":
+        f = request.form
+        professional.name = f.get("name", "").strip() or professional.name
+        professional.specialty = f.get("specialty", "").strip() or professional.specialty   # legacy
+        professional.description = f.get("description", "").strip() or professional.description
+        professional.location = f.get("location", "").strip() or professional.location       # legacy
+        professional.address = f.get("address", "").strip() or professional.address
+        professional.phone = f.get("phone", "").strip() or professional.phone
+
+        # FK si dispo
+        city_id = f.get("city_id", type=int)
+        if city_id is not None and hasattr(professional, "city_id"):
+            professional.city_id = city_id
+        ps_id = f.get("primary_specialty_id", type=int) or f.get("specialty_id", type=int)
+        if ps_id is not None and hasattr(professional, "primary_specialty_id"):
+            professional.primary_specialty_id = ps_id
+
+        # multi-sélection & ajout-si-absent
+        spec_ids = [int(x) for x in f.getlist("specialty_ids") if str(x).isdigit()]
+
+        new_name = (f.get("new_specialty_name") or "").strip()
+        new_family = (f.get("new_specialty_family") or "").strip()
+        if new_name:
+            existing = Specialty.query.filter(db.func.lower(Specialty.name) == new_name.lower()).first()
+            if not existing:
+                existing = Specialty(name=new_name, category=(new_family or None))
+                db.session.add(existing)
+                db.session.flush()
+            spec_ids.append(existing.id)
+
+        primary_spec_id = f.get("primary_specialty_id", type=int)
+        if primary_spec_id:
+            professional.primary_specialty_id = primary_spec_id
+        elif not getattr(professional, "primary_specialty_id", None) and spec_ids:
+            professional.primary_specialty_id = spec_ids[0]
+
+        if spec_ids:
+            professional.specialties = Specialty.query.filter(Specialty.id.in_(spec_ids)).all()
+
+        if professional.primary_specialty_id and not (professional.specialty or "").strip():
+            ps = db.session.get(Specialty, professional.primary_specialty_id)
+            if ps:
+                professional.specialty = ps.name
+
+        # Helpers numériques "gracieux"
+        def parse_int_or_keep(v_str: Optional[str], old_val: Optional[int], default_if_invalid: Optional[int]=None) -> Optional[int]:
+            v = (v_str or "").strip()
+            if v == "":
+                return old_val
+            v = v.replace(",", ".")
+            try:
+                return int(float(v))
+            except ValueError:
+                return old_val if old_val is not None else default_if_invalid
+
+        def parse_float_or_keep(v_str: Optional[str], old_val: Optional[float], default_if_invalid: Optional[float]=None) -> Optional[float]:
+            v = (v_str or "").strip()
+            if v == "":
+                return old_val
+            v = v.replace(",", ".")
+            try:
+                return float(v)
+            except ValueError:
+                return old_val if old_val is not None else default_if_invalid
+
+        professional.latitude  = parse_float_or_keep(f.get("latitude"),  getattr(professional, "latitude", None))
+        professional.longitude = parse_float_or_keep(f.get("longitude"), getattr(professional, "longitude", None))
+
+        # ⬇️ Ne jamais envoyer NULL si champ laissé vide (évite NOT NULL violation)
+        professional.consultation_fee = parse_int_or_keep(
+            f.get("consultation_fee"),
+            getattr(professional, "consultation_fee", 0),
+            default_if_invalid=0
+        )
+
+        professional.consultation_duration_minutes = parse_int_or_keep(
+            f.get("consultation_duration_minutes"),
+            getattr(professional, "consultation_duration_minutes", 45),
+            default_if_invalid=45
+        ) or 45
+
+        professional.buffer_between_appointments_minutes = parse_int_or_keep(
+            f.get("buffer_between_appointments_minutes"),
+            getattr(professional, "buffer_between_appointments_minutes", 15),
+            default_if_invalid=15
+        ) or 15
+
+        # Types de consultation : si aucune valeur postée, on conserve l'existant
+        posted_types = [t for t in f.getlist("consultation_types") if t]
+        if posted_types:
+            professional.consultation_types = ",".join(sorted(set(posted_types)))
+
+        old_links = (
+            (professional.facebook_url or ""),
+            (professional.instagram_url or ""),
+            (professional.tiktok_url or ""),
+            (professional.youtube_url or ""),
+        )
+        professional.facebook_url  = f.get("facebook_url", "").strip() or None
+        professional.instagram_url = f.get("instagram_url", "").strip() or None
+        professional.tiktok_url    = f.get("tiktok_url", "").strip() or None
+        professional.youtube_url   = f.get("youtube_url", "").strip() or None
+        new_links = (
+            (professional.facebook_url or ""),
+            (professional.instagram_url or ""),
+            (professional.tiktok_url or ""),
+            (professional.youtube_url or ""),
+        )
+        if new_links != old_links:
+            professional.social_links_approved = False
+
+        db.session.commit()
+        flash("Profil mis à jour.", "success")
+        return redirect(url_for("professional_dashboard"))
+
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = _ui_families_rows()
+
+    return render_template("professional_edit_profile.html",
+                           professional=professional,
+                           cities=cities, families=families, specialties=specialties)
+
+# ===== RDV côté PRO : liste + filtres =====
+@app.route("/professional/appointments", methods=["GET"], endpoint="professional_appointments")
+@login_required
+def professional_appointments():
+    if current_user.user_type != "professional":
+        flash("Accès non autorisé")
+        return redirect(url_for("index"))
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé")
+        return redirect(url_for("professional_dashboard"))
+
+    status = (request.args.get("status") or "all").strip()
+    scope  = (request.args.get("scope")  or "upcoming").strip()
+
+    q = Appointment.query.filter_by(professional_id=pro.id)
+    now = datetime.utcnow()
+
+    if scope == "upcoming":
+        q = q.filter(Appointment.appointment_date >= now)
+    elif scope == "past":
+        q = q.filter(Appointment.appointment_date < now)
+
+    if status in ("en_attente", "confirme", "annule"):
+        q = q.filter_by(status=status)
+
+    appointments = q.order_by(Appointment.appointment_date.desc()).all()
+
+    return render_template(
+        "professional_appointments.html",
+        appointments=appointments,
+        status=status,
+        scope=scope
+    )
+
+# ===== Actions côté PRO sur un RDV =====
+@app.route("/professional/appointments/<int:appointment_id>/<action>", methods=["POST"], endpoint="professional_appointment_action")
+@login_required
+def professional_appointment_action(appointment_id, action):
+    if current_user.user_type != "professional":
+        abort(403)
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        abort(403)
+
+    ap = Appointment.query.get_or_404(appointment_id)
+    if ap.professional_id != pro.id:
+        abort(403)
+
+    if action == "accept":
+        ap.status = "confirme"
+        flash("Rendez-vous confirmé.", "success")
+    elif action in ("reject", "cancel"):
+        ap.status = "annule"
+        flash("Rendez-vous annulé.", "warning")
+    elif action in ("ask-reschedule", "request_reschedule"):
+        ap.status = "en_attente"
+        flash("Demande de report envoyée (statut repassé en attente).", "info")
+    else:
+        abort(400)
+
+    db.session.commit()
+
+    try:
+        subj, txt = _build_notif(
+            "accepted" if ap.status == "confirme" else ("refused" if ap.status == "annule" else "pending"),
+            ap, role="patient"
+        )
+        patient = User.query.get(ap.patient_id)
+        if patient and patient.email:
+            safe_send_email(patient.email, subj, txt)
+
+        pro_user = User.query.filter_by(username=pro.name).first()
+        if pro_user and pro_user.email:
+            subj2, txt2 = _build_notif(
+                "accepted" if ap.status == "confirme" else ("refused" if ap.status == "annule" else "pending"),
+                ap, role="pro"
+            )
+            safe_send_email(pro_user.email, subj2, txt2)
+    except Exception:
+        pass
+
+    return redirect(url_for(
+        "professional_appointments",
+        status=request.args.get("status", "all"),
+        scope=request.args.get("scope", "upcoming")
+    ))
+
+# Alias rendez-vous (PATIENT & fallback)
+@app.route("/my_appointments", endpoint="my_appointments")
+@login_required
+def my_appointments():
+    if current_user.user_type == "professional":
+        appointments = Appointment.query.join(Professional).filter(Professional.name == current_user.username).all()
+    else:
+        appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
+    return render_template("my_appointments.html", appointments=appointments)
+
+# Réservation
 def _str_to_time(hhmm: str) -> dtime:
     return datetime.strptime(hhmm, "%H:%M").time()
 
@@ -1975,9 +2295,33 @@ def api_available_slots(professional_id: int):
         "available_slots": _slots()
     })
 
-# =========================
-#   ADMIN ACTIONS SUPPL.
-# =========================
+@app.route("/reviews/new/<int:appointment_id>", methods=["GET","POST"], endpoint="review_new")
+@login_required
+def review_new(appointment_id:int):
+    ap = Appointment.query.get_or_404(appointment_id)
+    if current_user.user_type!="patient" or ap.patient_id != current_user.id:
+        abort(403)
+    # doit être passé
+    if ap.appointment_date >= datetime.utcnow():
+        flash("Vous pourrez noter après la séance.", "warning")
+        return redirect(url_for("my_appointments"))
+    if Review.query.filter_by(appointment_id=ap.id).first():
+        flash("Avis déjà envoyé.", "info")
+        return redirect(url_for("my_appointments"))
+
+    if request.method=="POST":
+        rating = max(1, min(5, int(request.form.get("rating", "0") or 0)))
+        comment = (request.form.get("comment") or "").strip() or None
+        db.session.add(Review(
+            appointment_id=ap.id, patient_user_id=current_user.id,
+            professional_id=ap.professional_id, rating=rating, comment=comment
+        ))
+        db.session.commit()
+        flash("Merci pour votre avis ! Il sera publié après validation.", "success")
+        return redirect(url_for("my_appointments"))
+
+    return render_template("reviews/new.html", ap=ap)
+
 @app.route("/admin/reviews/<int:rid>/publish", methods=["POST"], endpoint="admin_publish_review")
 @login_required
 def admin_publish_review(rid:int):
@@ -1988,394 +2332,25 @@ def admin_publish_review(rid:int):
     return redirect(request.referrer or url_for("site_status"))
 
 # =========================
+#   STATUT / ERREURS
 # =========================
-#   ESPACE PRO / RDV UI
-# =========================
-@app.route("/professional_dashboard", endpoint="professional_dashboard")
-@login_required
-def professional_dashboard():
-    if getattr(current_user, "user_type", None) != "professional":
-        flash("Accès non autorisé", "warning")
-        return redirect(url_for("index"))
-
-    # 1) chercher par user_id si tu as ce champ sur Professional
-    professional = Professional.query.filter_by(user_id=current_user.id).first()
-
-    # 2) fallback : si l'utilisateur a un professional_id, récupérer la fiche
-    if not professional and getattr(current_user, "professional_id", None):
-        professional = Professional.query.get(current_user.professional_id)
-
-    # 3) sinon, rediriger vers l’inscription pro
-    if not professional:
-        flash("Complétez d’abord votre profil professionnel.", "warning")
-        return redirect(url_for("professional_register"))
-
-    appointments = (
-        Appointment.query.filter_by(professional_id=professional.id)
-        .order_by(Appointment.appointment_date.desc())
-        .all()
-    )
-
-    return render_template(
-        "professional_dashboard.html",
-        professional=professional,
-        appointments=appointments,
-    )
-
-
-@app.route("/professional/availability", methods=["GET", "POST"], endpoint="professional_availability")
-@login_required
-def professional_availability():
-    if getattr(current_user, "user_type", None) != "professional":
-        flash("Accès non autorisé", "warning")
-        return redirect(url_for("index"))
-
-    # selon ta convention "name == username"
-    professional = Professional.query.filter_by(name=current_user.username).first()
-    if not professional:
-        flash("Profil professionnel non trouvé", "warning")
-        return redirect(url_for("index"))
-
-    if request.method == "POST":
-        # reset des créneaux existants
-        ProfessionalAvailability.query.filter_by(
-            professional_id=professional.id
-        ).delete()
-
-        def add_window(day, s, e, flag):
-            s = (s or "").strip()
-            e = (e or "").strip()
-            if flag and s and e:
-                db.session.add(
-                    ProfessionalAvailability(
-                        professional_id=professional.id,
-                        day_of_week=day,
-                        start_time=s,
-                        end_time=e,
-                        is_available=True,
-                    )
-                )
-
-        for day in range(7):
-            base_flag = request.form.get(f"available_{day}") == "on"
-            add_window(
-                day,
-                request.form.get(f"start_time_{day}", ""),
-                request.form.get(f"end_time_{day}", ""),
-                base_flag,
-            )
-            add_window(
-                day,
-                request.form.get(f"start_time_{day}_2", ""),
-                request.form.get(f"end_time_{day}_2", ""),
-                (request.form.get(f"available_{day}_2") == "on") or base_flag,
-            )
-            add_window(
-                day,
-                request.form.get(f"start_time_{day}_3", ""),
-                request.form.get(f"end_time_{day}_3", ""),
-                (request.form.get(f"available_{day}_3") == "on") or base_flag,
-            )
-
-        db.session.commit()
-        flash("Disponibilités mises à jour avec succès!")
-        return redirect(url_for("professional_availability"))
-
-    all_avs = ProfessionalAvailability.query.filter_by(
-        professional_id=professional.id
-    ).all()
-    windows_by_day = {d: [] for d in range(7)}
-    for av in all_avs:
-        windows_by_day.get(av.day_of_week, []).append(av)
-    availability_dict = {
-        d: (windows_by_day[d][0] if windows_by_day[d] else None) for d in range(7)
+@app.route("/site-status", endpoint="site_status")
+def site_status():
+    status = app.config.get("SITE_STATUS", {})
+    stats = {
+        "total_professionals": Professional.query.count(),
+        "total_users": User.query.count(),
+        "total_appointments": Appointment.query.count(),
     }
+    return render_template("site_status.html", status=status, stats=stats)
 
-    return render_template(
-        "professional_availability.html",
-        professional=professional,
-        availabilities=availability_dict,
-        windows_by_day=windows_by_day,
-    )
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("errors/404.html"), 404
 
-
-@app.route("/professional/unavailable-slots", methods=["GET","POST"], endpoint="professional_unavailable_slots")
-@login_required
-def professional_unavailable_slots():
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé"); return redirect(url_for("index"))
-    professional = Professional.query.filter_by(name=current_user.username).first()
-    if not professional:
-        flash("Profil professionnel non trouvé"); return redirect(url_for("index"))
-
-    if request.method == "POST":
-        date_str = request.form.get("date", "")
-        start_time = request.form.get("start_time", "")
-        end_time = request.form.get("end_time", "")
-        reason = (request.form.get("reason") or "").strip()
-        try:
-            slot_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-        except ValueError:
-            flash("Format de date invalide"); return redirect(url_for("professional_unavailable_slots"))
-        if slot_date < date.today():
-            flash("Vous ne pouvez pas bloquer une date dans le passé"); return redirect(url_for("professional_unavailable_slots"))
-        if not start_time or not end_time:
-            flash("Heure de début et de fin obligatoires."); return redirect(url_for("professional_unavailable_slots"))
-
-        db.session.add(UnavailableSlot(
-            professional_id=professional.id,
-            date=slot_date, start_time=start_time, end_time=end_time, reason=reason
-        ))
-        db.session.commit()
-        flash("Créneau indisponible ajouté avec succès!")
-        return redirect(url_for("professional_unavailable_slots"))
-
-    unavailable_slots = UnavailableSlot.query.filter_by(professional_id=professional.id)\
-        .order_by(UnavailableSlot.date.desc()).all()
-    return render_template("professional_unavailable_slots.html",
-                           professional=professional, unavailable_slots=unavailable_slots)
-
-@app.route("/professional/unavailable-slots/<int:slot_id>/delete", methods=["POST"], endpoint="delete_unavailable_slot")
-@login_required
-def delete_unavailable_slot(slot_id: int):
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé"); return redirect(url_for("index"))
-    professional = Professional.query.filter_by(name=current_user.username).first()
-    if not professional:
-        flash("Profil professionnel non trouvé"); return redirect(url_for("index"))
-    slot = UnavailableSlot.query.get_or_404(slot_id)
-    if slot.professional_id != professional.id:
-        flash("Accès non autorisé"); return redirect(url_for("professional_unavailable_slots"))
-    db.session.delete(slot); db.session.commit()
-    flash("Créneau indisponible supprimé!")
-    return redirect(url_for("professional_unavailable_slots"))
-
-@app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
-@login_required
-def professional_edit_profile():
-    professional = Professional.query.filter_by(name=current_user.username).first()
-    if not professional:
-        professional = Professional(name=current_user.username, description="Profil en cours de complétion.", status="en_attente")
-        db.session.add(professional); db.session.commit()
-
-    if request.method == "POST":
-        f = request.form
-        professional.name = f.get("name", "").strip() or professional.name
-        professional.specialty = f.get("specialty", "").strip() or professional.specialty   # legacy
-        professional.description = f.get("description", "").strip() or professional.description
-        professional.location = f.get("location", "").strip() or professional.location       # legacy
-        professional.address = f.get("address", "").strip() or professional.address
-        professional.phone = f.get("phone", "").strip() or professional.phone
-
-        # FK si dispo
-        city_id = f.get("city_id", type=int)
-        if city_id is not None and hasattr(professional, "city_id"):
-            professional.city_id = city_id
-        ps_id = f.get("primary_specialty_id", type=int) or f.get("specialty_id", type=int)
-        if ps_id is not None and hasattr(professional, "primary_specialty_id"):
-            professional.primary_specialty_id = ps_id
-
-        # multi-sélection & ajout-si-absent
-        spec_ids = [int(x) for x in f.getlist("specialty_ids") if str(x).isdigit()]
-
-        new_name = (f.get("new_specialty_name") or "").strip()
-        new_family = (f.get("new_specialty_family") or "").strip()
-        if new_name:
-            existing = Specialty.query.filter(db.func.lower(Specialty.name) == new_name.lower()).first()
-            if not existing:
-                existing = Specialty(name=new_name, category=(new_family or None))
-                db.session.add(existing)
-                db.session.flush()
-            spec_ids.append(existing.id)
-
-        primary_spec_id = f.get("primary_specialty_id", type=int)
-        if primary_spec_id:
-            professional.primary_specialty_id = primary_spec_id
-        elif not getattr(professional, "primary_specialty_id", None) and spec_ids:
-            professional.primary_specialty_id = spec_ids[0]
-
-        if spec_ids:
-            professional.specialties = Specialty.query.filter(Specialty.id.in_(spec_ids)).all()
-
-        if professional.primary_specialty_id and not (professional.specialty or "").strip():
-            ps = db.session.get(Specialty, professional.primary_specialty_id)
-            if ps:
-                professional.specialty = ps.name
-
-        # Helpers numériques gracieux
-        def parse_int_or_keep(v_str: Optional[str], old_val: Optional[int], default_if_invalid: Optional[int]=None) -> Optional[int]:
-            v = (v_str or "").strip()
-            if v == "":
-                return old_val
-            v = v.replace(",", ".")
-            try:
-                return int(float(v))
-            except ValueError:
-                return old_val if old_val is not None else default_if_invalid
-
-        def parse_float_or_keep(v_str: Optional[str], old_val: Optional[float], default_if_invalid: Optional[float]=None) -> Optional[float]:
-            v = (v_str or "").strip()
-            if v == "":
-                return old_val
-            v = v.replace(",", ".")
-            try:
-                return float(v)
-            except ValueError:
-                return old_val if old_val is not None else default_if_invalid
-
-        professional.latitude  = parse_float_or_keep(f.get("latitude"),  getattr(professional, "latitude", None))
-        professional.longitude = parse_float_or_keep(f.get("longitude"), getattr(professional, "longitude", None))
-
-        professional.consultation_fee = parse_int_or_keep(
-            f.get("consultation_fee"),
-            getattr(professional, "consultation_fee", 0),
-            default_if_invalid=0
-        )
-
-        professional.consultation_duration_minutes = parse_int_or_keep(
-            f.get("consultation_duration_minutes"),
-            getattr(professional, "consultation_duration_minutes", 45),
-            default_if_invalid=45
-        ) or 45
-
-        professional.buffer_between_appointments_minutes = parse_int_or_keep(
-            f.get("buffer_between_appointments_minutes"),
-            getattr(professional, "buffer_between_appointments_minutes", 15),
-            default_if_invalid=15
-        ) or 15
-
-        posted_types = [t for t in f.getlist("consultation_types") if t]
-        if posted_types:
-            professional.consultation_types = ",".join(sorted(set(posted_types)))
-
-        old_links = (
-            (professional.facebook_url or ""),
-            (professional.instagram_url or ""),
-            (professional.tiktok_url or ""),
-            (professional.youtube_url or ""),
-        )
-        professional.facebook_url  = f.get("facebook_url", "").strip() or None
-        professional.instagram_url = f.get("instagram_url", "").strip() or None
-        professional.tiktok_url    = f.get("tiktok_url", "").strip() or None
-        professional.youtube_url   = f.get("youtube_url", "").strip() or None
-        new_links = (
-            (professional.facebook_url or ""),
-            (professional.instagram_url or ""),
-            (professional.tiktok_url or ""),
-            (professional.youtube_url or ""),
-        )
-        if new_links != old_links:
-            professional.social_links_approved = False
-
-        db.session.commit()
-        flash("Profil mis à jour.", "success")
-        return redirect(url_for("professional_dashboard"))
-
-    cities = _ui_cities()
-    specialties = _ui_specialties()
-    families = _ui_families_rows()
-
-    return render_template("professional_edit_profile.html",
-                           professional=professional,
-                           cities=cities, families=families, specialties=specialties)
-
-@app.route("/professional/appointments", methods=["GET"], endpoint="professional_appointments")
-@login_required
-def professional_appointments():
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé")
-        return redirect(url_for("index"))
-
-    pro = Professional.query.filter_by(name=current_user.username).first()
-    if not pro:
-        flash("Profil professionnel non trouvé")
-        return redirect(url_for("professional_dashboard"))
-
-    status = (request.args.get("status") or "all").strip()
-    scope  = (request.args.get("scope")  or "upcoming").strip()
-
-    q = Appointment.query.filter_by(professional_id=pro.id)
-    now = datetime.utcnow()
-
-    if scope == "upcoming":
-        q = q.filter(Appointment.appointment_date >= now)
-    elif scope == "past":
-        q = q.filter(Appointment.appointment_date < now)
-
-    if status in ("en_attente", "confirme", "annule"):
-        q = q.filter_by(status=status)
-
-    appointments = q.order_by(Appointment.appointment_date.desc()).all()
-
-    return render_template(
-        "professional_appointments.html",
-        appointments=appointments,
-        status=status,
-        scope=scope
-    )
-
-@app.route("/professional/appointments/<int:appointment_id>/<action>", methods=["POST"], endpoint="professional_appointment_action")
-@login_required
-def professional_appointment_action(appointment_id, action):
-    if current_user.user_type != "professional":
-        abort(403)
-
-    pro = Professional.query.filter_by(name=current_user.username).first()
-    if not pro:
-        abort(403)
-
-    ap = Appointment.query.get_or_404(appointment_id)
-    if ap.professional_id != pro.id:
-        abort(403)
-
-    if action == "accept":
-        ap.status = "confirme"
-        flash("Rendez-vous confirmé.", "success")
-    elif action in ("reject", "cancel"):
-        ap.status = "annule"
-        flash("Rendez-vous annulé.", "warning")
-    elif action in ("ask-reschedule", "request_reschedule"):
-        ap.status = "en_attente"
-        flash("Demande de report envoyée (statut repassé en attente).", "info")
-    else:
-        abort(400)
-
-    db.session.commit()
-
-    try:
-        subj, txt = _build_notif(
-            "accepted" if ap.status == "confirme" else ("refused" if ap.status == "annule" else "pending"),
-            ap, role="patient"
-        )
-        patient = User.query.get(ap.patient_id)
-        if patient and patient.email:
-            safe_send_email(patient.email, subj, txt)
-
-        pro_user = User.query.filter_by(username=pro.name).first()
-        if pro_user and pro_user.email:
-            subj2, txt2 = _build_notif(
-                "accepted" if ap.status == "confirme" else ("refused" if ap.status == "annule" else "pending"),
-                ap, role="pro"
-            )
-            safe_send_email(pro_user.email, subj2, txt2)
-    except Exception:
-        pass
-
-    return redirect(url_for(
-        "professional_appointments",
-        status=request.args.get("status", "all"),
-        scope=request.args.get("scope", "upcoming")
-    ))
-
-# Alias rendez-vous
-@app.route("/my_appointments", endpoint="my_appointments")
-@login_required
-def my_appointments():
-    if current_user.user_type == "professional":
-        appointments = Appointment.query.join(Professional).filter(Professional.name == current_user.username).all()
-    else:
-        appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
-    return render_template("my_appointments.html", appointments=appointments)
+@app.errorhandler(500)
+def server_error(e):
+    return render_template("errors/500.html"), 500
 
 # =========================
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
@@ -2464,32 +2439,36 @@ with app.app_context():
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
 
-            # ✅ Reviews: ajoute la colonne manquante (corrige UndefinedColumn)
-            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE;",
+            # ✅ Ajout : colonne avis pour compatibilité (évite l'erreur UndefinedColumn)
+            "ALTER TABLE reviews ADD COLUMN IF NOT EXISTS professional_id INTEGER;",
             "CREATE INDEX IF NOT EXISTS ix_reviews_professional_id ON reviews(professional_id);",
         ]
         for sql in stmts:
             db.session.execute(text(sql))
 
-        # Normalisation douce consultation_fee
+        # Normalisation douce sur consultation_fee (évite crash si NULL historique)
         try:
             db.session.execute(text("UPDATE professionals SET consultation_fee = 0 WHERE consultation_fee IS NULL;"))
             db.session.execute(text("ALTER TABLE professionals ALTER COLUMN consultation_fee SET DEFAULT 0;"))
         except Exception as e:
             current_app.logger.warning(f"consultation_fee default/normalize: {e}")
 
-        # Rétro-remplissage des reviews (si pro_id manquant)
+        db.session.commit()
+
+        # ✅ Backfill reviews.professional_id à partir des rendez-vous
         try:
             db.session.execute(text("""
                 UPDATE reviews r
                 SET professional_id = a.professional_id
                 FROM appointments a
-                WHERE r.appointment_id = a.id AND (r.professional_id IS NULL OR r.professional_id = 0);
+                WHERE r.appointment_id = a.id
+                  AND (r.professional_id IS NULL OR r.professional_id = 0)
             """))
+            db.session.commit()
         except Exception as e:
-            current_app.logger.warning(f"Backfill reviews.professional_id: {e}")
+            db.session.rollback()
+            current_app.logger.warning("Backfill reviews.professional_id: %s", e)
 
-        db.session.commit()
     except Exception as e:
         app.logger.warning(f"Mini-migration colonnes: {e}")
 
@@ -2529,6 +2508,7 @@ with app.app_context():
         for sql in stmts_phase1:
             db.session.execute(text(sql))
 
+        # seeds idempotents (✅ corrigé : pas de SQL brut hors string)
         seed_sqls = [
             "INSERT INTO exercise_types (name) VALUES ('Exercice'),('Fiche'),('Protocole'),('Questionnaire') ON CONFLICT (name) DO NOTHING;",
             "INSERT INTO techniques (name) VALUES ('CBT'),('Hypnose'),('Relaxation'),('Pleine conscience'),('Coaching') ON CONFLICT (name) DO NOTHING;",
@@ -2579,11 +2559,9 @@ with app.app_context():
         db.session.add(u); db.session.commit()
         app.logger.info("Admin '%s' créé.", admin_username)
 
-# =========================
-#   BLUEPRINTS
-# =========================
 from pro_office import pro_office_bp      # nouveau blueprint "Bureau virtuel"
 from patient_portal import patient_bp     # nouveau blueprint "Espace patient"
+
 app.register_blueprint(pro_office_bp, url_prefix="/pro/office")
 app.register_blueprint(patient_bp,    url_prefix="/patient")
 
