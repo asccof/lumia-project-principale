@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ title or "Bientôt disponible" }} – Tighri{% endblock %}
+
+{% block content %}
+<div class="container my-5" style="max-width:900px">
+  <div class="card p-4 shadow-sm">
+    <h1 class="h3 mb-2">{{ title or "Bientôt disponible" }}</h1>
+    {% if lead %}<p class="text-muted mb-3">{{ lead }}</p>{% endif %}
+    <div class="alert alert-info">
+      {{ text or "Cette section est en cours d’intégration. Elle respectera le contrat existant (structures, rôles, design)." }}
+    </div>
+    <a class="btn btn-primary" href="{{ url_for('professional_dashboard') }}">← Retour au tableau de bord</a>
+  </div>
+</div>
+{% endblock %}
