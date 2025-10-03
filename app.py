@@ -1988,68 +1988,116 @@ def admin_publish_review(rid:int):
     return redirect(request.referrer or url_for("site_status"))
 
 # =========================
+# =========================
 #   ESPACE PRO / RDV UI
 # =========================
 @app.route("/professional_dashboard", endpoint="professional_dashboard")
 @login_required
 def professional_dashboard():
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé")
+    if getattr(current_user, "user_type", None) != "professional":
+        flash("Accès non autorisé", "warning")
         return redirect(url_for("index"))
-    pro = Professional.query.filter_by(user_id=current_user.id).first()
-if not pro and getattr(current_user, "professional_id", None):
-    pro = Professional.query.get(current_user.professional_id)
-if not pro:
-    return redirect(url_for("professional_register"))
 
+    # 1) chercher par user_id si tu as ce champ sur Professional
+    professional = Professional.query.filter_by(user_id=current_user.id).first()
+
+    # 2) fallback : si l'utilisateur a un professional_id, récupérer la fiche
+    if not professional and getattr(current_user, "professional_id", None):
+        professional = Professional.query.get(current_user.professional_id)
+
+    # 3) sinon, rediriger vers l’inscription pro
     if not professional:
-        flash("Profil professionnel non trouvé")
-        return redirect(url_for("index"))
-    appointments = Appointment.query.filter_by(professional_id=professional.id)\
-        .order_by(Appointment.appointment_date.desc()).all()
-    return render_template("professional_dashboard.html",
-                           professional=professional, appointments=appointments)
+        flash("Complétez d’abord votre profil professionnel.", "warning")
+        return redirect(url_for("professional_register"))
 
-@app.route("/professional/availability", methods=["GET","POST"], endpoint="professional_availability")
+    appointments = (
+        Appointment.query.filter_by(professional_id=professional.id)
+        .order_by(Appointment.appointment_date.desc())
+        .all()
+    )
+
+    return render_template(
+        "professional_dashboard.html",
+        professional=professional,
+        appointments=appointments,
+    )
+
+
+@app.route("/professional/availability", methods=["GET", "POST"], endpoint="professional_availability")
 @login_required
 def professional_availability():
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé"); return redirect(url_for("index"))
+    if getattr(current_user, "user_type", None) != "professional":
+        flash("Accès non autorisé", "warning")
+        return redirect(url_for("index"))
+
+    # selon ta convention "name == username"
     professional = Professional.query.filter_by(name=current_user.username).first()
     if not professional:
-        flash("Profil professionnel non trouvé"); return redirect(url_for("index"))
+        flash("Profil professionnel non trouvé", "warning")
+        return redirect(url_for("index"))
 
     if request.method == "POST":
-        ProfessionalAvailability.query.filter_by(professional_id=professional.id).delete()
+        # reset des créneaux existants
+        ProfessionalAvailability.query.filter_by(
+            professional_id=professional.id
+        ).delete()
 
         def add_window(day, s, e, flag):
-            s = (s or "").strip(); e = (e or "").strip()
+            s = (s or "").strip()
+            e = (e or "").strip()
             if flag and s and e:
-                db.session.add(ProfessionalAvailability(
-                    professional_id=professional.id, day_of_week=day,
-                    start_time=s, end_time=e, is_available=True
-                ))
+                db.session.add(
+                    ProfessionalAvailability(
+                        professional_id=professional.id,
+                        day_of_week=day,
+                        start_time=s,
+                        end_time=e,
+                        is_available=True,
+                    )
+                )
 
         for day in range(7):
             base_flag = request.form.get(f"available_{day}") == "on"
-            add_window(day, request.form.get(f"start_time_{day}", ""), request.form.get(f"end_time_{day}", ""), base_flag)
-            add_window(day, request.form.get(f"start_time_{day}_2", ""), request.form.get(f"end_time_{day}_2", ""), request.form.get(f"available_{day}_2") == "on" or base_flag)
-            add_window(day, request.form.get(f"start_time_{day}_3", ""), request.form.get(f"end_time_{day}_3", ""), request.form.get(f"available_{day}_3") == "on" or base_flag)
+            add_window(
+                day,
+                request.form.get(f"start_time_{day}", ""),
+                request.form.get(f"end_time_{day}", ""),
+                base_flag,
+            )
+            add_window(
+                day,
+                request.form.get(f"start_time_{day}_2", ""),
+                request.form.get(f"end_time_{day}_2", ""),
+                (request.form.get(f"available_{day}_2") == "on") or base_flag,
+            )
+            add_window(
+                day,
+                request.form.get(f"start_time_{day}_3", ""),
+                request.form.get(f"end_time_{day}_3", ""),
+                (request.form.get(f"available_{day}_3") == "on") or base_flag,
+            )
 
         db.session.commit()
         flash("Disponibilités mises à jour avec succès!")
         return redirect(url_for("professional_availability"))
 
-    all_avs = ProfessionalAvailability.query.filter_by(professional_id=professional.id).all()
+    all_avs = ProfessionalAvailability.query.filter_by(
+        professional_id=professional.id
+    ).all()
     windows_by_day = {d: [] for d in range(7)}
     for av in all_avs:
         windows_by_day.get(av.day_of_week, []).append(av)
-    availability_dict = {d: (windows_by_day[d][0] if windows_by_day[d] else None) for d in range(7)}
+    availability_dict = {
+        d: (windows_by_day[d][0] if windows_by_day[d] else None) for d in range(7)
+    }
 
-    return render_template("professional_availability.html",
-                           professional=professional,
-                           availabilities=availability_dict,
-                           windows_by_day=windows_by_day)
+    return render_template(
+        "professional_availability.html",
+        professional=professional,
+        availabilities=availability_dict,
+        windows_by_day=windows_by_day,
+    )
+
 
 @app.route("/professional/unavailable-slots", methods=["GET","POST"], endpoint="professional_unavailable_slots")
 @login_required
