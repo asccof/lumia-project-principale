@@ -2198,6 +2198,55 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return render_or_text("errors/500.html", "500 — Erreur serveur"), 500
+# ====== PLACEHOLDERS SÛRS (à coller en bas de app.py) ======
+from flask import Blueprint
+
+# -- Bureau virtuel (blueprint minimal) --
+pro_office_bp = Blueprint("pro_office", __name__, url_prefix="/pro-office", template_folder="templates")
+
+@pro_office_bp.route("/")
+@login_required
+def index():
+    if current_user.user_type != "professional":
+        flash("Accès réservé aux professionnels.", "warning")
+        return redirect(url_for("index"))
+    # Page basique en attendant les modules (dossiers, messagerie, etc.)
+    return render_template("office/index.html")
+
+app.register_blueprint(pro_office_bp)
+
+# -- Liens rapides : pages génériques "à venir" --
+@app.route("/messages", endpoint="messages_index")
+@login_required
+def messages_index():
+    return render_template("coming_soon.html",
+                           title="Messages",
+                           lead="Messagerie sécurisée patient ↔ pro",
+                           text="Cette fonctionnalité arrive très bientôt (texte, fichiers, audio, notifications e-mail).")
+
+@app.route("/pro/patients", endpoint="pro_list_patients")
+@login_required
+def pro_list_patients():
+    return render_template("coming_soon.html",
+                           title="Mes patients",
+                           lead="Dossiers patients unifiés",
+                           text="Liste/fiche patient, historique de séances, documents, exports PDF sécurisés.")
+
+@app.route("/pro/avis", endpoint="professional_reviews")
+@login_required
+def professional_reviews():
+    return render_template("coming_soon.html",
+                           title="Avis & témoignages",
+                           lead="Collecte et modération",
+                           text="Notes & retours affichés sur votre profil une fois validés.")
+
+@app.route("/pro/bibliotheque", endpoint="pro_exercise_library")
+@login_required
+def pro_exercise_library():
+    return render_template("coming_soon.html",
+                           title="Ma bibliothèque",
+                           lead="Exercices, techniques, protocoles",
+                           text="Création/partage (privé/patients/invitations/public), suivi de progression.")
 
 # =========================
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
