@@ -111,7 +111,9 @@ def ensure_professional_row_for_user(user: User) -> Professional|None:
         created_at=datetime.utcnow(),
     )
     db.session.add(pro)
-    db.session.commit()
+   def ensure_professional_row_for_user(_user) -> bool:
+    # IMPORTANT : plus aucune auto-création ici
+    return False
     return pro
 
 # =========================
@@ -1947,8 +1949,12 @@ def professional_dashboard():
     if current_user.user_type != "professional":
         flash("Accès non autorisé")
         return redirect(url_for("index"))
-    professional = (Professional.query.filter_by(name=current_user.username).first()
-                    or ensure_professional_row_for_user(current_user))
+    pro = Professional.query.filter_by(user_id=current_user.id).first()
+if not pro and getattr(current_user, "professional_id", None):
+    pro = Professional.query.get(current_user.professional_id)
+if not pro:
+    return redirect(url_for("professional_register"))
+
     if not professional:
         flash("Profil professionnel non trouvé")
         return redirect(url_for("index"))
