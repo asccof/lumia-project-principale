@@ -291,20 +291,7 @@ class TherapySession(db.Model):
 
     def __repr__(self):
         return f"<TherapySession id={self.id} p={self.patient_id} pro={self.professional_id} start={self.start_at}>"
-        db.session.execute(text("""
-            ALTER TABLE therapy_sessions
-            ADD COLUMN IF NOT EXISTS start_at TIMESTAMP,
-            ADD COLUMN IF NOT EXISTS end_at TIMESTAMP,
-            ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'planifie',
-            ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'cabinet',
-            ADD COLUMN IF NOT EXISTS meet_url TEXT,
-            ADD COLUMN IF NOT EXISTS appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL
-        """))
-        -- Index utiles
-        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_start ON therapy_sessions (start_at)"))
-        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_status ON therapy_sessions (status)"))
-
-
+       
 # ======================
 # Antécédents médicaux / historiques
 # ======================
@@ -336,15 +323,7 @@ class MedicalHistory(db.Model):
     )
 
     def __repr__(self):
-        return f"<MedicalHistory id={self.id} patient={self.patient_id} pro={self.professional_id}>"
-        db.session.execute(text("""
-            ALTER TABLE medical_histories
-            ADD COLUMN IF NOT EXISTS summary TEXT,
-            ADD COLUMN IF NOT EXISTS custom_fields TEXT
-        """))
-
-
-
+        
 # ======================
 # Rendez-vous & disponibilité
 # ======================
@@ -439,3 +418,277 @@ class SessionNote(db.Model):
 
     def __repr__(self):
         return f"<SessionNote id={self.id} session={self.session_id} pro={self.professional_id}>"
+# ======================
+# Fichiers partagés / pièces jointes
+# ======================
+class FileAttachment(db.Model):
+    __tablename__ = "file_attachments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    file_url = db.Column(db.Text, nullable=False)        # ex: /u/attachments/<name>
+    file_name = db.Column(db.String(255))
+    content_type = db.Column(db.String(120))
+    size_bytes = db.Column(db.Integer)
+
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    owner_user = db.relationship("User", foreign_keys=[owner_user_id], lazy="joined")
+    patient = db.relationship("User", foreign_keys=[patient_id], lazy="joined")
+
+
+# ======================
+# Messages (liés à MessageThread)
+# ======================
+class Message(db.Model):
+    __tablename__ = "messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    thread_id = db.Column(db.Integer, db.ForeignKey("message_threads.id", ondelete="CASCADE"), nullable=False)
+    sender_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    body = db.Column(db.Text)
+    attachment_id = db.Column(db.Integer, db.ForeignKey("file_attachments.id", ondelete="SET NULL"))
+    audio_url = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    thread = db.relationship("MessageThread", lazy="joined", foreign_keys=[thread_id])
+    sender = db.relationship("User", lazy="joined", foreign_keys=[sender_id])
+    attachment = db.relationship("FileAttachment", lazy="joined", foreign_keys=[attachment_id])
+
+    __table_args__ = (
+        db.Index("ix_messages_thread", "thread_id"),
+        db.Index("ix_messages_sender", "sender_id"),
+        db.Index("ix_messages_created", "created_at"),
+    )
+
+
+# ======================
+# Bibliothèque d’exercices
+# ======================
+class Exercise(db.Model):
+    __tablename__ = "exercises"
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
+
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    family = db.Column(db.String(120))
+    type = db.Column(db.String(60), default="exercice")
+    technique = db.Column(db.String(120))
+
+    content_format = db.Column(db.String(30), default="texte")  # 'texte', 'pdf', 'audio', 'video'
+    text_content = db.Column(db.Text)
+    file_url = db.Column(db.Text)
+
+    visibility = db.Column(db.String(30), default="private")    # 'private' | 'my_patients' | 'public'
+    is_approved = db.Column(db.Boolean, default=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    owner = db.relationship("User", lazy="joined", foreign_keys=[owner_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+
+    __table_args__ = (
+        db.Index("ix_exercises_visibility", "visibility"),
+        db.Index("ix_exercises_created", "created_at"),
+    )
+
+
+class ExerciseAssignment(db.Model):
+    __tablename__ = "exercise_assignments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    exercise_id = db.Column(db.Integer, db.ForeignKey("exercises.id", ondelete="CASCADE"), nullable=False)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
+
+    status = db.Column(db.String(20), default="assigned")    # assigned | done | cancelled
+    due_date = db.Column(db.Date)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    exercise = db.relationship("Exercise", lazy="joined", foreign_keys=[exercise_id])
+    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+
+    __table_args__ = (
+        db.Index("ix_ex_assign_patient", "patient_id"),
+        db.Index("ix_ex_assign_professional", "professional_id"),
+        db.Index("ix_ex_assign_status", "status"),
+    )
+
+
+# ======================
+# Facturation & paiements
+# ======================
+class Invoice(db.Model):
+    __tablename__ = "invoices"
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
+
+    amount = db.Column(db.Float, nullable=False)
+    description = db.Column(db.Text)
+
+    status = db.Column(db.String(20), default="issued")     # issued | paid | cancelled
+    issued_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+
+    __table_args__ = (
+        db.Index("ix_invoices_professional", "professional_id"),
+        db.Index("ix_invoices_status", "status"),
+        db.Index("ix_invoices_issued", "issued_at"),
+    )
+
+
+class Payment(db.Model):
+    __tablename__ = "payments"
+
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False)
+    method = db.Column(db.String(30), default="cash")      # cash | card | transfer
+    amount = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(20), default="succeeded") # succeeded | failed | pending
+    paid_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    invoice = db.relationship("Invoice", lazy="joined", foreign_keys=[invoice_id])
+
+    __table_args__ = (
+        db.Index("ix_payments_invoice", "invoice_id"),
+        db.Index("ix_payments_status", "status"),
+        db.Index("ix_payments_paid_at", "paid_at"),
+    )
+
+
+# ======================
+# Support & guides
+# ======================
+class SupportTicket(db.Model):
+    __tablename__ = "support_tickets"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
+
+    subject = db.Column(db.String(200), nullable=False)
+    body = db.Column(db.Text)
+
+    status = db.Column(db.String(20), default="open")   # open | closed
+    priority = db.Column(db.String(20), default="normal")
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User", lazy="joined", foreign_keys=[user_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+
+    __table_args__ = (
+        db.Index("ix_tickets_professional", "professional_id"),
+        db.Index("ix_tickets_status", "status"),
+        db.Index("ix_tickets_created", "created_at"),
+    )
+
+
+class Guide(db.Model):
+    __tablename__ = "guides"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    body = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# ======================
+# Consentements & journaux patients
+# ======================
+class ConsentLog(db.Model):
+    __tablename__ = "consent_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    policy_key = db.Column(db.String(60), nullable=False)
+    version = db.Column(db.String(20), default="v1")
+    accepted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User", lazy="joined", foreign_keys=[user_id])
+
+    __table_args__ = (
+        db.Index("ix_consent_user", "user_id"),
+        db.Index("ix_consent_policy", "policy_key"),
+        db.Index("ix_consent_accepted", "accepted_at"),
+    )
+
+
+class PersonalJournalEntry(db.Model):
+    __tablename__ = "personal_journal_entries"
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    title = db.Column(db.String(200))
+    content = db.Column(db.Text)
+    emotion = db.Column(db.String(60))
+    is_shared_with_pro = db.Column(db.Boolean, default=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
+
+    __table_args__ = (
+        db.Index("ix_pje_patient", "patient_id"),
+        db.Index("ix_pje_created", "created_at"),
+    )
+
+
+class TherapyNotebookEntry(db.Model):
+    __tablename__ = "therapy_notebook_entries"
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
+    author_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+
+    entry_type = db.Column(db.String(30), default="note")   # note | homework | ...
+    title = db.Column(db.String(200))
+    content = db.Column(db.Text)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    patient = db.relationship("User", foreign_keys=[patient_id], lazy="joined")
+    professional = db.relationship("Professional", foreign_keys=[professional_id], lazy="joined")
+    author = db.relationship("User", foreign_keys=[author_id], lazy="joined")
+
+    __table_args__ = (
+        db.Index("ix_tne_patient", "patient_id"),
+        db.Index("ix_tne_professional", "professional_id"),
+        db.Index("ix_tne_created", "created_at"),
+    )
+
+
+class ProfessionalReview(db.Model):
+    __tablename__ = "professional_reviews"
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="CASCADE"), nullable=False)
+
+    rating = db.Column(db.Integer, nullable=False)      # 1..5
+    comment = db.Column(db.Text)
+    is_public = db.Column(db.Boolean, default=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+
+    __table_args__ = (
+        db.Index("ix_reviews_professional", "professional_id"),
+        db.Index("ix_reviews_patient", "patient_id"),
+        db.Index("ix_reviews_created", "created_at"),
+    )
