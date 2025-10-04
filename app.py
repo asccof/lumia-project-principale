@@ -1804,14 +1804,43 @@ def api_available_slots(professional_id: int):
 # =========================
 #   BUREAU VIRTUEL — PRO
 # =========================
+from flask import abort, render_template
+from flask_login import login_required, current_user
+from models import Professional   # assure-toi que c'est bien importé plus haut
+
+# --- Bureau virtuel pro: page d'accueil ---
+@app.route("/pro-office/", methods=["GET"], endpoint="pro_office_index")
+@login_required
+def pro_office_index():
+    # Restreindre l'accès aux comptes 'professional'
+    if getattr(current_user, "user_type", None) != "professional":
+        abort(403)
+
+    return render_template("pro_office/index.html")
 
 # --- Aide : obtenir l'objet Professional du current_user
-def _current_professional_or_403() -> Professional:
-    if not current_user.is_authenticated or current_user.user_type != "professional":
+def _current_professional_or_403():
+    """
+    Retourne l'objet Professional correspondant à l'utilisateur connecté.
+    On essaie d'abord par full_name puis par username (selon comment tes fiches pro sont remplies).
+    """
+    if not getattr(current_user, "is_authenticated", False) or getattr(current_user, "user_type", None) != "professional":
         abort(403)
-    pro = Professional.query.filter_by(name=current_user.username).first()
+
+    # Tente de faire correspondre le pro soit au full_name, soit au username
+    pro = (
+        Professional.query
+        .filter(
+            (Professional.name == (current_user.full_name or "")) |
+            (Professional.name == (current_user.username or ""))
+        )
+        .first()
+    )
+
     if not pro:
+        # Aucun professionnel trouvé pour ce compte
         abort(403)
+
     return pro
 
 @app.route("/pro/desk", endpoint="pro_desk")
