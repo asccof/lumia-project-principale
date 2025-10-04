@@ -1500,6 +1500,68 @@ def professional_appointments():
         status=status,
         scope=scope
     )
+# ====== Entrée "Dossier patient" (alias smart) ======
+@app.route("/pro/patient", methods=["GET"], endpoint="pro_patient_entry")
+@login_required
+def pro_patient_entry():
+    if current_user.user_type != "professional":
+        flash("Accès réservé aux professionnels.", "warning")
+        return redirect(url_for("index"))
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "danger")
+        return redirect(url_for("professional_dashboard"))
+
+    patient_id = request.args.get("id", type=int) or request.args.get("patient_id", type=int)
+    q = (request.args.get("q") or "").strip()
+
+    # 1) Accès direct par id
+    if patient_id:
+        # Sécurité: vérifier qu'il y a un lien (au moins un RDV) entre ce patient et ce pro
+        link = (
+            db.session.query(Appointment.id)
+            .filter(Appointment.professional_id == pro.id, Appointment.patient_id == patient_id)
+            .first()
+        )
+        if link:
+            return redirect(url_for("pro_patient_detail", patient_id=patient_id))
+        else:
+            flash("Ce patient n'est pas lié à vos rendez-vous.", "warning")
+            return redirect(url_for("pro_list_patients"))
+
+    # 2) Recherche par q
+    if q:
+        like = f"%{q}%"
+        # Limiter aux patients ayant un RDV avec ce pro
+        subq = (
+            db.session.query(Appointment.patient_id.label("pid"))
+            .filter(Appointment.professional_id == pro.id)
+            .group_by(Appointment.patient_id)
+            .subquery()
+        )
+        matches = (
+            db.session.query(User.id)
+            .join(subq, subq.c.pid == User.id)
+            .filter(
+                db.or_(
+                    User.username.ilike(like),
+                    User.full_name.ilike(like),
+                    User.email.ilike(like),
+                    User.phone.ilike(like),
+                )
+            )
+            .order_by(User.id.desc())
+            .all()
+        )
+        ids = [m.id for m in matches]
+        if len(ids) == 1:
+            return redirect(url_for("pro_patient_detail", patient_id=ids[0]))
+        # 0 ou plusieurs → envoyer vers la liste filtrée
+        return redirect(url_for("pro_list_patients", q=q))
+
+    # 3) Sinon, aller sur la liste
+    return redirect(url_for("pro_list_patients"))
 
 # ===== Actions côté PRO sur un RDV =====
 @app.route("/professional/appointments/<int:appointment_id>/<action>", methods=["POST"], endpoint="professional_appointment_action")
