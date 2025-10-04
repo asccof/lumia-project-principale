@@ -2322,49 +2322,7 @@ def pro_list_patients():
     )
 
 
-@app.route("/pro/patients/<int:patient_id>", methods=["GET"], endpoint="pro_patient_detail")
-@login_required
-def pro_patient_detail(patient_id: int):
-    if current_user.user_type != "professional":
-        flash("Accès réservé aux professionnels.", "warning")
-        return redirect(url_for("index"))
 
-    pro = Professional.query.filter_by(name=current_user.username).first()
-    if not pro:
-        flash("Profil professionnel non trouvé", "danger")
-        return redirect(url_for("professional_dashboard"))
-
-    patient = User.query.get_or_404(patient_id)
-
-    # Sécurité : le patient doit avoir AU MOINS un RDV (même passé) avec ce pro
-    has_link = (
-        db.session.query(Appointment.id)
-        .filter(Appointment.professional_id == pro.id, Appointment.patient_id == patient.id)
-        .first()
-    )
-    if not has_link:
-        abort(404)
-
-    appts = (
-        Appointment.query
-        .filter_by(professional_id=pro.id, patient_id=patient.id)
-        .order_by(Appointment.appointment_date.desc())
-        .all()
-    )
-
-    # Statistiques rapides
-    total_rdv = len(appts)
-    total_conf = sum(1 for a in appts if a.status == "confirme")
-    last_date = appts[0].appointment_date if appts else None
-
-    return render_template(
-        "pro_patient_detail.html",
-        patient=patient,
-        appts=appts,
-        total_rdv=total_rdv,
-        total_conf=total_conf,
-        last_date=last_date,
-    )
 
 # =========================
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
