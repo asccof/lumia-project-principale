@@ -71,48 +71,50 @@
       </div>
     </section>
 
-    <!-- Mes Photos (aperçu) -->
-    <section class="card">
-      <h3>Mes Photos</h3>
-      <p>Photo principale et 2 photos secondaires (aperçu). Le téléversement se fait depuis “Mon Profil”.</p>
-      {% set u1 = professional_photo_url(professional, 1) %}
-      {% set u2 = professional_photo_url(professional, 2) %}
-      {% set u3 = professional_photo_url(professional, 3) %}
+   <!-- Mes Photos (aperçu + actions d'upload) -->
+<section class="card">
+  <h3>Mes Photos</h3>
+  <p>Photo principale et 2 photos secondaires (aperçu + téléversement direct).</p>
+  {% set u1 = professional_photo_url(professional, 1) %}
+  {% set u2 = professional_photo_url(professional, 2) %}
+  {% set u3 = professional_photo_url(professional, 3) %}
 
-      <div class="thumbs" aria-label="Aperçu photos">
-        <div>
-          <div class="thumb">
-            <img src="{{ u1 }}" alt="Photo principale"
-                 onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
-          </div>
-          <div class="thumb-label">Principale</div>
-        </div>
-        <div>
-          <div class="thumb">
-            {% if u2 %}
-              <img src="{{ u2 }}" alt="Photo #2" onerror="this.style.display='none'">
-            {% else %}
-              <img src="https://placehold.co/300x300?text=Aucune" alt="Aucune photo #2">
-            {% endif %}
-          </div>
-          <div class="thumb-label">#2</div>
-        </div>
-        <div>
-          <div class="thumb">
-            {% if u3 %}
-              <img src="{{ u3 }}" alt="Photo #3" onerror="this.style.display='none'">
-            {% else %}
-              <img src="https://placehold.co/300x300?text=Aucune" alt="Aucune photo #3">
-            {% endif %}
-          </div>
-          <div class="thumb-label">#3</div>
-        </div>
+  <div class="thumbs" aria-label="Aperçu photos">
+    <div>
+      <div class="thumb">
+        <img src="{{ u1 }}" alt="Photo principale"
+             onerror="this.onerror=null;this.src='https://placehold.co/300x300?text=Photo';">
       </div>
+      <div class="thumb-label">Principale</div>
+    </div>
+    <div>
+      <div class="thumb">
+        {% if u2 %}
+          <img src="{{ u2 }}" alt="Photo #2" onerror="this.style.display='none'">
+        {% else %}
+          <img src="https://placehold.co/300x300?text=Aucune" alt="Aucune photo #2">
+        {% endif %}
+      </div>
+      <div class="thumb-label">#2</div>
+    </div>
+    <div>
+      <div class="thumb">
+        {% if u3 %}
+          <img src="{{ u3 }}" alt="Photo #3" onerror="this.style.display='none'">
+        {% else %}
+          <img src="https://placehold.co/300x300?text=Aucune" alt="Aucune photo #3">
+        {% endif %}
+      </div>
+      <div class="thumb-label">#3</div>
+    </div>
+  </div>
 
-      <div class="actions" style="margin-top:.5rem">
-        <a class="btn-pill btn-outline" href="{{ url_for('professional_edit_profile') }}">Gérer les photos</a>
-      </div>
-    </section>
+  <div class="actions" style="margin-top:.5rem">
+    <a class="btn-pill btn-outline" href="{{ url_for('professional_upload_photo') }}">Changer la principale</a>
+    <a class="btn-pill btn-outline" href="{{ url_for('professional_upload_photo_n', index=2) }}">Téléverser #2</a>
+    <a class="btn-pill btn-outline" href="{{ url_for('professional_upload_photo_n', index=3) }}">Téléverser #3</a>
+  </div>
+</section>
 
     <!-- Bureau virtuel -->
     <section class="card">
