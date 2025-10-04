@@ -2421,7 +2421,7 @@ with app.app_context():
     db.create_all()
     try:
         stmts = [
-            # colonnes additionnelles (idempotent) — pro
+            # --- professionals : colonnes additionnelles (idempotent)
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS address VARCHAR(255);",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;",
@@ -2437,58 +2437,53 @@ with app.app_context():
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS featured_rank INTEGER;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS certified_tighri BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS approved_anthecc BOOLEAN DEFAULT FALSE;",
-        # patient_profiles : ajouter colonnes manquantes si absentes
-        db.session.execute(text("""
-            ALTER TABLE patient_profiles
-            ADD COLUMN IF NOT EXISTS first_name VARCHAR(120),
-            ADD COLUMN IF NOT EXISTS last_name VARCHAR(120),
-            ADD COLUMN IF NOT EXISTS birth_date DATE,
-            ADD COLUMN IF NOT EXISTS language VARCHAR(10),
-            ADD COLUMN IF NOT EXISTS preferred_contact VARCHAR(30),
-            ADD COLUMN IF NOT EXISTS notes_public TEXT,
-            ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(255),
-            ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()
-        """))
-        db.session.execute(text("""
-            ALTER TABLE therapy_sessions
-            ADD COLUMN IF NOT EXISTS start_at TIMESTAMP,
-            ADD COLUMN IF NOT EXISTS end_at TIMESTAMP,
-            ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'planifie',
-            ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'cabinet',
-            ADD COLUMN IF NOT EXISTS meet_url TEXT,
-            ADD COLUMN IF NOT EXISTS appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL
-        """))
-        -- Index utiles
-        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_start ON therapy_sessions (start_at)"))
-        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_status ON therapy_sessions (status)"))
-        db.session.execute(text("""
-            ALTER TABLE medical_histories
-            ADD COLUMN IF NOT EXISTS summary TEXT,
-            ADD COLUMN IF NOT EXISTS custom_fields TEXT
-        """))
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER REFERENCES cities(id) ON DELETE SET NULL;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER REFERENCES specialties(id) ON DELETE SET NULL;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
+            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
 
-            # users
+            # --- users : colonnes OAuth / reset / profil
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_provider VARCHAR(30);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS oauth_sub VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS picture_url TEXT;",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(120);",
-            "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_hash VARCHAR(255);",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMP;",
 
-            # FK facultatives
-            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS city_id INTEGER REFERENCES cities(id) ON DELETE SET NULL;",
-            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS primary_specialty_id INTEGER REFERENCES specialties(id) ON DELETE SET NULL;",
+            # --- patient_profiles : champs utilisés par l'app
+            "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS first_name VARCHAR(120);",
+            "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS last_name VARCHAR(120);",
+            "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS birth_date DATE;",
+            "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS language VARCHAR(10);",
+            "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS preferred_contact VARCHAR(30);",
+            "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS notes_public TEXT;",
+            "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(255);",
+            "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();",
 
-            # Photos secondaires (legacy compat)
-            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url2 TEXT;",
-            "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS image_url3 TEXT;",
+            # --- therapy_sessions : champs normalisés (utilisés dans app.py)
+            "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS start_at TIMESTAMP;",
+            "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS end_at TIMESTAMP;",
+            "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'planifie';",
+            "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'cabinet';",
+            "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS meet_url TEXT;",
+            "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL;",
+
+            # --- medical_histories : champs réellement utilisés
+            "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS summary TEXT;",
+            "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS custom_fields TEXT;",
         ]
+
+        # Exécuter toutes les ALTER idempotentes
         for sql in stmts:
             db.session.execute(text(sql))
 
-        # Normalisation consultation_fee
+        # Index (idempotents) — à exécuter en dehors de la liste pour plus de clarté
+        db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_start  ON therapy_sessions (start_at);"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_status ON therapy_sessions (status);"))
+
+        # Normalisation consultation_fee (sécurisée)
         try:
             db.session.execute(text("UPDATE professionals SET consultation_fee = 0 WHERE consultation_fee IS NULL;"))
             db.session.execute(text("ALTER TABLE professionals ALTER COLUMN consultation_fee SET DEFAULT 0;"))
@@ -2497,7 +2492,9 @@ with app.app_context():
 
         db.session.commit()
     except Exception as e:
+        db.session.rollback()
         app.logger.warning(f"Mini-migration colonnes: {e}")
+
 
     # --- Taxonomy étendue
     try:
