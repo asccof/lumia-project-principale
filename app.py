@@ -82,34 +82,21 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-# Import des modèles (version étendue)
+# Import modèles — version propre et alignée avec ton models.py actuel
 from models import (
-    db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
+    db,
+    # Utilisateurs / profils / messagerie
+    User, PatientProfile, MessageThread,
+    # Référentiels
     City, Specialty,
-    # Extensions
-    PatientProfile, MedicalHistory, TherapySession, SessionNote,
-    FileAttachment, MessageThread, Message,
-    TherapyNotebookEntry,
-    Exercise, ExerciseAssignment, ExerciseProgress,
-    Invoice, Payment, Tariff, Program,
-    PersonalJournalEntry, ProfessionalReview, ConsentLog, SupportTicket, Guide
+    # Professionnels
+    Professional,
+    # Dossier & séances
+    MedicalHistory, TherapySession, SessionNote,
+    # Rendez-vous & disponibilités
+    Appointment, ProfessionalAvailability, UnavailableSlot,
 )
-from models import (
-    db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
-    City, Specialty,
-    PatientProfile, MessageThread,   # ⬅️ AJOUT
-)
-from models import (
-    db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
-    City, Specialty,
-    PatientProfile, MessageThread,
-    MedicalHistory,   # ⬅️ ajoute ceci
-)
-from models import (
-    db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
-    City, Specialty,
-    PatientProfile, MessageThread, MedicalHistory, TherapySession
-)
+
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
 if not uri:
