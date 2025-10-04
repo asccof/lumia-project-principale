@@ -15,7 +15,8 @@
       <div class="card p-3 h-100">
         <h2 class="h5">Dossiers patients</h2>
         <p class="text-muted">Fiches, historiques, documents, exports PDF.</p>
-        <a href="{{ url_for('pro_list_patients') }}" class="btn btn-primary">Ouvrir</a>
+        <!-- lien smart vers fiche (ou liste filtrée) -->
+        <a href="{{ url_for('pro_patient_entry') }}" class="btn btn-primary">Ouvrir</a>
       </div>
     </div>
 
