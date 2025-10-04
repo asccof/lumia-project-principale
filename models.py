@@ -312,20 +312,20 @@ class MedicalHistory(db.Model):
     __tablename__ = "medical_histories"
 
     id = db.Column(db.Integer, primary_key=True)
-
-    # Liens
     patient_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id', ondelete='SET NULL'))
 
-    # Contenu
-    title = db.Column(db.String(200))     # court résumé (optionnel)
-    details = db.Column(db.Text)          # texte libre (antécédents, traitements, etc.)
+    # Champs legacy
+    title = db.Column(db.String(200))
+    details = db.Column(db.Text)
 
-    # Métadonnées
+    # Champs réellement utilisés dans app.py (/pro/patients/<id>)
+    summary = db.Column(db.Text)
+    custom_fields = db.Column(db.Text)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relations
     patient = db.relationship('User', lazy='joined', foreign_keys=[patient_id])
     professional = db.relationship('Professional', lazy='joined', foreign_keys=[professional_id])
 
@@ -337,6 +337,12 @@ class MedicalHistory(db.Model):
 
     def __repr__(self):
         return f"<MedicalHistory id={self.id} patient={self.patient_id} pro={self.professional_id}>"
+        db.session.execute(text("""
+            ALTER TABLE medical_histories
+            ADD COLUMN IF NOT EXISTS summary TEXT,
+            ADD COLUMN IF NOT EXISTS custom_fields TEXT
+        """))
+
 
 
 # ======================
