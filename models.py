@@ -375,3 +375,38 @@ class UnavailableSlot(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
     professional = db.relationship('Professional', backref=db.backref('unavailable_slots', passive_deletes=True))
+# ======================
+# Notes de séance (rattachées à TherapySession)
+# ======================
+class SessionNote(db.Model):
+    __tablename__ = "session_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Liens
+    session_id = db.Column(db.Integer, db.ForeignKey("therapy_sessions.id", ondelete="CASCADE"), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+
+    # Contenu
+    title = db.Column(db.String(200))           # optionnel
+    content = db.Column(db.Text)                # texte de la note
+
+    # Métadonnées
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relations utiles
+    session = db.relationship("TherapySession", lazy="joined", foreign_keys=[session_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
+
+    __table_args__ = (
+        db.Index("ix_sessionnotes_session", "session_id"),
+        db.Index("ix_sessionnotes_professional", "professional_id"),
+        db.Index("ix_sessionnotes_patient", "patient_id"),
+        db.Index("ix_sessionnotes_created", "created_at"),
+    )
+
+    def __repr__(self):
+        return f"<SessionNote id={self.id} session={self.session_id} pro={self.professional_id}>"
