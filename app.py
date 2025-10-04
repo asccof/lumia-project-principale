@@ -99,6 +99,12 @@ from models import (
     City, Specialty,
     PatientProfile, MessageThread,   # ⬅️ AJOUT
 )
+from models import (
+    db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
+    City, Specialty,
+    PatientProfile, MessageThread,
+    MedicalHistory,   # ⬅️ ajoute ceci
+)
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
 if not uri:
