@@ -1,4 +1,4 @@
-# models.py — contrat-fix (COMPLET)
+# models.py — version propre (contrat-fix)
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from datetime import datetime, date
@@ -8,36 +8,6 @@ db = SQLAlchemy()
 # ======================
 # Utilisateurs
 # ======================
-class MedicalHistory(db.Model):
-    __tablename__ = "medical_histories"
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    # Liens
-    patient_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id', ondelete='SET NULL'))
-
-    # Contenu
-    title = db.Column(db.String(200))            # court résumé (optionnel)
-    details = db.Column(db.Text)                 # texte libre (antécédents, traitements, etc.)
-
-    # Métadonnées
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relations (lazy=joined utile pour listes)
-    patient = db.relationship('User', lazy='joined', foreign_keys=[patient_id])
-    professional = db.relationship('Professional', lazy='joined', foreign_keys=[professional_id])
-
-    __table_args__ = (
-        db.Index("ix_mh_patient", "patient_id"),
-        db.Index("ix_mh_professional", "professional_id"),
-        db.Index("ix_mh_created", "created_at"),
-    )
-
-    def __repr__(self):
-        return f"<MedicalHistory id={self.id} patient={self.patient_id} pro={self.professional_id}>"
-
 class User(UserMixin, db.Model):
     __tablename__ = "users"
 
@@ -69,90 +39,7 @@ class User(UserMixin, db.Model):
 
     def get_id(self): return str(self.id)
     def __repr__(self): return f"<User id={self.id} {self.username} type={self.user_type} admin={self.is_admin}>"
-# ======================
-# Dossier patient (profil)
-# ======================
-class PatientProfile(db.Model):
-    __tablename__ = "patient_profiles"
 
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-
-    # Champs vus dans les logs
-    first_name = db.Column(db.String(120))
-    last_name = db.Column(db.String(120))
-    birth_date = db.Column(db.Date)
-    language = db.Column(db.String(10))             # ex: 'fr', 'ar', 'en'
-    preferred_contact = db.Column(db.String(20))     # ex: 'email', 'phone', 'whatsapp'
-    notes_public = db.Column(db.Text)
-    emergency_contact = db.Column(db.String(200))
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    user = db.relationship("User", backref=db.backref("patient_profile", uselist=False, passive_deletes=True), lazy="joined")
-
-    __table_args__ = (
-        db.Index("ix_patient_profiles_user", "user_id"),
-        db.Index("ix_patient_profiles_last_first", "last_name", "first_name"),
-        db.Index("ix_patient_profiles_created", "created_at"),
-    )
-
-    def __repr__(self):
-        return f"<PatientProfile id={self.id} user={self.user_id} {self.last_name or ''} {self.first_name or ''}>"
-# ======================
-# Messagerie: fils de discussion
-# ======================
-class MessageThread(db.Model):
-    __tablename__ = "message_threads"
-
-    id = db.Column(db.Integer, primary_key=True)
-    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="CASCADE"), nullable=False)
-
-    is_anonymous = db.Column(db.Boolean, default=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
-    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
-
-    __table_args__ = (
-        db.Index("ix_msgthread_patient", "patient_id"),
-        db.Index("ix_msgthread_professional", "professional_id"),
-        db.Index("ix_msgthread_created", "created_at"),
-    )
-
-    def __repr__(self):
-        return f"<MessageThread id={self.id} p={self.patient_id} pro={self.professional_id}>"
-# ======================
-# Séances (thérapie / coaching)
-# ======================
-class TherapySession(db.Model):
-    __tablename__ = "therapy_sessions"
-
-    id = db.Column(db.Integer, primary_key=True)
-    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
-
-    started_at = db.Column(db.DateTime, nullable=False)          # début de séance
-    ended_at = db.Column(db.DateTime)                             # fin (optionnel)
-    duration_minutes = db.Column(db.Integer)                      # pratique pour les listings
-    notes_private = db.Column(db.Text)                            # notes privées pro
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
-    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
-
-    __table_args__ = (
-        db.Index("ix_ts_patient", "patient_id"),
-        db.Index("ix_ts_professional", "professional_id"),
-        db.Index("ix_ts_started", "started_at"),
-    )
-
-    def __repr__(self):
-        return f"<TherapySession id={self.id} p={self.patient_id} pro={self.professional_id} at={self.started_at}>"
 
 # ======================
 # Référentiels
@@ -168,6 +55,7 @@ class City(db.Model):
 
     def __repr__(self): return f"<City id={self.id} {self.name}>"
 
+
 class Specialty(db.Model):
     __tablename__ = "specialties"
     id = db.Column(db.Integer, primary_key=True)
@@ -180,23 +68,28 @@ class Specialty(db.Model):
         db.Index("ix_specialties_category", "category"),
     )
 
-    # backrefs remplis automatiquement par Professional.specialties / primary_specialty
     def __repr__(self): return f"<Specialty id={self.id} {self.name} cat={self.category or '-'}>"
+
 
 # Pivot Pro <-> Spécialités secondaires
 professional_specialties = db.Table(
     "professional_specialties",
-    db.Column("professional_id",
-              db.Integer,
-              db.ForeignKey("professionals.id", ondelete="CASCADE"),
-              primary_key=True),
-    db.Column("specialty_id",
-              db.Integer,
-              db.ForeignKey("specialties.id", ondelete="CASCADE"),
-              primary_key=True),
+    db.Column(
+        "professional_id",
+        db.Integer,
+        db.ForeignKey("professionals.id", ondelete="CASCADE"),
+        primary_key=True
+    ),
+    db.Column(
+        "specialty_id",
+        db.Integer,
+        db.ForeignKey("specialties.id", ondelete="CASCADE"),
+        primary_key=True
+    ),
     db.Index("ix_prof_spec_professional", "professional_id"),
     db.Index("ix_prof_spec_specialty", "specialty_id"),
 )
+
 
 # ======================
 # Professionnels
@@ -294,61 +187,134 @@ class Professional(db.Model):
         raw = (self.consultation_types or "").strip()
         return [t for t in (raw.split(",") if raw else []) if t]
 
+
 # ======================
-# Dossier patient (profil “patient space”)
+# Dossier patient (profil)
 # ======================
 class PatientProfile(db.Model):
     __tablename__ = "patient_profiles"
 
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
-    # Champs de base utilisés dans les vues
+    # Champs vus dans les logs / nécessaires
     first_name = db.Column(db.String(120))
-    last_name  = db.Column(db.String(120))
-    birth_date = db.Column(db.Date)                     # yyyy-mm-dd
-    language   = db.Column(db.String(10))               # fr | ar | en
-    preferred_contact = db.Column(db.String(30))        # phone | email | sms | whatsapp
-    notes_public = db.Column(db.Text)                   # notes partagées avec le pro (optionnel)
-    emergency_contact = db.Column(db.String(255))       # nom/numéro
+    last_name = db.Column(db.String(120))
+    birth_date = db.Column(db.Date)
+    language = db.Column(db.String(10))             # 'fr', 'ar', 'en'
+    preferred_contact = db.Column(db.String(30))     # 'email', 'phone', 'sms', 'whatsapp'
+    notes_public = db.Column(db.Text)
+    emergency_contact = db.Column(db.String(255))
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    user = db.relationship('User', lazy='joined', backref=db.backref('patient_profile', uselist=False, passive_deletes=True))
+    user = db.relationship(
+        "User",
+        backref=db.backref("patient_profile", uselist=False, passive_deletes=True),
+        lazy="joined"
+    )
 
     __table_args__ = (
         db.Index("ix_patient_profiles_user", "user_id"),
         db.Index("ix_patient_profiles_last_first", "last_name", "first_name"),
+        db.Index("ix_patient_profiles_created", "created_at"),
     )
 
     def __repr__(self):
-        return f"<PatientProfile id={self.id} user={self.user_id} {self.last_name or ''}/{self.first_name or ''}>"
+        return f"<PatientProfile id={self.id} user={self.user_id} {self.last_name or ''} {self.first_name or ''}>"
+
 
 # ======================
-# Messagerie (threads minimalistes)
+# Messagerie: fils de discussion
 # ======================
 class MessageThread(db.Model):
     __tablename__ = "message_threads"
 
     id = db.Column(db.Integer, primary_key=True)
-    patient_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id', ondelete='CASCADE'), nullable=False)
-    is_anonymous = db.Column(db.Boolean, default=False)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="CASCADE"), nullable=False)
 
+    is_anonymous = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    patient = db.relationship('User', lazy='joined', foreign_keys=[patient_id])
-    professional = db.relationship('Professional', lazy='joined', foreign_keys=[professional_id])
+    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
 
     __table_args__ = (
-        db.Index("ix_threads_pro", "professional_id"),
         db.Index("ix_threads_patient", "patient_id"),
+        db.Index("ix_threads_pro", "professional_id"),
         db.UniqueConstraint("patient_id", "professional_id", name="uq_thread_patient_pro"),
     )
 
     def __repr__(self):
-        return f"<Thread id={self.id} patient={self.patient_id} pro={self.professional_id}>"
+        return f"<MessageThread id={self.id} p={self.patient_id} pro={self.professional_id}>"
+
+
+# ======================
+# Séances (thérapie / coaching)
+# ======================
+class TherapySession(db.Model):
+    __tablename__ = "therapy_sessions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
+
+    started_at = db.Column(db.DateTime, nullable=False)     # début de séance
+    ended_at = db.Column(db.DateTime)                        # fin (optionnel)
+    duration_minutes = db.Column(db.Integer)                 # pratique pour les listings
+    notes_private = db.Column(db.Text)                       # notes privées pro
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+
+    __table_args__ = (
+        db.Index("ix_ts_patient", "patient_id"),
+        db.Index("ix_ts_professional", "professional_id"),
+        db.Index("ix_ts_started", "started_at"),
+    )
+
+    def __repr__(self):
+        return f"<TherapySession id={self.id} p={self.patient_id} pro={self.professional_id} at={self.started_at}>"
+
+
+# ======================
+# Antécédents médicaux / historiques
+# ======================
+class MedicalHistory(db.Model):
+    __tablename__ = "medical_histories"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Liens
+    patient_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey('professionals.id', ondelete='SET NULL'))
+
+    # Contenu
+    title = db.Column(db.String(200))     # court résumé (optionnel)
+    details = db.Column(db.Text)          # texte libre (antécédents, traitements, etc.)
+
+    # Métadonnées
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relations
+    patient = db.relationship('User', lazy='joined', foreign_keys=[patient_id])
+    professional = db.relationship('Professional', lazy='joined', foreign_keys=[professional_id])
+
+    __table_args__ = (
+        db.Index("ix_mh_patient", "patient_id"),
+        db.Index("ix_mh_professional", "professional_id"),
+        db.Index("ix_mh_created", "created_at"),
+    )
+
+    def __repr__(self):
+        return f"<MedicalHistory id={self.id} patient={self.patient_id} pro={self.professional_id}>"
+
 
 # ======================
 # Rendez-vous & disponibilité
@@ -384,6 +350,7 @@ class Appointment(db.Model):
     def __repr__(self):
         return f"<Appt id={self.id} pro={self.professional_id} patient={self.patient_id} at={self.appointment_date} status={self.status}>"
 
+
 class ProfessionalAvailability(db.Model):
     __tablename__ = "professional_availabilities"
     id = db.Column(db.Integer, primary_key=True)
@@ -395,6 +362,7 @@ class ProfessionalAvailability(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
 
     professional = db.relationship('Professional', backref=db.backref('availabilities', passive_deletes=True))
+
 
 class UnavailableSlot(db.Model):
     __tablename__ = "unavailable_slots"
