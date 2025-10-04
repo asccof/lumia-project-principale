@@ -105,6 +105,11 @@ from models import (
     PatientProfile, MessageThread,
     MedicalHistory,   # ⬅️ ajoute ceci
 )
+from models import (
+    db, User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
+    City, Specialty,
+    PatientProfile, MessageThread, MedicalHistory, TherapySession
+)
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
 if not uri:
