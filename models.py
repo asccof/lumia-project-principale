@@ -69,6 +69,90 @@ class User(UserMixin, db.Model):
 
     def get_id(self): return str(self.id)
     def __repr__(self): return f"<User id={self.id} {self.username} type={self.user_type} admin={self.is_admin}>"
+# ======================
+# Dossier patient (profil)
+# ======================
+class PatientProfile(db.Model):
+    __tablename__ = "patient_profiles"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    # Champs vus dans les logs
+    first_name = db.Column(db.String(120))
+    last_name = db.Column(db.String(120))
+    birth_date = db.Column(db.Date)
+    language = db.Column(db.String(10))             # ex: 'fr', 'ar', 'en'
+    preferred_contact = db.Column(db.String(20))     # ex: 'email', 'phone', 'whatsapp'
+    notes_public = db.Column(db.Text)
+    emergency_contact = db.Column(db.String(200))
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship("User", backref=db.backref("patient_profile", uselist=False, passive_deletes=True), lazy="joined")
+
+    __table_args__ = (
+        db.Index("ix_patient_profiles_user", "user_id"),
+        db.Index("ix_patient_profiles_last_first", "last_name", "first_name"),
+        db.Index("ix_patient_profiles_created", "created_at"),
+    )
+
+    def __repr__(self):
+        return f"<PatientProfile id={self.id} user={self.user_id} {self.last_name or ''} {self.first_name or ''}>"
+# ======================
+# Messagerie: fils de discussion
+# ======================
+class MessageThread(db.Model):
+    __tablename__ = "message_threads"
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="CASCADE"), nullable=False)
+
+    is_anonymous = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+
+    __table_args__ = (
+        db.Index("ix_msgthread_patient", "patient_id"),
+        db.Index("ix_msgthread_professional", "professional_id"),
+        db.Index("ix_msgthread_created", "created_at"),
+    )
+
+    def __repr__(self):
+        return f"<MessageThread id={self.id} p={self.patient_id} pro={self.professional_id}>"
+# ======================
+# Séances (thérapie / coaching)
+# ======================
+class TherapySession(db.Model):
+    __tablename__ = "therapy_sessions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
+
+    started_at = db.Column(db.DateTime, nullable=False)          # début de séance
+    ended_at = db.Column(db.DateTime)                             # fin (optionnel)
+    duration_minutes = db.Column(db.Integer)                      # pratique pour les listings
+    notes_private = db.Column(db.Text)                            # notes privées pro
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+
+    __table_args__ = (
+        db.Index("ix_ts_patient", "patient_id"),
+        db.Index("ix_ts_professional", "professional_id"),
+        db.Index("ix_ts_started", "started_at"),
+    )
+
+    def __repr__(self):
+        return f"<TherapySession id={self.id} p={self.patient_id} pro={self.professional_id} at={self.started_at}>"
 
 # ======================
 # Référentiels
