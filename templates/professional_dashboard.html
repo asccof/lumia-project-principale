@@ -71,10 +71,10 @@
       </div>
     </section>
 
-    <!-- Mes Photos (principal + secondaires) -->
+    <!-- Mes Photos (aperçu) -->
     <section class="card">
       <h3>Mes Photos</h3>
-      <p>Photo principale et 2 photos secondaires (aperçu + raccourcis d’upload).</p>
+      <p>Photo principale et 2 photos secondaires (aperçu). Le téléversement se fait depuis “Mon Profil”.</p>
       {% set u1 = professional_photo_url(professional, 1) %}
       {% set u2 = professional_photo_url(professional, 2) %}
       {% set u3 = professional_photo_url(professional, 3) %}
@@ -110,9 +110,7 @@
       </div>
 
       <div class="actions" style="margin-top:.5rem">
-        <a class="btn-pill btn-outline" href="{{ url_for('professional_upload_photo') }}">Changer la principale</a>
-        <a class="btn-pill btn-outline" href="{{ url_for('professional_upload_photo_n', index=2) }}">Téléverser #2</a>
-        <a class="btn-pill btn-outline" href="{{ url_for('professional_upload_photo_n', index=3) }}">Téléverser #3</a>
+        <a class="btn-pill btn-outline" href="{{ url_for('professional_edit_profile') }}">Gérer les photos</a>
       </div>
     </section>
 
@@ -121,7 +119,7 @@
       <h3>Bureau virtuel</h3>
       <p>Accédez aux dossiers patients, messagerie, exercices & visio.</p>
       <div class="actions">
-        <a class="btn btn-solid" href="{{ url_for('pro_office_index') }}">Ouvrir le bureau</a>
+        <a class="btn-pill btn-solid" href="{{ url_for('pro_office_index') }}">Ouvrir le bureau</a>
       </div>
     </section>
 
@@ -130,10 +128,9 @@
       <h3>Outils</h3>
       <p>Accès rapide à vos fonctions quotidiennes.</p>
       <div class="actions">
-        <a class="btn-pill btn-outline" href="{{ url_for('messages_index') }}">Messages</a>
         <a class="btn-pill btn-outline" href="{{ url_for('pro_list_patients') }}">Mes patients</a>
-        <a class="btn-pill btn-outline" href="{{ url_for('professional_reviews') }}">Avis</a>
-        <a class="btn-pill btn-outline" href="{{ url_for('pro_exercise_library') }}">Ma bibliothèque</a>
+        <a class="btn-pill btn-outline" href="{{ url_for('pro_library') }}">Ma bibliothèque</a>
+        <a class="btn-pill btn-outline" href="{{ url_for('pro_stats') }}">Statistiques</a>
       </div>
     </section>
   </div>
