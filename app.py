@@ -799,6 +799,7 @@ def professional_upload_photo():
             db.session.commit()
             flash("Photo de profil mise à jour avec succès.", "success")
             return redirect(url_for("professional_dashboard"))
+
         except RuntimeError:
             current_app.logger.exception("PIL manquant pour traitement image.")
             flash("Le traitement d'image nécessite Pillow.", "danger")
