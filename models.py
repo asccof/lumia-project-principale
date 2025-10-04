@@ -261,25 +261,48 @@ class TherapySession(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     professional_id = db.Column(db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"))
 
-    started_at = db.Column(db.DateTime, nullable=False)     # début de séance
-    ended_at = db.Column(db.DateTime)                        # fin (optionnel)
-    duration_minutes = db.Column(db.Integer)                 # pratique pour les listings
-    notes_private = db.Column(db.Text)                       # notes privées pro
+    # Champs utilisés par app.py
+    start_at = db.Column(db.DateTime, nullable=True)      # ↔ utilisé partout dans app.py
+    end_at = db.Column(db.DateTime)                       # idem
+    status = db.Column(db.String(20), default="planifie") # 'planifie' | 'termine' | 'annule' (exemple)
+    mode = db.Column(db.String(20), default="cabinet")    # 'cabinet' | 'domicile' | 'en_ligne'
+    meet_url = db.Column(db.Text)                         # lien visio facultatif
+    appointment_id = db.Column(db.Integer, db.ForeignKey("appointments.id", ondelete="SET NULL"))
+
+    # Tes anciens champs (on les garde pour compat)
+    started_at = db.Column(db.DateTime)                   # ancien nom
+    ended_at = db.Column(db.DateTime)
+    duration_minutes = db.Column(db.Integer)
+    notes_private = db.Column(db.Text)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
     professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
+    appointment = db.relationship("Appointment", lazy="joined", foreign_keys=[appointment_id])
 
     __table_args__ = (
         db.Index("ix_ts_patient", "patient_id"),
         db.Index("ix_ts_professional", "professional_id"),
-        db.Index("ix_ts_started", "started_at"),
+        db.Index("ix_ts_start", "start_at"),
+        db.Index("ix_ts_status", "status"),
     )
 
     def __repr__(self):
-        return f"<TherapySession id={self.id} p={self.patient_id} pro={self.professional_id} at={self.started_at}>"
+        return f"<TherapySession id={self.id} p={self.patient_id} pro={self.professional_id} start={self.start_at}>"
+        db.session.execute(text("""
+            ALTER TABLE therapy_sessions
+            ADD COLUMN IF NOT EXISTS start_at TIMESTAMP,
+            ADD COLUMN IF NOT EXISTS end_at TIMESTAMP,
+            ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'planifie',
+            ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'cabinet',
+            ADD COLUMN IF NOT EXISTS meet_url TEXT,
+            ADD COLUMN IF NOT EXISTS appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL
+        """))
+        -- Index utiles
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_start ON therapy_sessions (start_at)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_status ON therapy_sessions (status)"))
 
 
 # ======================
