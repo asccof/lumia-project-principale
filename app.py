@@ -1954,6 +1954,18 @@ def pro_thread(patient_id: int):
     messages = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
     return render_or_text("pro/thread.html", "Messagerie sécurisée",
                           professional=pro, patient=patient, thread=thread, messages=messages)
+@app.route("/messages", endpoint="messages_index")
+@login_required
+def messages_index():
+    # Route "hub" neutre pour satisfaire les templates existants
+    if current_user.user_type == "professional":
+        # Chez les pros, on redirige vers la liste des patients (où partent les threads)
+        return redirect(url_for("pro_patients"))
+    else:
+        # Chez les patients, liste (simple) de leurs fils
+        threads = MessageThread.query.filter_by(patient_id=current_user.id)\
+                                     .order_by(MessageThread.updated_at.desc().nullslast()).all()
+        return render_or_text("patient/messages_index.html", "Messagerie", threads=threads)
 
 # --- Sessions & notes
 @app.route("/pro/sessions", methods=["GET","POST"], endpoint="pro_sessions")
@@ -2425,6 +2437,18 @@ with app.app_context():
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS featured_rank INTEGER;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS certified_tighri BOOLEAN DEFAULT FALSE;",
             "ALTER TABLE professionals ADD COLUMN IF NOT EXISTS approved_anthecc BOOLEAN DEFAULT FALSE;",
+        # patient_profiles : ajouter colonnes manquantes si absentes
+        db.session.execute(text("""
+            ALTER TABLE patient_profiles
+            ADD COLUMN IF NOT EXISTS first_name VARCHAR(120),
+            ADD COLUMN IF NOT EXISTS last_name VARCHAR(120),
+            ADD COLUMN IF NOT EXISTS birth_date DATE,
+            ADD COLUMN IF NOT EXISTS language VARCHAR(10),
+            ADD COLUMN IF NOT EXISTS preferred_contact VARCHAR(30),
+            ADD COLUMN IF NOT EXISTS notes_public TEXT,
+            ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()
+        """))
 
             # users
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);",
