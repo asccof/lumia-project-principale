@@ -2449,6 +2449,23 @@ with app.app_context():
             ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(255),
             ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()
         """))
+        db.session.execute(text("""
+            ALTER TABLE therapy_sessions
+            ADD COLUMN IF NOT EXISTS start_at TIMESTAMP,
+            ADD COLUMN IF NOT EXISTS end_at TIMESTAMP,
+            ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'planifie',
+            ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'cabinet',
+            ADD COLUMN IF NOT EXISTS meet_url TEXT,
+            ADD COLUMN IF NOT EXISTS appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL
+        """))
+        -- Index utiles
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_start ON therapy_sessions (start_at)"))
+        db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_status ON therapy_sessions (status)"))
+        db.session.execute(text("""
+            ALTER TABLE medical_histories
+            ADD COLUMN IF NOT EXISTS summary TEXT,
+            ADD COLUMN IF NOT EXISTS custom_fields TEXT
+        """))
 
             # users
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);",
