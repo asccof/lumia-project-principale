@@ -2469,6 +2469,15 @@ with app.app_context():
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'cabinet';",
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS meet_url TEXT;",
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL;",
+            # --- message_threads : colonnes nécessaires au bureau virtuel
+            "ALTER TABLE message_threads ADD COLUMN IF NOT EXISTS patient_id INTEGER REFERENCES users(id) ON DELETE CASCADE;",
+            "ALTER TABLE message_threads ADD COLUMN IF NOT EXISTS professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE;",
+            "ALTER TABLE message_threads ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN DEFAULT FALSE;",
+            "ALTER TABLE message_threads ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();",
+            "ALTER TABLE message_threads ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;",
+            "CREATE INDEX IF NOT EXISTS ix_threads_pro ON message_threads(professional_id);",
+            "CREATE INDEX IF NOT EXISTS ix_threads_patient ON message_threads(patient_id);",
+
 
             # --- medical_histories : champs réellement utilisés
             "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS summary TEXT;",
