@@ -82,20 +82,19 @@ def _normalize_pg_uri(uri: str) -> str:
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
     return uri
 
-# Import modèles — version propre et alignée avec ton models.py actuel
 from models import (
-    db,
-    # Utilisateurs / profils / messagerie
-    User, PatientProfile, MessageThread,
-    # Référentiels
-    City, Specialty,
-    # Professionnels
-    Professional,
-    # Dossier & séances
-    MedicalHistory, TherapySession, SessionNote,
-    # Rendez-vous & disponibilités
-    Appointment, ProfessionalAvailability, UnavailableSlot,
+    User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
+    MessageThread, Message, FileAttachment,
+    TherapySession, SessionNote,
+    PatientProfile, MedicalHistory,
+    Exercise, ExerciseAssignment,
+    Invoice, Payment,
+    SupportTicket, Guide,
+    ConsentLog,
+    PersonalJournalEntry, TherapyNotebookEntry,
+    Specialty, City
 )
+
 
 
 uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
@@ -2478,6 +2477,11 @@ with app.app_context():
             "CREATE INDEX IF NOT EXISTS ix_threads_pro ON message_threads(professional_id);",
             "CREATE INDEX IF NOT EXISTS ix_threads_patient ON message_threads(patient_id);",
 
+            # Compat rétro pour anciens modèles qui lisent 'started_at'
+
+            "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMP;",
+            # Backfill simple (si la colonne existe mais vide)
+            "UPDATE therapy_sessions SET started_at = start_at WHERE started_at IS NULL AND start_at IS NOT NULL;",
 
             # --- medical_histories : champs réellement utilisés
             "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS summary TEXT;",
