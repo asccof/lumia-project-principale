@@ -489,6 +489,13 @@ class SessionNote(db.Model):
         db.Index("ix_sessionnotes_patient", "patient_id"),
         db.Index("ix_sessionnotes_created", "created_at"),
     )
+    start_at = db.Column(db.DateTime)
+    end_at   = db.Column(db.DateTime)  # <-- c’est bien "end_at" en base
+    started_at = db.Column(db.DateTime)
+    @property
+    def ended_at(self):
+        return self.end_at
+
 
     def __repr__(self):
         return f"<SessionNote id={self.id} session={self.session_id} pro={self.professional_id}>"
@@ -618,7 +625,8 @@ class ExerciseAssignment(db.Model):
         db.Index("ix_ex_assign_professional", "professional_id"),
         db.Index("ix_ex_assign_status", "status"),
     )
-
+    patient_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    patient = db.relationship('User', foreign_keys=[patient_id])
 
 # ======================
 # Facturation & paiements
