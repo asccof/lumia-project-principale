@@ -1,53 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Bureau virtuel — Pro{% endblock %}
-{% block extra_css %}
-<style>
-  :root{--primary:#8B5CF6;--ink:#2d1a47;--bg:#f7f5fa;--card:#fff;--shadow:0 2px 12px rgba(139,92,246,.12);--radius:16px}
-  .wrap{max-width:1100px;margin:2rem auto;padding:0 1rem}
-  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:1rem;margin-bottom:1rem}
-  .grid{display:grid;grid-template-columns:1fr;gap:1rem}
-  @media(min-width:900px){.grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-  .btn{display:inline-block;padding:.7rem 1rem;border-radius:999px;background:var(--primary);color:#fff;text-decoration:none;font-weight:700}
-</style>
-{% endblock %}
+{% block title %}Pro Office{% endblock %}
 {% block content %}
-<div class="wrap">
-  <div class="card">
-    <h1 style="color:var(--primary);margin:.25rem 0">Bureau virtuel</h1>
-    <p style="color:#4B3869;margin:0">Accédez aux dossiers patients, messagerie, séances, factures.</p>
+  <h1>Pro Office</h1>
+  <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+    <a class="btn" href="{{ url_for('pro_patients') }}">Patients</a>
+    <a class="btn" href="{{ url_for('pro_stats') }}">Statistiques</a>
+    <a class="btn" href="{{ url_for('pro_library') }}">Bibliothèque</a>
   </div>
-
-  <div class="grid">
-    <div class="card">
-      <h3>Mes patients</h3>
-      <p>Liste des patients liés à vos RDV/sessions/threads.</p>
-      <a class="btn" href="{{ url_for('pro_patients') }}">Ouvrir</a>
-    </div>
-    <div class="card">
-      <h3>Messagerie</h3>
-      <p>Échanges sécurisés avec vos patients.</p>
-      <a class="btn" href="{{ url_for('messages_index') }}">Ouvrir</a>
-    </div>
-    <div class="card">
-      <h3>Bibliothèque</h3>
-      <p>Créer et partager des exercices.</p>
-      <a class="btn" href="{{ url_for('pro_library') }}">Ouvrir</a>
-    </div>
-    <div class="card">
-      <h3>Séances</h3>
-      <p>Planifier et noter vos séances.</p>
-      <a class="btn" href="{{ url_for('pro_sessions') }}">Ouvrir</a>
-    </div>
-    <div class="card">
-      <h3>Factures</h3>
-      <p>Émettre et enregistrer des paiements.</p>
-      <a class="btn" href="{{ url_for('pro_invoices') }}">Ouvrir</a>
-    </div>
-    <div class="card">
-      <h3>Statistiques</h3>
-      <p>Volume de séances, revenus, etc.</p>
-      <a class="btn" href="{{ url_for('pro_stats') }}">Ouvrir</a>
-    </div>
-  </div>
-</div>
 {% endblock %}
