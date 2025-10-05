@@ -83,6 +83,7 @@ def _normalize_pg_uri(uri: str) -> str:
     return uri
 
 from models import (
+    db,
     User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
     MessageThread, Message, FileAttachment,
     TherapySession, SessionNote,
@@ -94,6 +95,7 @@ from models import (
     PersonalJournalEntry, TherapyNotebookEntry,
     Specialty, City
 )
+
 
 
 
