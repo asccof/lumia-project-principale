@@ -1,5 +1,6 @@
 # app.py — Tighri (contrat fixe + Bureau virtuel & Espace patient)
-# NOTE: Drop-in replacement, fidèle à ton existant, avec ajouts non destructifs.
+# NOTE: Bloc d'initialisation corrigé (DB avant db.init_app, compat psycopg3, dotenv).
+#       Remplace du début du fichier jusqu'à la fin de la création des dossiers d’upload.
 
 from __future__ import annotations
 
@@ -8,6 +9,8 @@ from datetime import datetime, date, timedelta, time as dtime
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 from typing import Optional
+
+from dotenv import load_dotenv  # ← nouveau (tu as python-dotenv installé)
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
@@ -22,7 +25,11 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
-from extensions import db
+
+from extensions import db  # OK : on reste sur db.init_app(app) après config
+
+# Charger les variables d’environnement (.env en local ; sur Render, variables du service)
+load_dotenv()
 
 # =========================
 #   CONSTANTES / DOSSIERS
@@ -32,7 +39,7 @@ BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
 
 UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
 UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
-ATTACHMENTS_FOLDER = UPLOAD_ROOT / "attachments"  # ← nouveau pour pièces jointes
+ATTACHMENTS_FOLDER = UPLOAD_ROOT / "attachments"  # ← pièces jointes
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
 ALLOWED_DOC_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt"} | ALLOWED_IMAGE_EXT
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
@@ -41,13 +48,11 @@ MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024))) 
 #   FLASK APP
 # =========================
 app = Flask(__name__)
-db.init_app(app)
 
-app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
-
+# Sécurité & cookies
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_SECURE"] = True  # HTTPS (Render)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 app.config["REMEMBER_COOKIE_NAME"] = "tighri_remember"
 app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=60)
@@ -57,7 +62,37 @@ app.config["PREFERRED_URL_SCHEME"] = "https"
 app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
 app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
 
-# Crée les dossiers d’upload si besoin
+# ---- CONFIG DB (Doit être AVANT db.init_app(app)) ---------------------------
+# Prend SQLALCHEMY_DATABASE_URI > DATABASE_URL > POSTGRES_URL (Render)
+db_url = (
+    os.getenv("SQLALCHEMY_DATABASE_URI")
+    or os.getenv("DATABASE_URL")
+    or os.getenv("POSTGRES_URL")
+)
+
+if not db_url:
+    # Message explicite si variable manquante côté Render
+    raise RuntimeError("Missing DATABASE_URL or SQLALCHEMY_DATABASE_URI environment variable")
+
+# Compat Render/Heroku: 'postgres://' → SQLAlchemy attend 'postgresql://'
+if db_url.startswith("postgres://"):
+    db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+# Forcer le driver psycopg3 (tu as psycopg 3.x installé)
+if db_url.startswith("postgresql://") and "+psycopg" not in db_url:
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# -----------------------------------------------------------------------------
+
+# Proxy (Render/Cloudflare)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+# IMPORTANT : n'initialiser la DB QU'APRÈS la config ci-dessus
+db.init_app(app)
+
+# Crée les dossiers d’upload si besoin (ne casse pas en lecture seule)
 for _p in (UPLOAD_ROOT, UPLOAD_FOLDER, ATTACHMENTS_FOLDER):
     try:
         _p.mkdir(parents=True, exist_ok=True)
