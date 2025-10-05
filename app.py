@@ -22,6 +22,7 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import or_, text
+from extensions import db
 
 # =========================
 #   CONSTANTES / DOSSIERS
@@ -40,6 +41,8 @@ MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024))) 
 #   FLASK APP
 # =========================
 app = Flask(__name__)
+db.init_app(app)
+
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
