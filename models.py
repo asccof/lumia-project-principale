@@ -1,8 +1,7 @@
-# models.py — version propre (contrat-fix)
+# models.py — version alignée (contrat-fix)
 from extensions import db
 from flask_login import UserMixin
-from datetime import datetime, date  # 'date' peut être utile dans certaines routes
-
+from datetime import datetime, date  # 'date' peut rester utile
 
 
 # ======================
@@ -62,8 +61,7 @@ class Specialty(db.Model):
     __tablename__ = "specialties"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), unique=True, nullable=False)
-    # category = famille (Psychothérapie, Coaching, …)
-    category = db.Column(db.String(120))
+    category = db.Column(db.String(120))  # famille (Psychothérapie, Coaching, …)
 
     __table_args__ = (
         db.Index("ix_specialties_name", "name"),
@@ -208,7 +206,6 @@ class PatientProfile(db.Model):
         db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
 
-    # Champs vus dans les logs / nécessaires
     first_name = db.Column(db.String(120))
     last_name = db.Column(db.String(120))
     birth_date = db.Column(db.Date)
@@ -284,7 +281,7 @@ class TherapySession(db.Model):
         db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL")
     )
 
-    # Champs utilisés par app.py
+    # Champs réels en base (alignés)
     start_at = db.Column(db.DateTime, nullable=True)
     end_at = db.Column(db.DateTime)
     status = db.Column(db.String(20), default="planifie")  # planifie | termine | annule
@@ -294,9 +291,7 @@ class TherapySession(db.Model):
         db.Integer, db.ForeignKey("appointments.id", ondelete="SET NULL")
     )
 
-    # Champs legacy (conservés pour compat)
-    started_at = db.Column(db.DateTime)
-    ended_at = db.Column(db.DateTime)
+    # Champs texte/extra
     duration_minutes = db.Column(db.Integer)
     notes_private = db.Column(db.Text)
 
@@ -320,6 +315,15 @@ class TherapySession(db.Model):
         db.Index("ix_ts_status", "status"),
     )
 
+    # ---- Compatibilité ascendante (les anciennes routes lisaient started_at/ended_at)
+    @property
+    def started_at(self):
+        return self.start_at
+
+    @property
+    def ended_at(self):
+        return self.end_at
+
     def __repr__(self):
         return f"<TherapySession id={self.id} p={self.patient_id} pro={self.professional_id} start={self.start_at}>"
 
@@ -342,7 +346,7 @@ class MedicalHistory(db.Model):
     title = db.Column(db.String(200))
     details = db.Column(db.Text)
 
-    # Champs réellement utilisés dans app.py (/pro/patients/<id>)
+    # Champs réellement utilisés
     summary = db.Column(db.Text)
     custom_fields = db.Column(db.Text)
 
@@ -381,12 +385,8 @@ class Appointment(db.Model):
     )
 
     appointment_date = db.Column(db.DateTime, nullable=False)
-    consultation_type = db.Column(
-        db.String(20), default="cabinet"
-    )  # 'cabinet' | 'domicile' | 'en_ligne'
-    status = db.Column(
-        db.String(20), default="en_attente"
-    )  # 'en_attente' | 'confirme' | 'annule'
+    consultation_type = db.Column(db.String(20), default="cabinet")  # 'cabinet' | 'domicile' | 'en_ligne'
+    status = db.Column(db.String(20), default="en_attente")  # 'en_attente' | 'confirme' | 'annule'
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -475,12 +475,8 @@ class SessionNote(db.Model):
     )
 
     # Relations utiles
-    session = db.relationship(
-        "TherapySession", lazy="joined", foreign_keys=[session_id]
-    )
-    professional = db.relationship(
-        "Professional", lazy="joined", foreign_keys=[professional_id]
-    )
+    session = db.relationship("TherapySession", lazy="joined", foreign_keys=[session_id])
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
     patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
 
     __table_args__ = (
@@ -489,13 +485,11 @@ class SessionNote(db.Model):
         db.Index("ix_sessionnotes_patient", "patient_id"),
         db.Index("ix_sessionnotes_created", "created_at"),
     )
-    start_at = db.Column(db.DateTime)
-    end_at   = db.Column(db.DateTime)  # <-- c’est bien "end_at" en base
-    started_at = db.Column(db.DateTime)
+
+    # Compat (si des templates lisaient end_at)
     @property
     def ended_at(self):
-        return self.end_at
-
+        return getattr(self, "end_at", None)
 
     def __repr__(self):
         return f"<SessionNote id={self.id} session={self.session_id} pro={self.professional_id}>"
@@ -545,9 +539,7 @@ class Message(db.Model):
 
     thread = db.relationship("MessageThread", lazy="joined", foreign_keys=[thread_id])
     sender = db.relationship("User", lazy="joined", foreign_keys=[sender_id])
-    attachment = db.relationship(
-        "FileAttachment", lazy="joined", foreign_keys=[attachment_id]
-    )
+    attachment = db.relationship("FileAttachment", lazy="joined", foreign_keys=[attachment_id])
 
     __table_args__ = (
         db.Index("ix_messages_thread", "thread_id"),
@@ -578,17 +570,13 @@ class Exercise(db.Model):
     text_content = db.Column(db.Text)
     file_url = db.Column(db.Text)
 
-    visibility = db.Column(
-        db.String(30), default="private"
-    )  # 'private' | 'my_patients' | 'public'
+    visibility = db.Column(db.String(30), default="private")  # 'private' | 'my_patients' | 'public'
     is_approved = db.Column(db.Boolean, default=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     owner = db.relationship("User", lazy="joined", foreign_keys=[owner_id])
-    professional = db.relationship(
-        "Professional", lazy="joined", foreign_keys=[professional_id]
-    )
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
 
     __table_args__ = (
         db.Index("ix_exercises_visibility", "visibility"),
@@ -616,17 +604,14 @@ class ExerciseAssignment(db.Model):
 
     exercise = db.relationship("Exercise", lazy="joined", foreign_keys=[exercise_id])
     patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
-    professional = db.relationship(
-        "Professional", lazy="joined", foreign_keys=[professional_id]
-    )
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
 
     __table_args__ = (
         db.Index("ix_ex_assign_patient", "patient_id"),
         db.Index("ix_ex_assign_professional", "professional_id"),
         db.Index("ix_ex_assign_status", "status"),
     )
-    patient_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    patient = db.relationship('User', foreign_keys=[patient_id])
+
 
 # ======================
 # Facturation & paiements
@@ -647,9 +632,7 @@ class Invoice(db.Model):
     issued_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
-    professional = db.relationship(
-        "Professional", lazy="joined", foreign_keys=[professional_id]
-    )
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
 
     __table_args__ = (
         db.Index("ix_invoices_professional", "professional_id"),
@@ -700,9 +683,7 @@ class SupportTicket(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship("User", lazy="joined", foreign_keys=[user_id])
-    professional = db.relationship(
-        "Professional", lazy="joined", foreign_keys=[professional_id]
-    )
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
 
     __table_args__ = (
         db.Index("ix_tickets_professional", "professional_id"),
@@ -813,9 +794,7 @@ class ProfessionalReview(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
-    professional = db.relationship(
-        "Professional", lazy="joined", foreign_keys=[professional_id]
-    )
+    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
 
     __table_args__ = (
         db.Index("ix_reviews_professional", "professional_id"),
