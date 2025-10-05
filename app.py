@@ -102,26 +102,58 @@ for _p in (UPLOAD_ROOT, UPLOAD_FOLDER, ATTACHMENTS_FOLDER):
 # =========================
 #   DB / MODELS
 # =========================
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
+
 def _normalize_pg_uri(uri: str) -> str:
+    """Normalise une URI Postgres pour SQLAlchemy + psycopg3 et ajoute sslmode=require si manquant."""
     if not uri:
         return uri
+
+    # Heroku/Render fournissent parfois 'postgres://'
     if uri.startswith("postgres://"):
         uri = "postgresql://" + uri[len("postgres://"):]
-    # forcer psycopg3
+
+    # Forcer psycopg3 (tu as psycopg 3.x installé)
     if uri.startswith("postgresql+psycopg2://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
     elif uri.startswith("postgresql://"):
         uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
-    # sslmode=require si absent
+
+    # Ajouter sslmode=require si absent (utile sur Render/Cloudflare)
     parsed = urlparse(uri)
     q = parse_qs(parsed.query)
     if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
         q["sslmode"] = ["require"]
         uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
+
     return uri
 
+# Si l'URI n'a pas déjà été posée dans l'en-tête, on la déduit ici proprement
+if not app.config.get("SQLALCHEMY_DATABASE_URI"):
+    _uri = (
+        os.environ.get("SQLALCHEMY_DATABASE_URI")
+        or os.environ.get("DATABASE_URL")
+        or os.environ.get("POSTGRES_URL")
+        or os.environ.get("DATABASE_URL_INTERNAL")
+        or ""
+    )
+    if not _uri:
+        raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
+    app.config["SQLALCHEMY_DATABASE_URI"] = _normalize_pg_uri(_uri)
+
+# Options moteur (en conservant ce qui a déjà pu être défini en amont)
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+engine_opts = app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {})
+engine_opts.setdefault("pool_pre_ping", True)
+engine_opts.setdefault("pool_recycle", 1800)   # recycle connexions inactives > 30min
+engine_opts.setdefault("pool_size", 5)         # valeur sûre sur Render Free/Starter
+engine_opts.setdefault("max_overflow", 10)
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_opts
+
+# ⚠️ Ne PAS rappeler db.init_app(app) ici (déjà fait dans l'en-tête corrigé)
+
 from models import (
-    db,
+    # db,  # ← ne pas réimporter db ici ; il vient de extensions et est déjà initialisé
     User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
     MessageThread, Message, FileAttachment,
     TherapySession, SessionNote,
@@ -133,17 +165,6 @@ from models import (
     PersonalJournalEntry, TherapyNotebookEntry,
     Specialty, City
 )
-
-
-
-
-uri = os.environ.get("DATABASE_URL") or os.environ.get("DATABASE_URL_INTERNAL") or ""
-if not uri:
-    raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
-app.config["SQLALCHEMY_DATABASE_URI"] = _normalize_pg_uri(uri)
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"pool_pre_ping": True}
-db.init_app(app)
 
 # =========================
 #   ADMIN BLUEPRINT
@@ -161,9 +182,11 @@ login_manager.login_view = "login"
 @login_manager.user_loader
 def _load_user(user_id: str):
     try:
+        # db vient de extensions, initialisé dans l’en-tête ; get évite une requête inutile si l'id est None/invalid
         return db.session.get(User, int(user_id))
     except Exception:
         return None
+
 
 # =========================
 #   I18N / LANG
