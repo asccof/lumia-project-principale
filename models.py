@@ -1,9 +1,9 @@
 # models.py — version propre (contrat-fix)
-from flask_sqlalchemy import SQLAlchemy
+from extensions import db
 from flask_login import UserMixin
 from datetime import datetime, date  # 'date' peut être utile dans certaines routes
 
-db = SQLAlchemy()
+
 
 # ======================
 # Utilisateurs
