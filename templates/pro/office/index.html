@@ -1,10 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Pro Office{% endblock %}
+{% block title %}Bureau virtuel{% endblock %}
 {% block content %}
-  <h1>Pro Office</h1>
-  <div style="display:flex; gap:1rem; flex-wrap:wrap;">
-    <a class="btn" href="{{ url_for('pro_patients') }}">Patients</a>
-    <a class="btn" href="{{ url_for('pro_stats') }}">Statistiques</a>
-    <a class="btn" href="{{ url_for('pro_library') }}">Bibliothèque</a>
-  </div>
+<div class="container py-4">
+  <h1 class="h3 mb-3">Bureau virtuel</h1>
+  <p>Bienvenue dans votre bureau virtuel. (Template placeholder)</p>
+</div>
 {% endblock %}
