@@ -3,7 +3,7 @@
   {% for p in patients %}
     <li>
       {{ p.full_name or p.username }} (#{{ p.id }})
-      — <a href="{{ url_for('pro_office_patient', patient_id=p.id) }}">ouvrir</a>
+      <a href="{{ url_for('pro_office_index') }}">ouvrir</a>
     </li>
   {% else %}
     <li>Aucun patient lié.</li>
