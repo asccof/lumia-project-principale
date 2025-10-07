@@ -2133,21 +2133,6 @@ def pro_assign_exercise():
     return redirect(request.referrer or url_for("pro_library"))
 from sqlalchemy import CheckConstraint, text
 
-class ExerciseAssignment(db.Model):
-    __tablename__ = 'exercise_assignments'
-    # ... autres colonnes ...
-    status = db.Column(
-        db.String(20),
-        nullable=False,
-        default='assigned',                 # default côté Python (utile avant flush)
-        server_default=text("'assigned'")   # default côté DB (utile pour les INSERT bruts)
-    )
-    __table_args__ = (
-        CheckConstraint(
-            "status IN ('assigned','in_progress','done','cancelled')",
-            name='exercise_assignments_status_chk'
-        ),
-    )
 
 # --- Factures & paiements
 @app.route("/pro/invoices", methods=["GET","POST"], endpoint="pro_invoices")
