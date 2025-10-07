@@ -1,11 +1,112 @@
-<h2>Mes patients</h2>
-<ul>
-  {% for p in patients %}
-    <li>
-      {{ p.full_name or p.username }} (#{{ p.id }})
-      <a href="{{ url_for('pro_office_index') }}">ouvrir</a>
-    </li>
+{% extends "base.html" %}
+
+{% block title %}Espace cabinet — Mes patients{% endblock %}
+
+{% block content %}
+<style>
+  /* ==== Styles locaux à la page (non intrusifs) ==== */
+  .po-wrapper { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  .po-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  .po-header h1 { margin: 0; font-size: 1.6rem; line-height: 1.2; }
+  .po-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .po-searchbar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .po-input { flex: 1; padding: 10px 12px; border: 1px solid #e3e3e3; border-radius: 10px; font-size: 0.95rem; }
+  .po-btn { appearance: none; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer; font-weight: 600; }
+  .po-btn-primary { background: #0f62fe; color: #fff; }
+  .po-btn-ghost { background: #f5f7fb; color: #222; }
+
+  .po-meta { color: #666; font-size: 0.9rem; }
+
+  .po-grid { display: grid; grid-template-columns: repeat(1, minmax(0, 1fr)); gap: 12px; }
+  @media (min-width: 640px) { .po-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 980px) { .po-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+  .po-card {
+    display: flex; gap: 12px; align-items: center;
+    border: 1px solid #eceff3; border-radius: 14px; padding: 12px;
+    background: #fff; box-shadow: 0 1px 2px rgba(16,24,40,.04);
+  }
+  .po-avatar {
+    width: 54px; height: 54px; border-radius: 50%; overflow: hidden; flex: 0 0 auto;
+    background: #f0f2f5; display: grid; place-items: center; font-weight: 700; color: #6b7280;
+  }
+  .po-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  .po-info { flex: 1 1 auto; min-width: 0; }
+  .po-name { font-weight: 700; color: #111827; }
+  .po-id { color: #6b7280; font-size: .9rem; }
+  .po-tags { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .po-tag { background: #f5f7fb; color: #374151; border-radius: 999px; padding: 2px 8px; font-size: .75rem; }
+
+  .po-cta { display: flex; gap: 8px; }
+  .po-empty {
+    border: 2px dashed #e5e7eb; border-radius: 16px; padding: 24px; text-align: center; color: #6b7280;
+    background: #fafafa;
+  }
+
+  .po-link { text-decoration: none; }
+</style>
+
+<div class="po-wrapper">
+  <div class="po-header">
+    <h1>Mes patients</h1>
+    <div class="po-actions">
+      <a class="po-btn po-btn-ghost po-link" href="{{ url_for('professional_dashboard') }}">← Retour tableau de bord</a>
+    </div>
+  </div>
+
+  <div class="po-meta">
+    Total : {{ patients|length }} patient{{ '' if (patients|length == 1) else 's' }}
+  </div>
+
+  <!-- Barre de recherche côté serveur (GET) -->
+  <form class="po-searchbar" method="get" action="{{ url_for('pro_office_index') }}">
+    <input class="po-input" type="search" name="q" value="{{ request.args.get('q','') }}" placeholder="Rechercher par nom, e-mail, téléphone…" />
+    <button class="po-btn po-btn-primary" type="submit">Rechercher</button>
+  </form>
+
+  {% if patients and patients|length > 0 %}
+    <div class="po-grid">
+      {% for p in patients %}
+        {% set profile = (profiles[p.id] if profiles is defined and p.id in profiles else None) %}
+        {% set avatar = (profile.picture_url if profile and profile.picture_url else p.picture_url if p.picture_url is defined else None) %}
+        <div class="po-card">
+          <div class="po-avatar">
+            {% if avatar %}
+              <img src="{{ avatar }}" alt="Photo de {{ p.full_name or p.username or ('ID ' ~ p.id) }}">
+            {% else %}
+              {{ (p.full_name or p.username or 'P')[:1] | upper }}
+            {% endif %}
+          </div>
+
+          <div class="po-info">
+            <div class="po-name">
+              {{ p.full_name or p.username or 'Patient' }}
+            </div>
+            <div class="po-id">#{{ p.id }}{% if p.email %} • {{ p.email }}{% endif %}{% if p.phone %} • {{ p.phone }}{% endif %}</div>
+
+            <div class="po-tags">
+              {% if profile and profile.city %}<span class="po-tag">{{ profile.city }}</span>{% endif %}
+              {% if profile and profile.age %}<span class="po-tag">{{ profile.age }} ans</span>{% endif %}
+              {% if profile and profile.gender %}<span class="po-tag">{{ profile.gender }}</span>{% endif %}
+            </div>
+          </div>
+
+          <div class="po-cta">
+            {# Remplace cette ligne par: url_for('pro_office_patient', patient_id=p.id) quand la route existera #}
+            <a class="po-btn po-btn-ghost po-link" href="{{ url_for('pro_office_index') }}?selected={{ p.id }}" title="Ouvrir le dossier">
+              Ouvrir
+            </a>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
   {% else %}
-    <li>Aucun patient lié.</li>
-  {% endfor %}
-</ul>
+    <div class="po-empty">
+      <strong>Aucun patient lié.</strong><br>
+      Quand des patients vous seront attribués, ils apparaîtront ici.
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
