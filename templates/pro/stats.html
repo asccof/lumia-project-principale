@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Statistiques — Tighri{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Statistiques</h1>
+
+  <form class="card mb-3" method="get">
+    <div class="card-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label">Période</label>
+          <select class="form-select" name="range">
+            {% set range = request.args.get('range','month') %}
+            <option value="week"  {% if range=='week' %}selected{% endif %}>7 jours</option>
+            <option value="month" {% if range=='month' %}selected{% endif %}>30 jours</option>
+            <option value="quarter" {% if range=='quarter' %}selected{% endif %}>90 jours</option>
+            <option value="year" {% if range=='year' %}selected{% endif %}>12 mois</option>
+            <option value="custom" {% if range=='custom' %}selected{% endif %}>Personnalisée</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Du</label>
+          <input type="date" class="form-control" name="from" value="{{ request.args.get('from','') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Au</label>
+          <input type="date" class="form-control" name="to" value="{{ request.args.get('to','') }}">
+        </div>
+        <div class="col-md-3 d-flex justify-content-end gap-2">
+          <button class="btn btn-primary">Appliquer</button>
+          <a class="btn btn-outline-secondary" href="/pro/stats">Réinitialiser</a>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <!-- KPIs -->
+  {% set s = stats if stats is defined else {} %}
+  <div class="row g-3">
+    <div class="col-md-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Séances</div>
+        <div class="h3 mb-0">{{ s.sessions_total or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Heures totales</div>
+        <div class="h3 mb-0">{{ s.hours_total or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Visio / Cabinet</div>
+        <div class="h3 mb-0">{{ s.visio_count or 0 }} / {{ s.cabinet_count or 0 }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card h-100"><div class="card-body">
+        <div class="text-muted small">Revenus (MAD)</div>
+        <div class="h3 mb-0">{{ s.revenue or 0 }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- Répartition simple -->
+  <div class="card mt-3">
+    <div class="card-body">
+      <h2 class="h6 mb-3">Répartition</h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead><tr><th>Catégorie</th><th>Valeur</th></tr></thead>
+          <tbody>
+            <tr><td>Annulations</td><td>{{ s.cancellations or 0 }}</td></tr>
+            <tr><td>No-shows</td><td>{{ s.noshows or 0 }}</td></tr>
+            <tr><td>Paiements en attente</td><td>{{ s.pending_payments or 0 }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
