@@ -594,6 +594,20 @@ def render_or_text(template_name: str, fallback_title: str, **kwargs):
         body = f"<h1 style='font-family:system-ui,Segoe UI,Arial'>Tighri — {fallback_title}</h1>"
         body += "<p>Template manquant : <code>{}</code>. Cette page fonctionne en mode fallback sans casser l'app.</p>".format(template_name)
         return body, 200, {"Content-Type": "text/html; charset=utf-8"}
+# --- Favicon unique ---
+import os
+from flask import send_from_directory
+
+@app.get("/favicon.ico", endpoint="favicon_ico")
+def favicon_ico():
+    static_dir = os.path.join(app.root_path, "static")
+    return send_from_directory(static_dir, "favicon.ico", mimetype="image/x-icon")
+
+# (optionnel) si tu as aussi un PNG
+@app.get("/favicon.png", endpoint="favicon_png")
+def favicon_png():
+    static_dir = os.path.join(app.root_path, "static")
+    return send_from_directory(static_dir, "favicon.png", mimetype="image/png")
 
 # =========================
 #   PAGES PUBLIQUES (inchangées)
@@ -1261,13 +1275,7 @@ def reset_password(token: str):
         flash("Mot de passe réinitialisé. Vous pouvez vous connecter.", "success")
         return redirect(url_for("login"))
     return render_or_text("reset_password.html", "Réinitialiser le mot de passe")
-@app.route("/favicon.ico")
-def favicon():
-    return send_from_directory(
-        os.path.join(app.root_path, "static"),
-        "favicon.ico",
-        mimetype="image/vnd.microsoft.icon"
-    )
+
 
 @app.route("/robots.txt")
 def robots_txt():
