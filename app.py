@@ -2256,6 +2256,105 @@ def patient_thread(professional_id: int):
     messages = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
     return render_or_text("patient/thread.html", "Messagerie sécurisée",
                           professional=pro, thread=thread, messages=messages)
+# --- PATIENT: page de recherche (affiche juste le formulaire) ---
+@app.route("/patient/booking", methods=["GET"])
+@login_required
+def patient_booking():
+    # Récupère les listes comme sur la home
+    try:
+        cities = City.query.order_by(City.name).all()
+    except Exception:
+        cities = []
+    try:
+        families = Family.query.order_by(Family.name).all()
+    except Exception:
+        families = []
+    try:
+        specialties = Specialty.query.order_by(Specialty.name).all()
+    except Exception:
+        specialties = []
+
+    return render_template(
+        "patient/booking.html",
+        cities=cities,
+        families=families,
+        specialties=specialties
+    )
+
+# --- PATIENT: résultats (doit réutiliser exactement ta logique de /professionals) ---
+@app.route("/patient/resources", methods=["GET"])
+@login_required
+def patient_resources():
+    # 1) Réutilise ici la même logique que ton endpoint /professionals
+    #    ==> copie/colle le bloc qui construit "professionals" à partir de request.args
+    #    Exemple *générique* si tu n'as pas de helper :
+    try:
+        qs = Professional.query.filter_by(is_active=True)
+
+        q = (request.args.get("q") or "").strip()
+        if q:
+            # cherche sur nom + description
+            qs = qs.filter(
+                db.or_(
+                    Professional.name.ilike(f"%{q}%"),
+                    Professional.description.ilike(f"%{q}%")
+                )
+            )
+
+        city_id = request.args.get("city_id")
+        if city_id:
+            qs = qs.filter(Professional.city_id == int(city_id))
+
+        family = (request.args.get("family") or "").strip()
+        if family:
+            # adapte ces champs si différents chez toi
+            qs = qs.filter(
+                db.or_(
+                    Professional.family == family,
+                    Professional.primary_specialty.has(Family.name == family)  # si relation
+                )
+            )
+
+        specialty_id = request.args.get("specialty_id")
+        if specialty_id:
+            qs = qs.filter(
+                db.or_(
+                    Professional.primary_specialty_id == int(specialty_id),
+                    Professional.secondary_specialties.any(id=int(specialty_id))  # si M2M
+                )
+            )
+
+        mode = (request.args.get("mode") or "").strip()
+        if mode:
+            # si "consultation_types" est un champ texte/list dans ton modèle
+            qs = qs.filter(Professional.consultation_types.ilike(f"%{mode}%"))
+
+        professionals = qs.order_by(Professional.name.asc()).all()
+    except Exception:
+        # Si besoin: retombe sur une liste vide plutôt que 500
+        professionals = []
+
+    # 2) Passe aussi les listes pour garder les sélections au reload
+    try:
+        cities = City.query.order_by(City.name).all()
+    except Exception:
+        cities = []
+    try:
+        families = Family.query.order_by(Family.name).all()
+    except Exception:
+        families = []
+    try:
+        specialties = Specialty.query.order_by(Specialty.name).all()
+    except Exception:
+        specialties = []
+
+    return render_template(
+        "patient/resources.html",
+        professionals=professionals,
+        cities=cities,
+        families=families,
+        specialties=specialties
+    )
 
 # ===== Routes Patient (placeholders robustes avec fallback) =====
 @app.get("/patient/booking")
