@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Bibliothèque — Tighri{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Bibliothèque d’exercices</h1>
+  <form class="card mb-3" method="get">
+    <div class="card-body">
+      <div class="row g-2">
+        <div class="col-md-3">
+          <label class="form-label">Famille</label>
+          <select class="form-select" name="family">
+            <option value="">Toutes</option>
+            {% for f in families or [] %}
+              <option value="{{ f }}" {% if request.args.get('family') == f %}selected{% endif %}>{{ f }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Spécialité</label>
+          <select class="form-select" name="specialty">
+            <option value="">Toutes</option>
+            {% for s in specialties or [] %}
+              <option value="{{ s }}" {% if request.args.get('specialty') == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Type</label>
+          <select class="form-select" name="type">
+            <option value="">Tous</option>
+            {% for t in types or ['exercice','technique','protocole','fiche'] %}
+              <option value="{{ t }}" {% if request.args.get('type') == t %}selected{% endif %}>{{ t|capitalize }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Technique</label>
+          <select class="form-select" name="technique">
+            <option value="">Toutes</option>
+            {% for k in techniques or ['CBT','Hypnose','Relaxation','EMDR','Coaching'] %}
+              <option value="{{ k }}" {% if request.args.get('technique') == k %}selected{% endif %}>{{ k }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Format</label>
+          <select class="form-select" name="format">
+            <option value="">Tous</option>
+            {% for f in formats or ['texte','audio','video','pdf'] %}
+              <option value="{{ f }}" {% if request.args.get('format') == f %}selected{% endif %}>{{ f|upper }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-6">
+          <label class="form-label">Recherche</label>
+          <input class="form-control" name="q" placeholder="mots-clés…" value="{{ request.args.get('q','') }}">
+        </div>
+        <div class="col-12 col-md-6 d-flex align-items-end justify-content-end gap-2">
+          <button class="btn btn-primary">Filtrer</button>
+          <a class="btn btn-outline-secondary" href="/pro/library">Réinitialiser</a>
+          <a class="btn btn-outline-primary" href="/pro/library/new"><i class="fa-solid fa-plus me-1"></i>Nouvel item</a>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  {% set items = library_items if library_items is defined and library_items else [] %}
+  {% if items %}
+    <div class="row g-3">
+      {% for it in items %}
+        <div class="col-md-4 col-lg-3">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between">
+                <h2 class="h6 mb-2">{{ it.title or 'Sans titre' }}</h2>
+                <span class="badge bg-light text-dark">{{ it.format|upper if it.format is defined else 'TXT' }}</span>
+              </div>
+              <div class="text-muted small mb-2">
+                {{ it.family if it.family is defined else '—' }}{% if it.specialty %} • {{ it.specialty }}{% endif %}
+              </div>
+              <p class="mb-2 small text-truncate" style="max-height: 3.2rem;">{{ it.excerpt if it.excerpt is defined else '' }}</p>
+              <div class="d-flex flex-wrap gap-1 mb-2">
+                {% if it.technique %}<span class="badge bg-secondary">{{ it.technique }}</span>{% endif %}
+                {% if it.type %}<span class="badge bg-info text-dark">{{ it.type }}</span>{% endif %}
+                <span class="badge bg-{{ 'success' if (it.visibility=='public') else ('warning' if (it.visibility=='patients') else 'secondary') }}">
+                  {{ it.visibility or 'privé' }}
+                </span>
+              </div>
+              <div class="d-flex gap-2">
+                <a class="btn btn-sm btn-outline-primary" href="/pro/library/{{ it.id }}">Ouvrir</a>
+                <a class="btn btn-sm btn-outline-secondary" href="/pro/library/{{ it.id }}/edit">Éditer</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">Aucun élément trouvé. Essayez d’élargir vos filtres.</div>
+  {% endif %}
+</div>
+{% endblock %}
