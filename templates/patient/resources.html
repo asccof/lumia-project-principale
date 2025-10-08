@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Tighri — Ressources{% endblock %}
+
+{% block extra_css %}
+<style>
+  .pro-card{position:relative}
+  .pro-badges{position:absolute;top:.5rem;right:.5rem;display:flex;gap:.35rem;flex-wrap:wrap}
+  .pro-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.15rem .5rem;border-radius:999px;font-size:.75rem;font-weight:700;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .b-tighri{border:1.5px solid #8B5CF6}
+  .b-anthecc{border:1.5px solid #10b981}
+  .avatar-box{width:84px;height:84px;border-radius:50%;overflow:hidden;background:#eee;margin-right:.75rem;flex:0 0 84px}
+  .avatar-img{width:100%;height:100%;object-fit:cover;display:block}
+  .pill{display:inline-block;margin:.125rem .25rem 0 0;padding:.2rem .55rem;border-radius:999px;background:#f4f0ff;border:1px solid #e6dcff;font-size:.8rem;color:#4B3869}
+  .meta{color:#6c6a7a}
+  .mini-strip{display:flex;gap:6px;margin-top:.5rem;align-items:center;flex-wrap:wrap}
+  .mini-thumb{width:42px;height:42px;flex:0 0 42px;border-radius:6px;overflow:hidden;border:1px solid #eee;background:#f5f5f7}
+  .mini-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .mini-label{font-size:.75rem;color:#6c6a7a}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 m-0">{{ t('search.results_title','Résultats de recherche') }}</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('patient_booking', **request.args) }}">🔎 {{ t('btn.edit_filters','Modifier la recherche') }}</a>
+      <a class="btn btn-light btn-sm" href="{{ url_for('patient_dashboard') }}">↩ {{ t('nav.back_patient','Espace patient') }}</a>
+    </div>
+  </div>
+
+  {% if professionals %}
+    <div class="row g-3">
+      {% for p in professionals %}
+        {% set tighri  = p.certified_tighri
+                         |default(p.tighri_certified
+                         |default(p.is_certified_tighri
+                         |default(false))) %}
+        {% set anthecc = p.approved_anthecc
+                         |default(p.anthecc_certified
+                         |default(p.is_certified_anthecc
+                         |default(false))) %}
+
+        {# Si tu as une fonction professional_photo_url, tu peux l'utiliser ici.
+           Sinon, on passe par l'endpoint déjà utilisé sur la home: profile_photo. #}
+        {% set photo1 = url_for('profile_photo', professional_id=p.id) %}
+        {% set photo2 = (professional_photo_url(p, 2) if professional_photo_url is defined else None) %}
+        {% set photo3 = (professional_photo_url(p, 3) if professional_photo_url is defined else None) %}
+
+        <div class="col-md-4">
+          <div class="card h-100 pro-card">
+            <div class="pro-badges">
+              {% if tighri %}<span class="pro-badge b-tighri" title="{{ t('badges.tighri','Certifié Tighri') }}">✓ {{ t('badges.tighri_short','Tighri') }}</span>{% endif %}
+              {% if anthecc %}<span class="pro-badge b-anthecc" title="{{ t('badges.anthecc','Certifié ANTHECC') }}">★ {{ t('badges.anthecc_short','ANTHECC') }}</span>{% endif %}
+            </div>
+
+            <div class="card-body d-flex">
+              <div class="avatar-box">
+                <img class="avatar-img"
+                     src="{{ photo1 }}"
+                     alt="{{ t('alt.profile_photo','Photo de') }} {{ p.name|e }}"
+                     width="84" height="84" loading="lazy"
+                     onerror="this.onerror=null;this.src='https://placehold.co/200x200?text=Photo';">
+              </div>
+
+              <div class="flex-grow-1">
+                <h5 class="card-title mb-1">
+                  <a href="{{ url_for('professional_detail', professional_id=p.id) }}" class="text-decoration-none">
+                    {{ p.name }}
+                  </a>
+                </h5>
+
+                <div class="meta mb-2">
+                  {% if p.primary_specialty %}{{ p.primary_specialty.name }}
+                  {% elif p.specialty %}{{ p.specialty }}
+                  {% else %}{{ t('labels.professional','Professionnel') }}{% endif %}
+                  {% if p.city %} • {{ p.city.name }}
+                  {% elif p.location %} • {{ p.location }}{% endif %}
+                </div>
+
+                {% set d = p.description or '' %}
+                <p class="card-text" style="min-height:3em">{{ d[:130] }}{% if d|length > 130 %}…{% endif %}</p>
+
+                {% if photo2 or photo3 %}
+                  <div class="mini-strip" aria-label="{{ t('alt.more_photos','Autres photos') }}">
+                    {% if photo2 %}
+                      <div class="mini-thumb">
+                        <a href="{{ url_for('professional_detail', professional_id=p.id) }}" title="{{ t('alt.photo_n','Photo') }} 2">
+                          <img src="{{ photo2 }}" alt="{{ t('alt.photo_n','Photo') }} 2" loading="lazy">
+                        </a>
+                      </div>
+                    {% endif %}
+                    {% if photo3 %}
+                      <div class="mini-thumb">
+                        <a href="{{ url_for('professional_detail', professional_id=p.id) }}" title="{{ t('alt.photo_n','Photo') }} 3">
+                          <img src="{{ photo3 }}" alt="{{ t('alt.photo_n','Photo') }} 3" loading="lazy">
+                        </a>
+                      </div>
+                    {% endif %}
+                    <span class="mini-label">{{ t('labels.gallery','Galerie') }}</span>
+                  </div>
+                {% endif %}
+
+                <div class="mb-2">
+                  {% set types = (p.consultation_types or '') %}
+                  {% if 'cabinet' in types %}<span class="pill">{{ t('mode.cabinet','Cabinet') }}</span>{% endif %}
+                  {% if 'visio' in types or 'en_ligne' in types %}<span class="pill">{{ t('mode.visio','Visio') }}</span>{% endif %}
+                  {% if 'domicile' in types %}<span class="pill">{{ t('mode.domicile','Domicile') }}</span>{% endif %}
+                  {% if p.experience_years %}<span class="pill">{{ p.experience_years }} {{ t('labels.years','ans') }}</span>{% endif %}
+                  {% if p.consultation_fee is not none %}<span class="pill">{{ (p.consultation_fee|int) }} MAD</span>{% endif %}
+                </div>
+              </div>
+            </div>
+
+            <div class="card-footer bg-white border-0">
+              <div class="d-grid gap-2">
+                <a class="btn btn-primary" href="{{ url_for('professional_detail', professional_id=p.id) }}">{{ t('btn.view_profile','Voir le profil') }}</a>
+                <a class="btn btn-outline-primary" href="{{ url_for('book_appointment', professional_id=p.id) }}">{{ t('btn.book','Réserver un rendez-vous') }}</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">{{ t('results.empty','Aucun professionnel ne correspond à votre recherche.') }}</div>
+  {% endif %}
+</div>
+{% endblock %}
