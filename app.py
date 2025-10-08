@@ -2132,6 +2132,49 @@ def patient_appointments():
     appts = Appointment.query.filter_by(patient_id=current_user.id)\
         .order_by(Appointment.appointment_date.desc()).all()
     return render_or_text("patient/appointments.html", "Mes rendez-vous", appointments=appts)
+@app.route("/patient/book/<int:professional_id>", methods=["GET", "POST"])
+@login_required
+def patient_book(professional_id):
+    pro = db.session.get(Professional, professional_id)
+    if not pro or not pro.is_active:
+        abort(404)
+
+    if request.method == "POST":
+        slot_id = request.form.get("slot_id")
+        if not slot_id:
+            flash("Veuillez choisir un créneau.", "warning")
+            return redirect(request.url)
+
+        # ⚠️ Adapte à ton modèle :
+        slot = db.session.get(AppointmentSlot, int(slot_id))
+        if not slot or not slot.is_open or slot.professional_id != professional_id:
+            flash("Créneau indisponible.", "danger")
+            return redirect(request.url)
+
+        # Crée l’appointment pour current_user (patient)
+        appt = Appointment(
+            patient_id=current_user.id,
+            professional_id=professional_id,
+            start_at=slot.start_at,
+            end_at=slot.end_at,
+            status="booked",
+        )
+        slot.is_open = False
+        db.session.add(appt)
+        db.session.commit()
+
+        flash("Votre rendez-vous a été réservé ✅", "success")
+        return redirect(url_for('patient_home'))
+
+    # GET : afficher les créneaux ouverts
+    # ⚠️ Adapte à ton modèle : ici on suppose un modèle AppointmentSlot
+    slots = db.session.execute(
+        select(AppointmentSlot)
+        .where(AppointmentSlot.professional_id == professional_id, AppointmentSlot.is_open.is_(True))
+        .order_by(AppointmentSlot.start_at)
+    ).scalars().all()
+
+    return render_template("patient/book_detail.html", professional=pro, slots=slots)
 
 # ---------- Aide: construction de la requête pros à partir des filtres ----------
 def _build_professional_query_from_args(args):
