@@ -1409,10 +1409,12 @@ def delete_unavailable_slot(slot_id: int):
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
 
-# Edition profil pro (corrigé : aucun commit en GET, valeurs par défaut sûres en POST)
+# Edition profil pro (corrigé + durci : aucun commit en GET, garde-fous numériques, rollback propre)
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
+    from sqlalchemy.exc import IntegrityError, SQLAlchemyError  # import local pour éviter de modifier le header
+
     # 1) Charger le pro par username (on conserve ta logique pour ne rien casser)
     professional = Professional.query.filter_by(name=current_user.username).first()
 
@@ -1479,22 +1481,29 @@ def professional_edit_profile():
             if ps:
                 professional.specialty = ps.name
 
-        # Helpers robustes (inchangés)
-        def parse_int_or_keep(v_str, old_val, default_if_invalid=None):
+        # Helpers robustes (inchangés mais légèrement durcis)
+        def _normalize_num_string(v_str):
+            # tolère espaces, " MAD", etc.
             v = (v_str or "").strip()
+            if not v:
+                return v
+            v = v.replace(" ", "").replace("MAD", "").replace("mad", "")
+            v = v.replace(",", ".")
+            return v
+
+        def parse_int_or_keep(v_str, old_val, default_if_invalid=None):
+            v = _normalize_num_string(v_str)
             if v == "":
                 return old_val
-            v = v.replace(",", ".")
             try:
                 return int(float(v))
             except ValueError:
                 return old_val if old_val is not None else default_if_invalid
 
         def parse_float_or_keep(v_str, old_val, default_if_invalid=None):
-            v = (v_str or "").strip()
+            v = _normalize_num_string(v_str)
             if v == "":
                 return old_val
-            v = v.replace(",", ".")
             try:
                 return float(v)
             except ValueError:
@@ -1510,11 +1519,15 @@ def professional_edit_profile():
             getattr(professional, "consultation_fee", 0),
             default_if_invalid=0
         )
+        if professional.consultation_fee is None or professional.consultation_fee < 0:
+            professional.consultation_fee = 0
+
         professional.consultation_duration_minutes = parse_int_or_keep(
             f.get("consultation_duration_minutes"),
             getattr(professional, "consultation_duration_minutes", 45),
             default_if_invalid=45
         ) or 45
+
         professional.buffer_between_appointments_minutes = parse_int_or_keep(
             f.get("buffer_between_appointments_minutes"),
             getattr(professional, "buffer_between_appointments_minutes", 15),
@@ -1550,9 +1563,20 @@ def professional_edit_profile():
         if professional.id is None:
             db.session.add(professional)
 
-        db.session.commit()
-        flash("Profil mis à jour.", "success")
-        return redirect(url_for("professional_dashboard"))
+        # ✅ Commit protégé
+        try:
+            db.session.commit()
+            flash("Profil mis à jour.", "success")
+            return redirect(url_for("professional_dashboard"))
+        except IntegrityError as e:
+            db.session.rollback()
+            # Exemple : NOT NULL, unique, FK…
+            current_app.logger.exception("IntegrityError on professional profile update")
+            flash("Impossible d'enregistrer : certaines valeurs sont invalides ou manquantes.", "danger")
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            current_app.logger.exception("DB error on professional profile update")
+            flash("Erreur technique lors de l'enregistrement. Réessayez.", "danger")
 
     # GET : seulement afficher, aucune écriture DB
     cities = _ui_cities()
