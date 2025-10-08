@@ -2231,6 +2231,40 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return render_or_text("errors/500.html", "500 — Erreur serveur"), 500
+# --- Aliases pour compatibilité des templates existants ---
+from flask import redirect, url_for, request, flash
+from werkzeug.routing import BuildError
+from flask_login import login_required, current_user
+
+# 1) "Mes patients" : fournir l’endpoint attendu par le template
+#    -> /pro/patients/list (évite tout conflit d’URL) et endpoint="pro_list_patients"
+@app.route("/pro/patients/list", methods=["GET"], endpoint="pro_list_patients")
+@login_required
+def pro_list_patients_alias():
+    # Si la vue canonique existe, on la réutilise telle quelle.
+    try:
+        return pro_patients()
+    except Exception:
+        # Fallback: simple redirection vers l’URL déjà en place
+        return redirect(url_for("pro_patients", **request.args))
+
+# 2) "Réserver un rendez-vous" : fournir l’endpoint attendu par professional_detail.html
+@app.route("/book/<int:professional_id>", methods=["GET"], endpoint="book_appointment")
+@login_required
+def book_appointment(professional_id: int):
+    # Info utilisateur si ce n’est pas un patient (on le laisse quand même voir la page de booking cible)
+    if getattr(current_user, "user_type", None) != "patient":
+        flash("Connectez-vous en tant que patient pour réserver un rendez-vous.", "warning")
+    # Redirige vers la page de rendez-vous déjà existante
+    try:
+        return redirect(url_for("professional_appointments", professional_id=professional_id))
+    except BuildError:
+        # Si ta version n’a pas encore 'professional_appointments', on retombe sur le booking générique
+        try:
+            return redirect(url_for("patient_booking") + f"?pro={professional_id}")
+        except BuildError:
+            # Dernier filet de sécurité
+            return redirect(url_for("index"))
 
 # =========================
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
