@@ -8,8 +8,14 @@
     <a href="{{ url_for('professional_dashboard') }}" class="link-secondary" style="font-size:.95rem;">← Retour au tableau de bord</a>
   </div>
 
-  <form id="pro-edit-form" method="post" novalidate>
-    {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+  <!-- PATCH #1 : action explicite + on laisse la validation HTML5 -->
+  <form id="pro-edit-form" method="post" action="{{ url_for('professional_edit_profile') }}">
+    <!-- PATCH #2 : CSRF robuste (Flask-WTF OU helper custom) -->
+    {% if form is defined %}
+      {{ form.csrf_token }}
+    {% elif csrf_token is defined %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% endif %}
 
     <!-- Legacy / « autre ville » -->
     <input type="hidden" name="location" id="location_hidden">
@@ -151,10 +157,21 @@
         <input name="phone" class="form-control" value="{{ professional.phone or '' }}" placeholder="06...">
       </div>
 
-      <!-- Prix -->
+      <!-- PATCH #3 : Prix (sécurisé HTML5) -->
       <div class="col-md-6">
         <label class="form-label">Prix consultation (MAD)</label>
-        <input name="consultation_fee" class="form-control" value="{{ professional.consultation_fee if professional.consultation_fee is not none else '' }}" placeholder="Ex: 300">
+        <input
+          name="consultation_fee"
+          type="number"
+          class="form-control"
+          inputmode="numeric"
+          min="0"
+          step="1"
+          required
+          value="{{ professional.consultation_fee if professional.consultation_fee is not none else 0 }}"
+          placeholder="Ex: 300"
+        >
+        <div class="form-text">Mettez <strong>0</strong> si gratuit.</div>
       </div>
 
       <!-- Types de consultation -->
