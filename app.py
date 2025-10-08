@@ -48,6 +48,13 @@ MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024))) 
 #   FLASK APP
 # =========================
 app = Flask(__name__)
+# --- Jinja helper: tester l'existence d'un endpoint en template ---
+@app.context_processor
+def inject_has_endpoint():
+    from flask import current_app
+    def has_endpoint(name: str) -> bool:
+        return name in current_app.view_functions
+    return dict(has_endpoint=has_endpoint)
 
 # Sécurité & cookies
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
