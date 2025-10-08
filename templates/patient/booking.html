@@ -51,6 +51,10 @@
    href="{{ url_for('professional_detail', professional_id=pro.id) }}">
   Voir le profil
 </a>
+<a class="btn btn-primary btn-sm"
+   href="{{ url_for('patient_book', professional_id=pro.id) }}">
+  Réserver un RDV
+</a>
 
   <div class="search-wrap">
     <!-- *** Formulaire identique à la home, seule l'action change *** -->
