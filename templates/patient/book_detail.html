@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h1>Réserver un rendez-vous</h1>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h5 class="card-title">{{ professional.name }}</h5>
+    <p class="card-text">
+      {{ professional.specialty.name if professional.specialty else '' }}
+      – {{ professional.city.name if professional.city else '' }}
+    </p>
+    <a class="btn btn-light btn-sm"
+       href="{{ url_for('professional_detail', professional_id=professional.id) }}">
+      Voir le profil
+    </a>
+  </div>
+</div>
+
+<form method="post">
+  <div class="mb-3">
+    <label class="form-label">Créneau</label>
+    <select name="slot_id" class="form-select" required>
+      <option value="">Choisir…</option>
+      {% for s in slots %}
+        <option value="{{ s.id }}">
+          {{ s.start_at.strftime('%d/%m/%Y %H:%M') }} – {{ s.end_at.strftime('%H:%M') }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <button class="btn btn-primary">Confirmer la réservation</button>
+  <a class="btn btn-light ms-2" href="{{ url_for('patient_resources') }}">Annuler</a>
+</form>
+
+{% endblock %}
