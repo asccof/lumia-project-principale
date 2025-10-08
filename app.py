@@ -2229,6 +2229,45 @@ def patient_booking():
         "patient/booking.html", "Prendre un rendez-vous",
         cities=cities, families=families, specialties=specialties
     )
+from sqlalchemy import select
+
+@app.route("/patient/resources")
+@login_required
+def patient_resources():
+    mode = request.args.get("mode", "")
+    q = select(Professional).where(Professional.is_active.is_(True))
+
+    # filtres optionnels
+    keyword = request.args.get("q", "").strip()
+    city_id = request.args.get("city_id")
+    family = request.args.get("family")
+    specialty_id = request.args.get("specialty_id")
+
+    if mode != "all":
+        if keyword:
+            q = q.where(Professional.name.ilike(f"%{keyword}%"))
+        if city_id:
+            q = q.where(Professional.city_id == city_id)
+        if specialty_id:
+            q = q.where(Professional.specialty_id == specialty_id)
+        if family:
+            # si tu as un champ `family_slug` ou `family_id`, adapte la condition :
+            # q = q.where(Professional.family_slug == family)  # ou
+            # q = q.where(Professional.family_id == int(family))  # si c'est un id
+            pass
+
+    q = q.order_by(Professional.rank.desc(), Professional.id.desc())
+    professionals = db.session.execute(q).scalars().all()
+
+    families = db.session.execute(select(Family).order_by(Family.name)).scalars().all()
+    specialties = db.session.execute(select(Specialty).order_by(Specialty.name)).scalars().all()
+    cities = db.session.execute(select(City).order_by(City.name)).scalars().all()
+
+    return render_template("patient/resources.html",
+                           professionals=professionals,
+                           families=families,
+                           specialties=specialties,
+                           cities=cities)
 
 # ---------- Résultats (même logique que /professionals) ----------
 @app.route("/patient/resources", methods=["GET"], endpoint="patient_resources")
