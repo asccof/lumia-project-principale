@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Facturation — Tighri{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Facturation</h1>
+
+  <div class="d-flex gap-2 mb-3">
+    <a class="btn btn-outline-primary" href="/pro/billing/new"><i class="fa-solid fa-plus me-1"></i> Nouvelle facture</a>
+    <a class="btn btn-outline-secondary" href="/pro/billing/export">Exporter (CSV)</a>
+  </div>
+
+  {% set inv = invoices if invoices is defined and invoices else [] %}
+  {% if inv %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead><tr><th>#</th><th>Date</th><th>Patient</th><th>Montant</th><th>Statut</th><th class="text-end">Actions</th></tr></thead>
+        <tbody>
+          {% for i in inv %}
+            <tr>
+              <td>{{ i.number if i.number is defined else i.id }}</td>
+              <td>{{ i.date if i.date is defined else '' }}</td>
+              <td>{{ i.patient_name if i.patient_name is defined else '' }}</td>
+              <td>{{ i.amount if i.amount is defined else 0 }} MAD</td>
+              <td>
+                <span class="badge bg-{{ 'success' if (i.paid if i.paid is defined else False) else 'warning' }}">
+                  {{ 'Réglée' if (i.paid if i.paid is defined else False) else 'En attente' }}
+                </span>
+              </td>
+              <td class="text-end">
+                {% if i.pdf_url is defined and i.pdf_url %}<a class="btn btn-sm btn-outline-secondary" href="{{ i.pdf_url }}">PDF</a>{% endif %}
+                <a class="btn btn-sm btn-outline-primary" href="/pro/billing/{{ i.id }}/edit">Éditer</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info">Aucune facture pour le moment.</div>
+  {% endif %}
+</div>
+{% endblock %}
