@@ -2348,6 +2348,52 @@ def patient_thread(professional_id: int):
     messages = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
     return render_or_text("patient/thread.html", "Messagerie sécurisée",
                           professional=pro, thread=thread, messages=messages)
+# ===== Routes Patient manquantes (ajout sans doublure) =====
+from flask_login import login_required, current_user
+from flask import render_template, redirect, url_for, request
+
+@app.get("/patient/booking")
+@login_required
+def patient_booking():
+    # TODO: charger les filtres (spécialités, villes, pros) si tu as déjà les modèles
+    return render_template("patient/booking.html")
+
+@app.get("/patient/exercises")
+@login_required
+def patient_exercises():
+    # TODO: lister les exercices du patient courant depuis ExerciseAssignment si dispo
+    # ex_assignments = ExerciseAssignment.query.filter_by(patient_id=current_user.id).all()
+    return render_template("patient/exercises.html")  # template déjà présent
+
+@app.get("/patient/documents")
+@login_required
+def patient_documents():
+    # TODO: lister les fichiers partagés au patient (si modèle existant)
+    return render_template("patient/files.html")  # template déjà présent
+
+@app.get("/patient/billing")
+@login_required
+def patient_billing():
+    # TODO: lister les factures du patient (si modèle Invoice/Payment existe)
+    return render_template("patient/billing.html")
+
+@app.get("/patient/messages")
+@login_required
+def patient_messages():
+    # Redirige vers la boîte de réception existante si tu as déjà un inbox
+    return render_template("patient/messages_inbox.html")  # template déjà présent
+
+@app.get("/patient/profile")
+@login_required
+def patient_profile():
+    # TODO: préremplir avec le téléphone du user, préférences de rappel, etc.
+    return render_template("patient/profile.html")
+
+@app.get("/patient/help")
+@login_required
+def patient_help():
+    return render_template("patient/help.html")
+# ===== Fin ajouts =====
 
 # =========================
 #   STATUT / ERREURS
