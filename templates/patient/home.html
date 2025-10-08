@@ -2,14 +2,24 @@
 {% block title %}Tighri — Espace patient{% endblock %}
 
 {% block content %}
+{# --- Macro lien sûr: évite les 500 si un endpoint manque --- #}
+{% macro safe_href(ep) -%}
+  {%- if has_endpoint is defined -%}
+    {%- if has_endpoint(ep) -%}{{ url_for(ep) }}{%- else -%}#{%- endif -%}
+  {%- else -%}
+    {#- Si le helper n'est pas injecté, on tente l'URL directe et on retombe sur # si ça casse -#}
+    {%- set _ = [] -%}{{ (url_for(ep)) if ep else '#' }}
+  {%- endif -%}
+{%- endmacro %}
+
 <div class="container py-4">
   <h1 class="h4 mb-3">Espace patient</h1>
 
   <div class="d-flex flex-wrap gap-2 mb-3">
-    <a href="{{ url_for('patient_booking') if 'patient_booking' in current_app.view_functions else '#' }}" class="btn btn-primary">Prendre un rendez-vous</a>
+    <a href="{{ safe_href('patient_booking') }}" class="btn btn-primary">Prendre un rendez-vous</a>
     <a href="{{ url_for('patient_appointments') }}" class="btn btn-outline-primary">Mes rendez-vous</a>
-    <a href="{{ url_for('patient_messages') if 'patient_messages' in current_app.view_functions else '#' }}" class="btn btn-outline-primary">Messages</a>
-    <a href="{{ url_for('patient_profile') if 'patient_profile' in current_app.view_functions else '#' }}" class="btn btn-outline-secondary">Profil</a>
+    <a href="{{ safe_href('patient_messages') }}" class="btn btn-outline-primary">Messages</a>
+    <a href="{{ safe_href('patient_profile') }}" class="btn btn-outline-secondary">Profil</a>
   </div>
 
   <div class="row g-3">
@@ -18,14 +28,14 @@
       <div class="card h-100"><div class="card-body">
         <h2 class="h6 mb-3">Prochain rendez-vous</h2>
         {% if next_appointment %}
-          <div class="mb-2"><strong>Avec :</strong> {{ next_appointment.professional.name }}</div>
-          <div class="mb-2"><strong>Quand :</strong> {{ next_appointment.when }}</div>
-          <div class="mb-2"><strong>Où :</strong> {{ next_appointment.where }}</div>
+          <div class="mb-2"><strong>Avec :</strong> {{ next_appointment.professional.name if next_appointment.professional is defined else '—' }}</div>
+          <div class="mb-2"><strong>Quand :</strong> {{ next_appointment.when or '—' }}</div>
+          <div class="mb-2"><strong>Où :</strong> {{ next_appointment.where or '—' }}</div>
           {% if next_appointment.link %}<a class="btn btn-sm btn-success" href="{{ next_appointment.link }}">Rejoindre</a>{% endif %}
           <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patient_appointments') }}">Voir tous</a>
         {% else %}
           <p class="text-muted mb-2">Aucun rendez-vous à venir.</p>
-          <a class="btn btn-sm btn-primary" href="{{ url_for('patient_booking') if 'patient_booking' in current_app.view_functions else '#' }}">Prendre un rendez-vous</a>
+          <a class="btn btn-sm btn-primary" href="{{ safe_href('patient_booking') }}">Prendre un rendez-vous</a>
         {% endif %}
       </div></div>
     </div>
@@ -57,7 +67,7 @@
             </li>
             {% endfor %}
           </ul>
-          <a class="btn btn-sm btn-outline-secondary mt-2" href="{{ url_for('patient_exercises') if 'patient_exercises' in current_app.view_functions else '#' }}">Voir tous</a>
+          <a class="btn btn-sm btn-outline-secondary mt-2" href="{{ safe_href('patient_exercises') }}">Voir tous</a>
         {% else %}
           <p class="text-muted mb-0">Aucun exercice attribué.</p>
         {% endif %}
@@ -68,10 +78,10 @@
       <div class="card h-100"><div class="card-body">
         <h2 class="h6 mb-3">Documents & Factures</h2>
         <div class="d-flex flex-wrap gap-2 mb-2">
-          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patient_documents') if 'patient_documents' in current_app.view_functions else '#' }}">
+          <a class="btn btn-sm btn-outline-secondary" href="{{ safe_href('patient_documents') }}">
             Documents ({{ docs_count or 0 }})
           </a>
-          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patient_billing') if 'patient_billing' in current_app.view_functions else '#' }}">
+          <a class="btn btn-sm btn-outline-secondary" href="{{ safe_href('patient_billing') }}">
             Factures {% if invoices_due and invoices_due>0 %}<span class="badge bg-danger ms-1">{{ invoices_due }}</span>{% endif %}
           </a>
         </div>
@@ -79,7 +89,7 @@
         {% if last_message %}
           <div><strong>Avec :</strong> {{ last_message.with }}</div>
           <div class="text-muted small">{{ last_message.at }} — {{ last_message.excerpt }}</div>
-          <a class="btn btn-sm btn-outline-primary mt-2" href="{{ url_for('patient_messages') if 'patient_messages' in current_app.view_functions else '#' }}">Ouvrir la messagerie</a>
+          <a class="btn btn-sm btn-outline-primary mt-2" href="{{ safe_href('patient_messages') }}">Ouvrir la messagerie</a>
         {% else %}
           <p class="text-muted mb-0">Aucun message récent.</p>
         {% endif %}
