@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Tighri — Espace patient{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Espace patient</h1>
+
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <a href="{{ url_for('patient_booking') if 'patient_booking' in current_app.view_functions else '#' }}" class="btn btn-primary">Prendre un rendez-vous</a>
+    <a href="{{ url_for('patient_appointments') }}" class="btn btn-outline-primary">Mes rendez-vous</a>
+    <a href="{{ url_for('patient_messages') if 'patient_messages' in current_app.view_functions else '#' }}" class="btn btn-outline-primary">Messages</a>
+    <a href="{{ url_for('patient_profile') if 'patient_profile' in current_app.view_functions else '#' }}" class="btn btn-outline-secondary">Profil</a>
+  </div>
+
+  <div class="row g-3">
+
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="h6 mb-3">Prochain rendez-vous</h2>
+        {% if next_appointment %}
+          <div class="mb-2"><strong>Avec :</strong> {{ next_appointment.professional.name }}</div>
+          <div class="mb-2"><strong>Quand :</strong> {{ next_appointment.when }}</div>
+          <div class="mb-2"><strong>Où :</strong> {{ next_appointment.where }}</div>
+          {% if next_appointment.link %}<a class="btn btn-sm btn-success" href="{{ next_appointment.link }}">Rejoindre</a>{% endif %}
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patient_appointments') }}">Voir tous</a>
+        {% else %}
+          <p class="text-muted mb-2">Aucun rendez-vous à venir.</p>
+          <a class="btn btn-sm btn-primary" href="{{ url_for('patient_booking') if 'patient_booking' in current_app.view_functions else '#' }}">Prendre un rendez-vous</a>
+        {% endif %}
+      </div></div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="h6 mb-3">Demandes en attente</h2>
+        {% if pending_requests and pending_requests|length %}
+          <ul class="list-unstyled mb-0">
+            {% for r in pending_requests %}
+            <li class="mb-2"><strong>{{ r.pro }}</strong> — {{ r.date }} <span class="badge bg-warning text-dark">{{ r.status }}</span></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">Aucune demande en attente.</p>
+        {% endif %}
+      </div></div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="h6 mb-3">Mes exercices</h2>
+        {% if exercises and exercises|length %}
+          <ul class="list-unstyled mb-0">
+            {% for ex in exercises[:4] %}
+            <li class="mb-2 d-flex justify-content-between">
+              <div><strong>{{ ex.title }}</strong>{% if ex.due %}<span class="text-muted"> — dû {{ ex.due }}</span>{% endif %}</div>
+              <span class="badge bg-secondary">{{ ex.status }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+          <a class="btn btn-sm btn-outline-secondary mt-2" href="{{ url_for('patient_exercises') if 'patient_exercises' in current_app.view_functions else '#' }}">Voir tous</a>
+        {% else %}
+          <p class="text-muted mb-0">Aucun exercice attribué.</p>
+        {% endif %}
+      </div></div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body">
+        <h2 class="h6 mb-3">Documents & Factures</h2>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patient_documents') if 'patient_documents' in current_app.view_functions else '#' }}">
+            Documents ({{ docs_count or 0 }})
+          </a>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patient_billing') if 'patient_billing' in current_app.view_functions else '#' }}">
+            Factures {% if invoices_due and invoices_due>0 %}<span class="badge bg-danger ms-1">{{ invoices_due }}</span>{% endif %}
+          </a>
+        </div>
+        <h3 class="h6">Dernier message</h3>
+        {% if last_message %}
+          <div><strong>Avec :</strong> {{ last_message.with }}</div>
+          <div class="text-muted small">{{ last_message.at }} — {{ last_message.excerpt }}</div>
+          <a class="btn btn-sm btn-outline-primary mt-2" href="{{ url_for('patient_messages') if 'patient_messages' in current_app.view_functions else '#' }}">Ouvrir la messagerie</a>
+        {% else %}
+          <p class="text-muted mb-0">Aucun message récent.</p>
+        {% endif %}
+      </div></div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
