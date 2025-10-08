@@ -1409,33 +1409,50 @@ def delete_unavailable_slot(slot_id: int):
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
 
-# Edition profil pro (inchangé)
+# Edition profil pro (corrigé : aucun commit en GET, valeurs par défaut sûres en POST)
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
+    # 1) Charger le pro par username (on conserve ta logique pour ne rien casser)
     professional = Professional.query.filter_by(name=current_user.username).first()
+
+    # 2) S'il n'existe pas, on crée un objet en mémoire (PAS d'insert/commit en GET)
     if not professional:
-        professional = Professional(name=current_user.username, description="Profil en cours de complétion.", status="en_attente")
-        db.session.add(professional); db.session.commit()
+        professional = Professional(
+            name=current_user.username,
+            description="Profil en cours de complétion.",
+            status="en_attente",
+            # Valeurs par défaut tolérantes (au cas où la DB a des NOT NULL)
+            consultation_duration_minutes=45,
+            buffer_between_appointments_minutes=15,
+            availability="disponible",
+        )
+        # ⚠️ NE PAS ajouter/committer ici : on laisse la création se faire en POST seulement.
 
     if request.method == "POST":
         f = request.form
-        professional.name = f.get("name", "").strip() or professional.name
-        professional.specialty = f.get("specialty", "").strip() or professional.specialty   # legacy
-        professional.description = f.get("description", "").strip() or professional.description
-        professional.location = f.get("location", "").strip() or professional.location       # legacy
-        professional.address = f.get("address", "").strip() or professional.address
-        professional.phone = f.get("phone", "").strip() or professional.phone
 
+        # Champs texte "legacy safe"
+        professional.name = (f.get("name", "") or professional.name).strip()
+        professional.specialty = (f.get("specialty", "") or professional.specialty or "").strip() or professional.specialty
+        professional.description = (f.get("description", "") or professional.description or "").strip() or professional.description
+        professional.location = (f.get("location", "") or professional.location or "").strip() or professional.location
+        professional.address = (f.get("address", "") or professional.address or "").strip() or professional.address
+        professional.phone = (f.get("phone", "") or professional.phone or "").strip() or professional.phone
+
+        # Clés étrangères optionnelles
         city_id = f.get("city_id", type=int)
         if city_id is not None and hasattr(professional, "city_id"):
             professional.city_id = city_id
+
         ps_id = f.get("primary_specialty_id", type=int) or f.get("specialty_id", type=int)
         if ps_id is not None and hasattr(professional, "primary_specialty_id"):
             professional.primary_specialty_id = ps_id
 
+        # Liste de spécialités
         spec_ids = [int(x) for x in f.getlist("specialty_ids") if str(x).isdigit()]
 
+        # Création "à la volée" d'une spécialité si fournie
         new_name = (f.get("new_specialty_name") or "").strip()
         new_family = (f.get("new_specialty_family") or "").strip()
         if new_name:
@@ -1443,9 +1460,10 @@ def professional_edit_profile():
             if not existing:
                 existing = Specialty(name=new_name, category=(new_family or None))
                 db.session.add(existing)
-                db.session.flush()
+                db.session.flush()  # pour obtenir existing.id
             spec_ids.append(existing.id)
 
+        # Déterminer la spécialité primaire si absente
         primary_spec_id = f.get("primary_specialty_id", type=int)
         if primary_spec_id:
             professional.primary_specialty_id = primary_spec_id
@@ -1455,12 +1473,14 @@ def professional_edit_profile():
         if spec_ids:
             professional.specialties = Specialty.query.filter(Specialty.id.in_(spec_ids)).all()
 
+        # Synchroniser le champ legacy "specialty" si besoin
         if professional.primary_specialty_id and not (professional.specialty or "").strip():
             ps = db.session.get(Specialty, professional.primary_specialty_id)
             if ps:
                 professional.specialty = ps.name
 
-        def parse_int_or_keep(v_str: Optional[str], old_val: Optional[int], default_if_invalid: Optional[int]=None) -> Optional[int]:
+        # Helpers robustes (inchangés)
+        def parse_int_or_keep(v_str, old_val, default_if_invalid=None):
             v = (v_str or "").strip()
             if v == "":
                 return old_val
@@ -1470,7 +1490,7 @@ def professional_edit_profile():
             except ValueError:
                 return old_val if old_val is not None else default_if_invalid
 
-        def parse_float_or_keep(v_str: Optional[str], old_val: Optional[float], default_if_invalid: Optional[float]=None) -> Optional[float]:
+        def parse_float_or_keep(v_str, old_val, default_if_invalid=None):
             v = (v_str or "").strip()
             if v == "":
                 return old_val
@@ -1480,41 +1500,43 @@ def professional_edit_profile():
             except ValueError:
                 return old_val if old_val is not None else default_if_invalid
 
+        # Coordonnées
         professional.latitude  = parse_float_or_keep(f.get("latitude"),  getattr(professional, "latitude", None))
         professional.longitude = parse_float_or_keep(f.get("longitude"), getattr(professional, "longitude", None))
 
+        # 🔐 Colonnes NOT NULL : imposer un défaut sûr si vide/invalide
         professional.consultation_fee = parse_int_or_keep(
             f.get("consultation_fee"),
             getattr(professional, "consultation_fee", 0),
             default_if_invalid=0
         )
-
         professional.consultation_duration_minutes = parse_int_or_keep(
             f.get("consultation_duration_minutes"),
             getattr(professional, "consultation_duration_minutes", 45),
             default_if_invalid=45
         ) or 45
-
         professional.buffer_between_appointments_minutes = parse_int_or_keep(
             f.get("buffer_between_appointments_minutes"),
             getattr(professional, "buffer_between_appointments_minutes", 15),
             default_if_invalid=15
         ) or 15
 
+        # Types de consultation (CSV)
         posted_types = [t for t in f.getlist("consultation_types") if t]
         if posted_types:
             professional.consultation_types = ",".join(sorted(set(posted_types)))
 
+        # Réseaux sociaux
         old_links = (
             (professional.facebook_url or ""),
             (professional.instagram_url or ""),
             (professional.tiktok_url or ""),
             (professional.youtube_url or ""),
         )
-        professional.facebook_url  = f.get("facebook_url", "").strip() or None
-        professional.instagram_url = f.get("instagram_url", "").strip() or None
-        professional.tiktok_url    = f.get("tiktok_url", "").strip() or None
-        professional.youtube_url   = f.get("youtube_url", "").strip() or None
+        professional.facebook_url  = (f.get("facebook_url", "") or None)
+        professional.instagram_url = (f.get("instagram_url", "") or None)
+        professional.tiktok_url    = (f.get("tiktok_url", "") or None)
+        professional.youtube_url   = (f.get("youtube_url", "") or None)
         new_links = (
             (professional.facebook_url or ""),
             (professional.instagram_url or ""),
@@ -1524,18 +1546,27 @@ def professional_edit_profile():
         if new_links != old_links:
             professional.social_links_approved = False
 
+        # 3) Si c'est une première sauvegarde, ajouter l'objet avant commit
+        if professional.id is None:
+            db.session.add(professional)
+
         db.session.commit()
         flash("Profil mis à jour.", "success")
         return redirect(url_for("professional_dashboard"))
 
+    # GET : seulement afficher, aucune écriture DB
     cities = _ui_cities()
     specialties = _ui_specialties()
     families = _ui_families_rows()
 
-    return render_or_text("professional_edit_profile.html",
-                           "Éditer profil pro",
-                           professional=professional,
-                           cities=cities, families=families, specialties=specialties)
+    return render_or_text(
+        "professional_edit_profile.html",
+        "Éditer profil pro",
+        professional=professional,
+        cities=cities,
+        families=families,
+        specialties=specialties
+    )
 
 # ===== RDV côté PRO : liste + filtres =====
 @app.route("/professional/appointments", methods=["GET"], endpoint="professional_appointments")
