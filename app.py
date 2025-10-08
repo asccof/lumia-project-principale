@@ -11,6 +11,10 @@ from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 from typing import Optional
 
 from dotenv import load_dotenv  # ← nouveau (tu as python-dotenv installé)
+import os
+from flask import request, jsonify, send_file, send_from_directory, abort, url_for
+from sqlalchemy import or_
+from flask_login import login_required, current_user
 
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
@@ -1264,6 +1268,25 @@ def reset_password(token: str):
         flash("Mot de passe réinitialisé. Vous pouvez vous connecter.", "success")
         return redirect(url_for("login"))
     return render_or_text("reset_password.html", "Réinitialiser le mot de passe")
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "favicon.ico",
+        mimetype="image/vnd.microsoft.icon"
+    )
+
+@app.route("/robots.txt")
+def robots_txt():
+    from flask import Response
+    rules = [
+        "User-agent: *",
+        "Disallow: /login",
+        "Disallow: /patient",
+        "Disallow: /pro",
+        "Disallow: /professional_dashboard",
+    ]
+    return Response("\n".join(rules) + "\n", mimetype="text/plain")
 
 # =========================
 #   ESPACE PRO / RDV (inchangé)
@@ -1853,6 +1876,45 @@ def messages_index():
         threads = MessageThread.query.filter_by(patient_id=current_user.id)\
                                      .order_by(MessageThread.updated_at.desc().nullslast()).all()
         return render_or_text("patient/messages_index.html", "Messagerie", threads=threads)
+@app.route("/pro/billing", methods=["GET"], endpoint="pro_billing")
+@login_required
+def pro_billing():
+    """
+    Page de facturation (placeholder fonctionnel, mais template complet).
+    On exige un compte pro (adapte le flag selon ton modèle).
+    """
+    if not getattr(current_user, "is_professional", False):
+        abort(403)
+
+    # Exemple de données (remplace par tes vraies sources si tu en as)
+    current_plan = {
+        "name": "Essentiel",
+        "price": 0,
+        "currency": "MAD",
+        "period": "mois",
+        "features": ["Profil public", "Prise de RDV", "Agenda basique"],
+        "renews_at": None,  # None si gratuit
+        "status": "actif",
+    }
+
+    payment_method = {
+        "brand": "Visa",
+        "last4": "4242",
+        "exp": "08/27",
+    }
+
+    invoices = [
+        # Exemple : remplace par ta liste (depuis DB / PSP) si existante
+        # {"id": "INV-2024-0001", "date": "2024-12-05", "amount": 199, "currency": "MAD", "status": "payée", "pdf_url": "https://..."},
+    ]
+
+    return render_or_text(
+        "pro_billing.html",
+        "Facturation",
+        current_plan=current_plan,
+        payment_method=payment_method,
+        invoices=invoices
+    )
 
 # --- Sessions & notes
 @app.route("/pro/sessions", methods=["GET","POST"], endpoint="pro_sessions")
@@ -2050,6 +2112,34 @@ def patient_resources():
         or_(Exercise.visibility == "public", Exercise.visibility == "my_patients", Exercise.id.in_(visible_ids))
     ).order_by(Exercise.created_at.desc())
     return render_or_text("patient/resources.html", "Ressources", exercises=q.all())
+@app.route("/patient/resources", methods=["GET"])
+@login_required
+def patient_resources():
+    q = (request.args.get("q") or "").strip()
+    specialty = (request.args.get("specialty") or "").strip()
+    city = (request.args.get("city") or "").strip()
+
+    query = Professional.query  # adapte si ton modèle a un nom différent
+
+    if specialty:
+        query = query.filter(Professional.specialty == specialty)
+    if city:
+        query = query.filter(Professional.city == city)
+    if q:
+        query = query.filter(or_(
+            Professional.name.ilike(f"%{q}%"),
+            Professional.bio.ilike(f"%{q}%")
+        ))
+
+    items = [{
+        "id": p.id,
+        "name": p.name,
+        "specialty": p.specialty,
+        "city": p.city,
+        "profile_url": url_for("professional_detail", professional_id=p.id),
+    } for p in query.limit(50).all()]
+
+    return jsonify(items)
 
 @app.route("/patient/notebook", methods=["GET","POST"], endpoint="patient_notebook")
 @login_required
