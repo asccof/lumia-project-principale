@@ -194,6 +194,10 @@ def _load_user(user_id: str):
     except Exception:
         return None
 
+@app.route("/professional", methods=["GET"])
+def professional_landing():
+    # Force la nouvelle logique : login d’abord, puis redirection vers le dashboard pro
+    return redirect(url_for("login", next=url_for("professional_dashboard")))
 
 # =========================
 #   I18N / LANG
