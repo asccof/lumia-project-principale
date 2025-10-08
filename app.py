@@ -2431,6 +2431,21 @@ def pro_list_patients():
     )
 
 
+# ===== DEBUG/AUDIT TEMPORAIRE (à supprimer après l'audit) =====
+@app.get("/_int/routes")
+def _int_routes():
+    out = []
+    for rule in app.url_map.iter_rules():
+        path = str(rule)
+        if path.startswith("/patient") or path.startswith("/_int"):
+            out.append({
+                "rule": path,
+                "endpoint": rule.endpoint,
+                "methods": sorted(list(rule.methods)),
+            })
+    out = sorted(out, key=lambda r: r["rule"])
+    return {"routes": out}
+# ===== FIN DEBUG/AUDIT =====
 
 
 # =========================
