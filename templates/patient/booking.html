@@ -1,30 +1,163 @@
 {% extends "base.html" %}
-{% block title %}Prendre un rendez-vous — Tighri{% endblock %}
+{% block title %}Tighri — Réserver{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* mêmes styles que la home pour la zone de recherche */
+  :root{--primary:#8B5CF6;--primary-dark:#6D28D9;--ink:#2d1a47;--muted:#4B3869;--bg:#f7f5fa;--card:#fff;--shadow:0 2px 12px rgba(139,92,246,.1);--radius:18px}
+  header.page{background:linear-gradient(90deg,var(--primary) 0%,var(--primary-dark) 100%);color:#fff;padding:6rem 0 2rem;text-align:center}
+  header.page h1{margin:0 0 .5rem;font-size:2.2rem;font-weight:700}
+  header.page p{margin:0 auto 1.25rem;max-width:680px;opacity:.95}
+
+  .search-wrap{max-width:1100px;margin:-2.0rem auto 1rem;padding:0 1rem}
+  .search-bar{display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 1fr auto;gap:.5rem;background:#fff;padding:.5rem;border-radius:999px;box-shadow:var(--shadow)}
+  .search-bar select,.search-bar input{border:1.5px solid #e6dcff;border-radius:999px;padding:.7rem .9rem}
+  .search-bar button{padding:.75rem 1.25rem;border:none;background:var(--primary);color:#fff;border-radius:999px;font-weight:700}
+  .search-bar button:hover{background:var(--primary-dark)}
+  @media (max-width:960px){ .search-bar{grid-template-columns:1fr 1fr} }
+
+  .search-actions{display:flex;align-items:center;gap:.5rem}
+  .btn-icon{display:inline-flex;align-items:center;gap:.4rem}
+  .btn-icon svg{width:16px;height:16px}
+
+  /* panneau avancé mobile (identique home) */
+  @media (max-width:640px){
+    .search-bar{grid-template-columns:1fr;gap:.5rem}
+    .desktop-only{display:none !important}
+    #mobile-advanced-filters{
+      overflow:hidden;max-height:0;opacity:0;transform:translateY(-4px);
+      transition:max-height .28s ease,opacity .25s ease,transform .25s ease;
+      background:#fff;border-radius:16px;padding:0 .5rem;box-shadow:var(--shadow)
+    }
+    #mobile-advanced-filters.is-open{max-height:600px;opacity:1;transform:translateY(0);padding:.5rem}
+    #mobile-advanced-filters .adv-stack{display:grid;grid-template-columns:1fr;gap:.5rem}
+    .adv-head{display:flex;justify-content:flex-end}
+    .adv-close{border:none;background:transparent;font-size:1.25rem;line-height:1;padding:.25rem .5rem;cursor:pointer;color:#6D28D9}
+  }
+  @media (min-width:641px){
+    #mobile-advanced-filters{display:contents}
+    .mobile-only{display:none !important}
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container py-4">
-  <h1 class="h4 mb-3">Prendre un rendez-vous</h1>
-  <form method="get" action="{{ url_for('patient_resources') }}">
-    <div class="row g-3">
-      <div class="col-md-4">
-        <label class="form-label">Spécialité</label>
-        <input class="form-control" name="specialty" placeholder="Psychologue, Coach, Hypnose…">
+  <header class="page">
+    <h1>{{ t('patient.booking.title','Trouver un professionnel') }}</h1>
+    <p>{{ t('patient.booking.lead','Recherchez par mot-clé, ville, famille, spécialité ou mode de consultation.') }}</p>
+    <p><a href="{{ url_for('patient_dashboard') }}" class="btn btn-light btn-sm">{{ t('nav.back_patient','↩ Retour à mon espace patient') }}</a></p>
+  </header>
+
+  <div class="search-wrap">
+    <!-- *** Formulaire identique à la home, seule l'action change *** -->
+    <form id="tighri-search-form" class="search-bar" method="get" action="{{ url_for('patient_resources') }}">
+      <!-- q (desktop) -->
+      <input class="desktop-only" type="text" name="q" id="q-desktop"
+             placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}"
+             value="{{ request.args.get('q','') }}">
+
+      <!-- Panneau avancé : q + ville + famille + spécialité + mode -->
+      <div id="mobile-advanced-filters" aria-hidden="true">
+        <div class="adv-head"><button type="button" class="adv-close" id="advClose" aria-label="Fermer">✕</button></div>
+        <div class="adv-stack">
+          <!-- q (mobile) -->
+          <input class="mobile-only" type="text" name="q" id="q-mobile"
+                 placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}"
+                 value="{{ request.args.get('q','') }}">
+
+          <!-- Ville -->
+          {% if cities is defined and cities %}
+            <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
+              <option value="">{{ t('search.city','Ville') }}</option>
+              {% for c in cities %}
+                <option value="{{ c.id }}" {% if request.args.get('city_id')==c.id|string %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="text" name="city" placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}" value="{{ request.args.get('city','') }}">
+          {% endif %}
+
+          <!-- Famille -->
+          {% if families is defined and families %}
+            <select name="family" aria-label="{{ t('search.family','Famille') }}">
+              <option value="">{{ t('search.family','Famille') }}</option>
+              {% for f in families %}
+                <option value="{{ f.name }}" {% if request.args.get('family','')==f.name %}selected{% endif %}>{{ f.name }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="text" name="family" placeholder="{{ t('search.family','Famille') }}" aria-label="{{ t('search.family','Famille') }}" value="{{ request.args.get('family','') }}">
+          {% endif %}
+
+          <!-- Spécialité -->
+          {% if specialties is defined and specialties %}
+            <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
+              <option value="">{{ t('search.specialty','Spécialité') }}</option>
+              {% for s in specialties %}
+                <option value="{{ s.id }}" {% if request.args.get('specialty_id')==s.id|string %}selected{% endif %}>{{ s.name }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="text" name="specialty" placeholder="{{ t('search.specialty','Spécialité') }}" aria-label="{{ t('search.specialty','Spécialité') }}" value="{{ request.args.get('specialty','') }}">
+          {% endif %}
+
+          <!-- Mode -->
+          <select name="mode" aria-label="{{ t('search.mode','Mode') }}">
+            <option value="">{{ t('search.mode','Mode') }}</option>
+            <option value="cabinet"  {% if request.args.get('mode')=='cabinet' %}selected{% endif %}>{{ t('mode.cabinet','Cabinet') }}</option>
+            <option value="visio"    {% if request.args.get('mode')=='visio' %}selected{% endif %}>{{ t('mode.visio','Visio') }}</option>
+            <option value="domicile" {% if request.args.get('mode')=='domicile' %}selected{% endif %}>{{ t('mode.domicile','Domicile') }}</option>
+          </select>
+        </div>
       </div>
-      <div class="col-md-4">
-        <label class="form-label">Ville</label>
-        <input class="form-control" name="city" placeholder="Rabat, Casablanca…">
+
+      <!-- Actions -->
+      <div class="search-actions">
+        <button id="btn-search-submit" type="submit" class="btn-icon" aria-expanded="false">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.415l-3.867-3.833zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>
+          </svg>
+          <span>{{ t('search.cta','Rechercher') }}</span>
+        </button>
+
+        <div class="form-check form-switch" style="margin:0 .25rem;">
+          <input class="form-check-input" type="checkbox" id="switch-advanced"
+                 aria-controls="mobile-advanced-filters" aria-label="Afficher les filtres"
+                 {% if request.args.get('q') or request.args.get('city') or request.args.get('city_id') or request.args.get('family') or request.args.get('specialty') or request.args.get('specialty_id') or request.args.get('mode') %}checked{% endif %}>
+          <label class="form-check-label" for="switch-advanced" style="font-size:.85rem;">Plus</label>
+        </div>
       </div>
-      <div class="col-md-4">
-        <label class="form-label">Nom du spécialiste</label>
-        <input class="form-control" name="q" placeholder="Nom du professionnel">
-      </div>
-    </div>
-    <div class="mt-3">
-      <button class="btn btn-primary">Voir les spécialistes</button>
-      <a class="btn btn-outline-secondary" href="{{ url_for('patient_home') }}">Annuler</a>
-    </div>
-  </form>
-  <p class="text-muted small mt-3">
-    Une fois la demande envoyée : <strong>en attente de validation</strong> → validation par le pro → vous recevez une <strong>notification</strong>. Un rappel est envoyé <strong>24h avant</strong> le rendez-vous.
-  </p>
-</div>
+    </form>
+  </div>
+
+  <script>
+    /* === Script mobile identique à la home === */
+    (function(){
+      const panel  = document.getElementById('mobile-advanced-filters');
+      const btn    = document.getElementById('btn-search-submit');
+      const sw     = document.getElementById('switch-advanced');
+      const qDesk  = document.getElementById('q-desktop');
+      const qMob   = document.getElementById('q-mobile');
+      const isMobile = () => window.matchMedia('(max-width: 640px)').matches;
+
+      function syncQState(){
+        if (isMobile()){ if(qDesk) qDesk.disabled = true; if(qMob) qMob.disabled = false; }
+        else{ if(qDesk) qDesk.disabled = false; if(qMob) qMob.disabled = true; }
+      }
+      const openPanel = () => { panel.classList.add('is-open'); panel.setAttribute('aria-hidden','false'); btn.setAttribute('aria-expanded','true'); sw && (sw.checked = true); };
+      const closePanel = () => { panel.classList.remove('is-open'); panel.setAttribute('aria-hidden','true'); btn.setAttribute('aria-expanded','false'); sw && (sw.checked = false); };
+
+      const qs = new URLSearchParams(window.location.search);
+      const hasFilters = ['q','city','city_id','family','specialty','specialty_id','mode'].some(k=>qs.get(k));
+      if (isMobile() && hasFilters) openPanel(); else closePanel();
+      syncQState();
+
+      sw && sw.addEventListener('change', function(){ if (!isMobile()) return; this.checked ? openPanel() : closePanel(); });
+      btn && btn.addEventListener('click', function(e){ if (!isMobile()) return; if (!panel.classList.contains('is-open')){ e.preventDefault(); openPanel(); setTimeout(()=>{ qMob && qMob.focus(); }, 0); }});
+      document.getElementById('advClose')?.addEventListener('click', ()=>{ if (isMobile()) closePanel(); });
+      document.addEventListener('click', (e)=>{ if (!isMobile() || !panel.classList.contains('is-open')) return; const inside = e.target.closest('#mobile-advanced-filters') || e.target.closest('#btn-search-submit') || e.target.closest('#switch-advanced'); if (!inside) closePanel(); });
+      document.addEventListener('keydown', (e)=>{ if (isMobile() && e.key === 'Escape' && panel.classList.contains('is-open')) closePanel(); });
+      window.addEventListener('resize', ()=>{ syncQState(); if (!isMobile()){ panel.setAttribute('aria-hidden','false'); }else{ sw && (sw.checked ? openPanel() : closePanel()); }});
+    })();
+  </script>
 {% endblock %}
