@@ -2079,69 +2079,204 @@ def pro_support():
     return render_or_text("pro/support.html", "Support & Guides", tickets=tickets, guides=guides, professional=pro)
 
 # =========================
-#   ESPACE PATIENT
+#   ESPACE PATIENT (CLEAN)
 # =========================
+
 def _require_patient():
     if not current_user.is_authenticated or current_user.user_type != "patient":
         abort(403)
 
+# ---------- Accueil ----------
 @app.route("/patient", endpoint="patient_home")
 @login_required
 def patient_home():
     _require_patient()
     profile = PatientProfile.query.filter_by(user_id=current_user.id).first()
-    my_threads = MessageThread.query.filter_by(patient_id=current_user.id).order_by(MessageThread.updated_at.desc().nullslast()).all()
-    my_assignments = ExerciseAssignment.query.filter_by(patient_id=current_user.id).order_by(ExerciseAssignment.created_at.desc()).limit(10).all()
-    my_sessions = TherapySession.query.filter_by(patient_id=current_user.id).order_by(TherapySession.start_at.desc()).limit(10).all()
-    return render_or_text("patient/home.html", "Espace patient",
-                          profile=profile, threads=my_threads, assignments=my_assignments, sessions=my_sessions)
+    my_threads = MessageThread.query.filter_by(patient_id=current_user.id)\
+        .order_by(MessageThread.updated_at.desc().nullslast()).all()
+    my_assignments = ExerciseAssignment.query.filter_by(patient_id=current_user.id)\
+        .order_by(ExerciseAssignment.created_at.desc()).limit(10).all()
+    my_sessions = TherapySession.query.filter_by(patient_id=current_user.id)\
+        .order_by(TherapySession.start_at.desc()).limit(10).all()
+    return render_or_text(
+        "patient/home.html", "Espace patient",
+        profile=profile, threads=my_threads, assignments=my_assignments, sessions=my_sessions
+    )
 
+# ---------- Rendez-vous ----------
 @app.route("/patient/appointments", endpoint="patient_appointments")
 @login_required
 def patient_appointments():
     _require_patient()
-    appts = Appointment.query.filter_by(patient_id=current_user.id).order_by(Appointment.appointment_date.desc()).all()
+    appts = Appointment.query.filter_by(patient_id=current_user.id)\
+        .order_by(Appointment.appointment_date.desc()).all()
     return render_or_text("patient/appointments.html", "Mes rendez-vous", appointments=appts)
 
-@app.route("/patient/resources", endpoint="patient_resources")
+# ---------- Aide: construction de la requête pros à partir des filtres ----------
+def _build_professional_query_from_args(args):
+    qs = Professional.query
+    if hasattr(Professional, "is_active"):
+        qs = qs.filter(Professional.is_active.is_(True))
+
+    q = (args.get("q") or "").strip()
+    if q:
+        if hasattr(Professional, "description"):
+            qs = qs.filter(or_(Professional.name.ilike(f"%{q}%"),
+                               Professional.description.ilike(f"%{q}%")))
+        elif hasattr(Professional, "bio"):
+            qs = qs.filter(or_(Professional.name.ilike(f"%{q}%"),
+                               Professional.bio.ilike(f"%{q}%")))
+        else:
+            qs = qs.filter(Professional.name.ilike(f"%{q}%"))
+
+    city_id = args.get("city_id", type=int)
+    if city_id and hasattr(Professional, "city_id"):
+        qs = qs.filter(Professional.city_id == city_id)
+    else:
+        city = (args.get("city") or "").strip()
+        if city and hasattr(Professional, "city"):
+            try:
+                qs = qs.filter(or_(Professional.city == city,
+                                   Professional.city.ilike(f"%{city}%")))
+            except Exception:
+                pass
+
+    family = (args.get("family") or "").strip()
+    if family:
+        try:
+            if hasattr(Professional, "family"):
+                qs = qs.filter(Professional.family == family)
+            elif hasattr(Professional, "primary_specialty") and "Family" in globals():
+                qs = qs.filter(Professional.primary_specialty.has(Family.name == family))
+        except Exception:
+            pass
+
+    specialty_id = args.get("specialty_id", type=int)
+    if specialty_id:
+        try:
+            if hasattr(Professional, "primary_specialty_id"):
+                qs = qs.filter(Professional.primary_specialty_id == specialty_id)
+            if hasattr(Professional, "secondary_specialties"):
+                qs = qs.filter(Professional.secondary_specialties.any(id=specialty_id))
+        except Exception:
+            pass
+    else:
+        specialty = (args.get("specialty") or "").strip()
+        if specialty and hasattr(Professional, "specialty"):
+            qs = qs.filter(Professional.specialty == specialty)
+
+    mode = (args.get("mode") or "").strip()
+    if mode:
+        try:
+            if hasattr(Professional, "consultation_types"):
+                qs = qs.filter(Professional.consultation_types.ilike(f"%{mode}%"))
+            else:
+                mode_map = {
+                    "visio": "offers_visio",
+                    "cabinet": "offers_in_office",
+                    "domicile": "offers_home_visits",
+                }
+                attr = mode_map.get(mode)
+                if attr and hasattr(Professional, attr):
+                    qs = qs.filter(getattr(Professional, attr).is_(True))
+        except Exception:
+            pass
+
+    if hasattr(Professional, "name"):
+        qs = qs.order_by(Professional.name.asc())
+    return qs
+
+# ---------- Prendre RDV (formulaire) ----------
+@app.route("/patient/booking", methods=["GET"], endpoint="patient_booking")
+@login_required
+def patient_booking():
+    _require_patient()
+    try:
+        cities = City.query.order_by(City.name).all()
+    except Exception:
+        cities = []
+    try:
+        families = Family.query.order_by(Family.name).all()
+    except Exception:
+        families = []
+    try:
+        specialties = Specialty.query.order_by(Specialty.name).all()
+    except Exception:
+        specialties = []
+    # Formulaire identique à la home, mais action -> patient_resources
+    return render_or_text(
+        "patient/booking.html", "Prendre un rendez-vous",
+        cities=cities, families=families, specialties=specialties
+    )
+
+# ---------- Résultats (même logique que /professionals) ----------
+@app.route("/patient/resources", methods=["GET"], endpoint="patient_resources")
 @login_required
 def patient_resources():
     _require_patient()
-    visible_ids = set(a.exercise_id for a in ExerciseAssignment.query.filter_by(patient_id=current_user.id).all())
-    q = Exercise.query.filter(
-        or_(Exercise.visibility == "public", Exercise.visibility == "my_patients", Exercise.id.in_(visible_ids))
-    ).order_by(Exercise.created_at.desc())
-    return render_or_text("patient/resources.html", "Ressources", exercises=q.all())
-@app.route("/patient/resources", methods=["GET"])
+    try:
+        professionals = _build_professional_query_from_args(request.args).all()
+    except Exception:
+        professionals = []
+
+    # Listes pour garder les sélections
+    try:
+        cities = City.query.order_by(City.name).all()
+    except Exception:
+        cities = []
+    try:
+        families = Family.query.order_by(Family.name).all()
+    except Exception:
+        families = []
+    try:
+        specialties = Specialty.query.order_by(Specialty.name).all()
+    except Exception:
+        specialties = []
+
+    return render_or_text(
+        "patient/resources.html", "Ressources",
+        professionals=professionals, cities=cities, families=families, specialties=specialties
+    )
+
+# ---------- API JSON (optionnelle) ----------
+@app.route("/api/patient/resources", methods=["GET"], endpoint="patient_resources_api")
 @login_required
-def patient_resources():
-    q = (request.args.get("q") or "").strip()
-    specialty = (request.args.get("specialty") or "").strip()
-    city = (request.args.get("city") or "").strip()
+def patient_resources_api():
+    _require_patient()
+    qs = _build_professional_query_from_args(request.args).limit(50).all()
+    payload = []
+    for p in qs:
+        payload.append({
+            "id": p.id,
+            "name": getattr(p, "name", None),
+            "specialty": (
+                getattr(p, "specialty", None)
+                or (getattr(p, "primary_specialty", None).name if getattr(p, "primary_specialty", None) else None)
+            ),
+            "city": getattr(p, "city", None).name if hasattr(getattr(p, "city", None), "name") else getattr(p, "city", None),
+            "profile_url": url_for("professional_detail", professional_id=p.id),
+        })
+    return jsonify(payload)
 
-    query = Professional.query  # adapte si ton modèle a un nom différent
+# ---------- Ressources/exercices (ex- /patient/resources) ----------
+@app.route("/patient/exercises", methods=["GET"], endpoint="patient_exercises")
+@login_required
+def patient_exercises():
+    _require_patient()
+    try:
+        visible_ids = {a.exercise_id for a in ExerciseAssignment.query.filter_by(patient_id=current_user.id).all()}
+        q = Exercise.query.filter(
+            or_(Exercise.visibility == "public",
+                Exercise.visibility == "my_patients",
+                Exercise.id.in_(visible_ids))
+        ).order_by(Exercise.created_at.desc())
+        exercises = q.all()
+    except Exception:
+        exercises = []
+    return render_or_text("patient/exercises.html", "Mes ressources", exercises=exercises)
 
-    if specialty:
-        query = query.filter(Professional.specialty == specialty)
-    if city:
-        query = query.filter(Professional.city == city)
-    if q:
-        query = query.filter(or_(
-            Professional.name.ilike(f"%{q}%"),
-            Professional.bio.ilike(f"%{q}%")
-        ))
-
-    items = [{
-        "id": p.id,
-        "name": p.name,
-        "specialty": p.specialty,
-        "city": p.city,
-        "profile_url": url_for("professional_detail", professional_id=p.id),
-    } for p in query.limit(50).all()]
-
-    return jsonify(items)
-
-@app.route("/patient/notebook", methods=["GET","POST"], endpoint="patient_notebook")
+# ---------- Carnet thérapeutique ----------
+@app.route("/patient/notebook", methods=["GET", "POST"], endpoint="patient_notebook")
 @login_required
 def patient_notebook():
     _require_patient()
@@ -2150,15 +2285,19 @@ def patient_notebook():
         entry_type = (request.form.get("entry_type") or "note").strip()
         title = (request.form.get("title") or "").strip() or None
         content = (request.form.get("content") or "").strip()
-        entry = TherapyNotebookEntry(patient_id=current_user.id, professional_id=pro_id or 0, author_id=current_user.id,
-                                     entry_type=entry_type, title=title, content=content)
+        entry = TherapyNotebookEntry(
+            patient_id=current_user.id, professional_id=pro_id or 0, author_id=current_user.id,
+            entry_type=entry_type, title=title, content=content
+        )
         db.session.add(entry); db.session.commit()
         flash("Entrée ajoutée au carnet.", "success")
         return redirect(url_for("patient_notebook"))
-    entries = TherapyNotebookEntry.query.filter_by(patient_id=current_user.id).order_by(TherapyNotebookEntry.created_at.desc()).all()
+    entries = TherapyNotebookEntry.query.filter_by(patient_id=current_user.id)\
+        .order_by(TherapyNotebookEntry.created_at.desc()).all()
     return render_or_text("patient/notebook.html", "Carnet thérapeutique", entries=entries)
 
-@app.route("/patient/journal", methods=["GET","POST"], endpoint="patient_journal")
+# ---------- Journal personnel ----------
+@app.route("/patient/journal", methods=["GET", "POST"], endpoint="patient_journal")
 @login_required
 def patient_journal():
     _require_patient()
@@ -2167,14 +2306,19 @@ def patient_journal():
         content = (request.form.get("content") or "").strip()
         emotion = (request.form.get("emotion") or "").strip() or None
         share = request.form.get("share") == "on"
-        e = PersonalJournalEntry(patient_id=current_user.id, title=title, content=content, emotion=emotion, is_shared_with_pro=share)
+        e = PersonalJournalEntry(
+            patient_id=current_user.id, title=title, content=content, emotion=emotion,
+            is_shared_with_pro=share
+        )
         db.session.add(e); db.session.commit()
         flash("Journal enregistré.", "success")
         return redirect(url_for("patient_journal"))
-    entries = PersonalJournalEntry.query.filter_by(patient_id=current_user.id).order_by(PersonalJournalEntry.created_at.desc()).all()
+    entries = PersonalJournalEntry.query.filter_by(patient_id=current_user.id)\
+        .order_by(PersonalJournalEntry.created_at.desc()).all()
     return render_or_text("patient/journal.html", "Journal personnel", entries=entries)
 
-@app.route("/patient/ratings", methods=["GET","POST"], endpoint="patient_ratings")
+# ---------- Avis ----------
+@app.route("/patient/ratings", methods=["GET", "POST"], endpoint="patient_ratings")
 @login_required
 def patient_ratings():
     _require_patient()
@@ -2182,28 +2326,37 @@ def patient_ratings():
         professional_id = request.form.get("professional_id", type=int)
         rating = request.form.get("rating", type=int)
         comment = (request.form.get("comment") or "").strip() or None
-        r = ProfessionalReview(patient_id=current_user.id, professional_id=professional_id, rating=rating, comment=comment, is_public=True)
+        r = ProfessionalReview(
+            patient_id=current_user.id, professional_id=professional_id,
+            rating=rating, comment=comment, is_public=True
+        )
         db.session.add(r); db.session.commit()
         flash("Avis publié.", "success")
         return redirect(url_for("patient_ratings"))
-    my_reviews = ProfessionalReview.query.filter_by(patient_id=current_user.id).order_by(ProfessionalReview.created_at.desc()).all()
+    my_reviews = ProfessionalReview.query.filter_by(patient_id=current_user.id)\
+        .order_by(ProfessionalReview.created_at.desc()).all()
     return render_or_text("patient/ratings.html", "Mes avis", reviews=my_reviews)
 
-@app.route("/patient/charter", methods=["GET","POST"], endpoint="patient_charter")
+# ---------- Charte & confidentialité ----------
+@app.route("/patient/charter", methods=["GET", "POST"], endpoint="patient_charter")
 @login_required
 def patient_charter():
     _require_patient()
     if request.method == "POST":
         policy_key = (request.form.get("policy_key") or "ethic_charter").strip()
         version = (request.form.get("version") or "v1").strip()
-        db.session.add(ConsentLog(user_id=current_user.id, policy_key=policy_key, version=version, accepted_at=datetime.utcnow()))
+        db.session.add(ConsentLog(
+            user_id=current_user.id, policy_key=policy_key, version=version, accepted_at=datetime.utcnow()
+        ))
         db.session.commit()
         flash("Consentement enregistré.", "success")
         return redirect(url_for("patient_charter"))
-    logs = ConsentLog.query.filter_by(user_id=current_user.id).order_by(ConsentLog.accepted_at.desc()).all()
+    logs = ConsentLog.query.filter_by(user_id=current_user.id)\
+        .order_by(ConsentLog.accepted_at.desc()).all()
     return render_or_text("patient/charter.html", "Charte & confidentialité", consents=logs)
 
-@app.route("/patient/thread/<int:professional_id>", methods=["GET","POST"], endpoint="patient_thread")
+# ---------- Messagerie avec un pro ----------
+@app.route("/patient/thread/<int:professional_id>", methods=["GET", "POST"], endpoint="patient_thread")
 @login_required
 def patient_thread(professional_id: int):
     _require_patient()
@@ -2239,136 +2392,30 @@ def patient_thread(professional_id: int):
                 audio_url = f"/u/attachments/{name}"
             except Exception:
                 flash("Audio non accepté.", "warning")
-        msg = Message(thread_id=thread.id, sender_id=current_user.id, body=body or None,
-                      attachment_id=attachment.id if attachment else None, audio_url=audio_url)
+        msg = Message(
+            thread_id=thread.id, sender_id=current_user.id, body=body or None,
+            attachment_id=attachment.id if attachment else None, audio_url=audio_url
+        )
         db.session.add(msg); db.session.commit()
 
-        # notif email pro
+        # notif email pro (best-effort)
         try:
             pro_user = User.query.filter_by(username=pro.name).first()
             if pro_user and pro_user.email:
-                safe_send_email(pro_user.email, f"{BRAND_NAME} — Nouveau message patient", f"Un patient vous a écrit sur {BRAND_NAME}.")
+                safe_send_email(pro_user.email, f"{BRAND_NAME} — Nouveau message patient",
+                                f"Un patient vous a écrit sur {BRAND_NAME}.")
         except Exception:
             pass
 
         return redirect(url_for("patient_thread", professional_id=pro.id))
 
     messages = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
-    return render_or_text("patient/thread.html", "Messagerie sécurisée",
-                          professional=pro, thread=thread, messages=messages)
-# --- PATIENT: page de recherche (affiche juste le formulaire) ---
-@app.route("/patient/booking", methods=["GET"])
-@login_required
-def patient_booking():
-    # Récupère les listes comme sur la home
-    try:
-        cities = City.query.order_by(City.name).all()
-    except Exception:
-        cities = []
-    try:
-        families = Family.query.order_by(Family.name).all()
-    except Exception:
-        families = []
-    try:
-        specialties = Specialty.query.order_by(Specialty.name).all()
-    except Exception:
-        specialties = []
-
-    return render_template(
-        "patient/booking.html",
-        cities=cities,
-        families=families,
-        specialties=specialties
+    return render_or_text(
+        "patient/thread.html", "Messagerie sécurisée",
+        professional=pro, thread=thread, messages=messages
     )
 
-# --- PATIENT: résultats (doit réutiliser exactement ta logique de /professionals) ---
-@app.route("/patient/resources", methods=["GET"])
-@login_required
-def patient_resources():
-    # 1) Réutilise ici la même logique que ton endpoint /professionals
-    #    ==> copie/colle le bloc qui construit "professionals" à partir de request.args
-    #    Exemple *générique* si tu n'as pas de helper :
-    try:
-        qs = Professional.query.filter_by(is_active=True)
-
-        q = (request.args.get("q") or "").strip()
-        if q:
-            # cherche sur nom + description
-            qs = qs.filter(
-                db.or_(
-                    Professional.name.ilike(f"%{q}%"),
-                    Professional.description.ilike(f"%{q}%")
-                )
-            )
-
-        city_id = request.args.get("city_id")
-        if city_id:
-            qs = qs.filter(Professional.city_id == int(city_id))
-
-        family = (request.args.get("family") or "").strip()
-        if family:
-            # adapte ces champs si différents chez toi
-            qs = qs.filter(
-                db.or_(
-                    Professional.family == family,
-                    Professional.primary_specialty.has(Family.name == family)  # si relation
-                )
-            )
-
-        specialty_id = request.args.get("specialty_id")
-        if specialty_id:
-            qs = qs.filter(
-                db.or_(
-                    Professional.primary_specialty_id == int(specialty_id),
-                    Professional.secondary_specialties.any(id=int(specialty_id))  # si M2M
-                )
-            )
-
-        mode = (request.args.get("mode") or "").strip()
-        if mode:
-            # si "consultation_types" est un champ texte/list dans ton modèle
-            qs = qs.filter(Professional.consultation_types.ilike(f"%{mode}%"))
-
-        professionals = qs.order_by(Professional.name.asc()).all()
-    except Exception:
-        # Si besoin: retombe sur une liste vide plutôt que 500
-        professionals = []
-
-    # 2) Passe aussi les listes pour garder les sélections au reload
-    try:
-        cities = City.query.order_by(City.name).all()
-    except Exception:
-        cities = []
-    try:
-        families = Family.query.order_by(Family.name).all()
-    except Exception:
-        families = []
-    try:
-        specialties = Specialty.query.order_by(Specialty.name).all()
-    except Exception:
-        specialties = []
-
-    return render_template(
-        "patient/resources.html",
-        professionals=professionals,
-        cities=cities,
-        families=families,
-        specialties=specialties
-    )
-
-# ===== Routes Patient (placeholders robustes avec fallback) =====
-@app.get("/patient/booking")
-@login_required
-def patient_booking():
-    _require_patient()
-    return render_or_text("patient/booking.html", "Prendre un rendez-vous")
-
-@app.get("/patient/exercises")
-@login_required
-def patient_exercises():
-    _require_patient()
-    return render_or_text("patient/exercises.html", "Mes exercices")
-
+# ---------- Pages diverses (placeholders sûrs) ----------
 @app.get("/patient/documents")
 @login_required
 def patient_documents():
@@ -2398,7 +2445,6 @@ def patient_profile():
 def patient_help():
     _require_patient()
     return render_or_text("patient/help.html", "Aide & support")
-# ===== Fin ajouts =====
 
 # =========================
 #   STATUT / ERREURS
