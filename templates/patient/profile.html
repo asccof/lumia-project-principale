@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Mon profil — Tighri{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Mon profil & sécurité</h1>
+  <form method="post" action="#">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Téléphone (obligatoire)</label>
+        <input class="form-control" name="phone" required placeholder="+212 ...">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Préférence de rappel</label>
+        <select class="form-select" name="reminder_pref">
+          <option value="sms">SMS</option>
+          <option value="email">Email</option>
+          <option value="whatsapp">WhatsApp</option>
+        </select>
+      </div>
+    </div>
+    <div class="mt-3">
+      <button class="btn btn-primary" disabled>Enregistrer (bientôt)</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('patient_home') }}">Retour</a>
+    </div>
+  </form>
+  <p class="text-muted small mt-3">Conformément aux exigences Tighri, le numéro de téléphone est requis pour la création de compte et la réservation.</p>
+</div>
+{% endblock %}
