@@ -575,14 +575,7 @@ def inject_taxonomies_for_forms():
 # =========================
 #   ROUTES TECH
 # =========================
-@app.route("/favicon.ico")
-def favicon():
-    fav_path = Path(app.static_folder or (BASE_DIR / "static")) / "favicon.ico"
-    if fav_path.exists():
-        resp = send_from_directory(app.static_folder, "favicon.ico", conditional=True)
-        resp.headers["Cache-Control"] = "public, max-age=604800"
-        return resp
-    return ("", 204)
+
 
 @app.route("/robots.txt")
 def robots():
