@@ -24,7 +24,7 @@ from flask_login import (
     LoginManager, login_user, login_required, logout_user, current_user
 )
 from authlib.integrations.flask_client import OAuth
-from sqlalchemy import or_, text
+from sqlalchemy import or_, text, func, case
 
 from extensions import db  # OK : on reste sur db.init_app(app) après config
 
@@ -170,7 +170,8 @@ from models import (
     SupportTicket, Guide,
     ConsentLog,
     PersonalJournalEntry, TherapyNotebookEntry,
-    Specialty, City
+    Specialty, City,
+    ProfessionalReview,   # ← AJOUT pour /patient/ratings
 )
 
 # =========================
@@ -256,94 +257,17 @@ def clear_language_cookie():
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
-TRANSLATIONS = {
-    "fr": {
-        "nav": {"home": "Accueil", "professionals": "Professionals", "anthecc": "ANTHECC", "about": "À propos", "contact": "Contact"},
-        "auth": {"login": "Connexion", "register": "Inscription", "logout": "Déconnexion"},
-        "common": {"menu": "menu"},
-        "home": {"title": "Tighri", "tagline": "La plateforme marocaine pour prendre rendez-vous avec des psychologues, thérapeutes et coachs certifiés"},
-        "search": {"cta": "Rechercher", "mode": "Mode", "city": "Ville", "specialty": "Spécialité", "q": "Nom, mot-clé..."},
-        "cards": {"patient": "Espace Patient", "pro": "Espace Professionnel"},
-    },
-    "en": {
-        "nav": {"home": "Home", "professionals": "Professionals", "anthecc": "ANTHECC", "about": "About", "contact": "Contact"},
-        "auth": {"login": "Login", "register": "Sign up", "logout": "Logout"},
-        "common": {"menu": "menu"},
-        "home": {"title": "Tighri", "tagline": "Moroccan platform to book certified psychologists, therapists and coaches"},
-        "search": {"cta": "Search", "mode": "Mode", "city": "City", "specialty": "Specialty", "q": "Name, keyword..."},
-        "cards": {"patient": "Patient Space", "pro": "Professional Space"},
-    },
-    "ar": {
-        "nav": {"home": "الرئيسية", "professionals": "المهنيون", "anthecc": "ANTHECC", "about": "حول", "contact": "اتصل"},
-        "auth": {"login": "تسجيل الدخول", "register": "إنشاء حساب", "logout": "تسجيل الخروج"},
-        "common": {"menu": "القائمة"},
-        "home": {"title": "تيغري", "tagline": "منصة مغربية لحجز مواعيد مع أخصائيين ومعالجين ومدربين معتمدين"},
-        "search": {"cta": "ابحث", "mode": "النمط", "city": "المدينة", "specialty": "التخصص", "q": "اسم، كلمة..."},
-        "cards": {"patient": "فضاء المريض", "pro": "فضاء المهني"},
-    },
-}
-
-def _get_in(d, parts):
-    cur = d
-    for p in parts:
-        if not isinstance(cur, dict) or p not in cur:
-            return None
-        cur = cur[p]
-    return cur
-
-def t(key, default=None, **kwargs):
-    lang = getattr(g, "current_locale", DEFAULT_LANG)
-    parts = str(key).split(".")
-    val = _get_in(TRANSLATIONS.get(lang, {}), parts)
-    if val is None:
-        val = _get_in(TRANSLATIONS.get("fr", {}), parts)
-    if val is None:
-        val = default if default is not None else parts[-1]
-    if kwargs:
-        try:
-            val = val.format(**kwargs)
-        except Exception:
-            pass
-    return val
-
-def _lang_label(lang):
-    return {"fr": "Français", "en": "English", "ar": "العربية"}.get(lang, "Français")
-
-def _text_dir(lang):
-    return "rtl" if lang == "ar" else "ltr"
-
-@app.context_processor
-def inject_i18n():
-    lang = getattr(g, "current_locale", DEFAULT_LANG)
-    return {"t": t, "current_lang": lang, "current_lang_label": _lang_label(lang), "text_dir": _text_dir(lang)}
-
-@app.route("/set-language/<lang_code>")
+# /set-language/<code>  → définit directement le cookie (compat base.html)
+@app.route("/set-language/<lang_code>", endpoint="set_language")
 def set_language(lang_code):
-    nxt = request.args.get("next") or request.referrer or url_for("index")
-    return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
-
-# --- Helpers SQL utilitaires (gardé si besoin ailleurs)
-from sqlalchemy import text as _t
-def _fetch_list(sql):
-    return [dict(r) for r in db.session.execute(_t(sql))]
-
-@app.route("/set_language")
-def set_language_fallback():
-    lang_code = request.args.get("lang")
-    nxt = request.args.get("next") or request.referrer or url_for("index")
-    if not lang_code:
-        return redirect(nxt)
-    return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
-
-@app.route("/set-language/<code>")
-def set_language_path(code):
-    code = _normalize_lang(code)
+    code = _normalize_lang(lang_code)
     resp = make_response(redirect(request.referrer or url_for("index")))
     dom = _cookie_domain_for(request.host)
     resp.set_cookie(LANG_COOKIE, code, max_age=LANG_MAX_AGE, httponly=False, secure=True, samesite="Lax", domain=dom, path="/")
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
+# /set-language?lang=fr  → variante par querystring
 @app.route("/set-language")
 def set_language_qs():
     code = _normalize_lang(request.args.get("lang"))
@@ -353,6 +277,15 @@ def set_language_qs():
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
+# Legacy underscore → redirige vers la version querystring
+@app.route("/set_language")
+def set_language_fallback():
+    lang_code = request.args.get("lang")
+    nxt = request.args.get("next") or request.referrer or url_for("index")
+    if not lang_code:
+        return redirect(nxt)
+    return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
+
 # =========================
 #   ⚙️ CANONICAL HOST
 # =========================
@@ -361,6 +294,8 @@ PRIMARY_HOST = os.getenv("PRIMARY_HOST", "www.tighri.ma")
 @app.before_request
 def _enforce_primary_domain():
     host = request.host.split(":")[0]
+    if host in ("localhost", "127.0.0.1"):
+        return
     if host != PRIMARY_HOST:
         return redirect(request.url.replace(host, PRIMARY_HOST, 1), code=301)
 
@@ -732,7 +667,7 @@ def professionals():
     if family:
         like_family = family
         qry = qry.filter(
-            db.or_(
+            or_(
                 Professional.primary_specialty.has(Specialty.category.ilike(like_family)),
                 Professional.specialties.any(Specialty.category.ilike(like_family)),
                 Professional.specialty.ilike(f"%{family}%"),
@@ -1413,27 +1348,22 @@ def delete_unavailable_slot(slot_id: int):
     flash("Créneau indisponible supprimé!")
     return redirect(url_for("professional_unavailable_slots"))
 
-# Edition profil pro (corrigé + durci : aucun commit en GET, garde-fous numériques, rollback propre)
+# Edition profil pro
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
 @login_required
 def professional_edit_profile():
-    from sqlalchemy.exc import IntegrityError, SQLAlchemyError  # import local pour éviter de modifier le header
+    from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
-    # 1) Charger le pro par username (on conserve ta logique pour ne rien casser)
     professional = Professional.query.filter_by(name=current_user.username).first()
-
-    # 2) S'il n'existe pas, on crée un objet en mémoire (PAS d'insert/commit en GET)
     if not professional:
         professional = Professional(
             name=current_user.username,
             description="Profil en cours de complétion.",
             status="en_attente",
-            # Valeurs par défaut tolérantes (au cas où la DB a des NOT NULL)
             consultation_duration_minutes=45,
             buffer_between_appointments_minutes=15,
             availability="disponible",
         )
-        # ⚠️ NE PAS ajouter/committer ici : on laisse la création se faire en POST seulement.
 
     if request.method == "POST":
         f = request.form
@@ -1485,9 +1415,8 @@ def professional_edit_profile():
             if ps:
                 professional.specialty = ps.name
 
-        # Helpers robustes (inchangés mais légèrement durcis)
+        # Helpers robustes
         def _normalize_num_string(v_str):
-            # tolère espaces, " MAD", etc.
             v = (v_str or "").strip()
             if not v:
                 return v
@@ -1517,7 +1446,7 @@ def professional_edit_profile():
         professional.latitude  = parse_float_or_keep(f.get("latitude"),  getattr(professional, "latitude", None))
         professional.longitude = parse_float_or_keep(f.get("longitude"), getattr(professional, "longitude", None))
 
-        # 🔐 Colonnes NOT NULL : imposer un défaut sûr si vide/invalide
+        # 🔐 Colonnes NOT NULL
         professional.consultation_fee = parse_int_or_keep(
             f.get("consultation_fee"),
             getattr(professional, "consultation_fee", 0),
@@ -1563,26 +1492,24 @@ def professional_edit_profile():
         if new_links != old_links:
             professional.social_links_approved = False
 
-        # 3) Si c'est une première sauvegarde, ajouter l'objet avant commit
+        # 3) Première sauvegarde ?
         if professional.id is None:
             db.session.add(professional)
 
-        # ✅ Commit protégé
         try:
             db.session.commit()
             flash("Profil mis à jour.", "success")
             return redirect(url_for("professional_dashboard"))
-        except IntegrityError as e:
+        except IntegrityError:
             db.session.rollback()
-            # Exemple : NOT NULL, unique, FK…
             current_app.logger.exception("IntegrityError on professional profile update")
             flash("Impossible d'enregistrer : certaines valeurs sont invalides ou manquantes.", "danger")
-        except SQLAlchemyError as e:
+        except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("DB error on professional profile update")
             flash("Erreur technique lors de l'enregistrement. Réessayez.", "danger")
 
-    # GET : seulement afficher, aucune écriture DB
+    # GET
     cities = _ui_cities()
     specialties = _ui_specialties()
     families = _ui_families_rows()
@@ -1632,6 +1559,7 @@ def professional_appointments():
         status=status,
         scope=scope
     )
+
 # ====== Entrée "Dossier patient" (alias smart) ======
 @app.route("/pro/patient", methods=["GET"], endpoint="pro_patient_entry")
 @login_required
@@ -1650,7 +1578,6 @@ def pro_patient_entry():
 
     # 1) Accès direct par id
     if patient_id:
-        # Sécurité: vérifier qu'il y a un lien (au moins un RDV) entre ce patient et ce pro
         link = (
             db.session.query(Appointment.id)
             .filter(Appointment.professional_id == pro.id, Appointment.patient_id == patient_id)
@@ -1660,12 +1587,11 @@ def pro_patient_entry():
             return redirect(url_for("pro_patient_detail", patient_id=patient_id))
         else:
             flash("Ce patient n'est pas lié à vos rendez-vous.", "warning")
-            return redirect(url_for("pro_list_patients"))
+            return redirect(url_for("pro_patients"))
 
     # 2) Recherche par q
     if q:
         like = f"%{q}%"
-        # Limiter aux patients ayant un RDV avec ce pro
         subq = (
             db.session.query(Appointment.patient_id.label("pid"))
             .filter(Appointment.professional_id == pro.id)
@@ -1676,7 +1602,7 @@ def pro_patient_entry():
             db.session.query(User.id)
             .join(subq, subq.c.pid == User.id)
             .filter(
-                db.or_(
+                or_(
                     User.username.ilike(like),
                     User.full_name.ilike(like),
                     User.email.ilike(like),
@@ -1689,263 +1615,25 @@ def pro_patient_entry():
         ids = [m.id for m in matches]
         if len(ids) == 1:
             return redirect(url_for("pro_patient_detail", patient_id=ids[0]))
-        # 0 ou plusieurs → envoyer vers la liste filtrée
-        return redirect(url_for("pro_list_patients", q=q))
+        return redirect(url_for("pro_patients", q=q))
 
-    # 3) Sinon, aller sur la liste
-    return redirect(url_for("pro_list_patients"))
-
-# ===== Actions côté PRO sur un RDV =====
-@app.route("/professional/appointments/<int:appointment_id>/<action>", methods=["POST"], endpoint="professional_appointment_action")
-@login_required
-def professional_appointment_action(appointment_id, action):
-    if current_user.user_type != "professional":
-        abort(403)
-
-    pro = Professional.query.filter_by(name=current_user.username).first()
-    if not pro:
-        abort(403)
-
-    ap = Appointment.query.get_or_404(appointment_id)
-    if ap.professional_id != pro.id:
-        abort(403)
-
-    if action == "accept":
-        ap.status = "confirme"
-        flash("Rendez-vous confirmé.", "success")
-    elif action in ("reject", "cancel"):
-        ap.status = "annule"
-        flash("Rendez-vous annulé.", "warning")
-    elif action == "ask-reschedule":
-        ap.status = "en_attente"
-        flash("Demande de report envoyée (statut repassé en attente).", "info")
-    else:
-        abort(400)
-
-    db.session.commit()
-
-    try:
-        subj, txt = _build_notif(
-            "accepted" if ap.status == "confirme" else ("refused" if ap.status == "annule" else "pending"),
-            ap, role="patient"
-        )
-        patient = User.query.get(ap.patient_id)
-        if patient and patient.email:
-            safe_send_email(patient.email, subj, txt)
-
-        pro_user = User.query.filter_by(username=pro.name).first()
-        if pro_user and pro_user.email:
-            subj2, txt2 = _build_notif(
-                "accepted" if ap.status == "confirme" else ("refused" if ap.status == "annule" else "pending"),
-                ap, role="pro"
-            )
-            safe_send_email(pro_user.email, subj2, txt2)
-    except Exception:
-        pass
-
-    return redirect(url_for(
-        "professional_appointments",
-        status=request.args.get("status", "all"),
-        scope=request.args.get("scope", "upcoming")
-    ))
-
-# Alias rendez-vous (PATIENT & fallback)
-@app.route("/my_appointments", endpoint="my_appointments")
-@login_required
-def my_appointments():
-    if current_user.user_type == "professional":
-        appointments = Appointment.query.join(Professional).filter(Professional.name == current_user.username).all()
-    else:
-        appointments = Appointment.query.filter_by(patient_id=current_user.id).all()
-    return render_or_text("my_appointments.html", "Mes rendez-vous", appointments=appointments)
-
-# Réservation (inchangé)
-def _str_to_time(hhmm: str) -> dtime:
-    return datetime.strptime(hhmm, "%H:%M").time()
-
-def _add_minutes(t: dtime, minutes: int) -> dtime:
-    return (datetime.combine(date.today(), t) + timedelta(minutes=minutes)).time()
-
-def _overlap(start1: dtime, end1: dtime, start2: dtime, end2: dtime) -> bool:
-    return start1 < end2 and start2 < end1
-
-@app.route("/book_appointment/<int:professional_id>", methods=["GET","POST"], endpoint="book_appointment")
-@login_required
-def book_appointment(professional_id: int):
-    professional = Professional.query.get_or_404(professional_id)
-    if professional.status != "valide":
-        flash("Ce professionnel n'est pas encore validé par l'administration.")
-        return redirect(url_for("professionals"))
-
-    duration = int(getattr(professional, "consultation_duration_minutes", 45) or 45)
-
-    if request.method == "POST":
-        appointment_date = request.form.get("appointment_date", "")
-        appointment_time = request.form.get("appointment_time", "")
-        consultation_type = request.form.get("consultation_type", "cabinet")
-        notes = request.form.get("notes", "")
-
-        try:
-            appointment_date_obj = datetime.strptime(appointment_date, "%Y-%m-%d").date()
-        except ValueError:
-            flash("Format de date invalide."); return redirect(url_for("book_appointment", professional_id=professional_id))
-        if appointment_date_obj < date.today():
-            flash("Impossible de réserver un rendez-vous dans le passé.")
-            return redirect(url_for("book_appointment", professional_id=professional_id))
-
-        try:
-            appointment_datetime = datetime.strptime(f"{appointment_date} {appointment_time}", "%Y-%m-%d %H:%M")
-        except ValueError:
-            flash("Format de date/heure invalide.")
-            return redirect(url_for("book_appointment", professional_id=professional_id))
-
-        day_of_week = appointment_datetime.weekday()
-        availabilities = ProfessionalAvailability.query.filter_by(
-            professional_id=professional_id, day_of_week=day_of_week, is_available=True
-        ).all()
-
-        start_t = appointment_datetime.time()
-        end_t = _add_minutes(start_t, duration)
-
-        inside_any_window = any(
-            (_str_to_time(av.start_time) <= start_t) and (end_t <= _str_to_time(av.end_time))
-            for av in availabilities
-        )
-        if not inside_any_window:
-            flash("Cette heure n'est pas disponible pour ce professionnel.")
-            return redirect(url_for("book_appointment", professional_id=professional_id))
-
-        existing_confirmed = Appointment.query.filter_by(professional_id=professional_id, status="confirme")\
-            .filter(db.func.date(Appointment.appointment_date) == appointment_date_obj).all()
-        if any(_overlap(start_t, end_t, a.appointment_date.time(), _add_minutes(a.appointment_date.time(), duration))
-               for a in existing_confirmed):
-            flash("Ce créneau est déjà réservé.")
-            return redirect(url_for("book_appointment", professional_id=professional_id))
-
-        day_unavailable = UnavailableSlot.query.filter_by(professional_id=professional_id, date=appointment_date_obj).all()
-        if any(_overlap(start_t, end_t, _str_to_time(s.start_time), _str_to_time(s.end_time)) for s in day_unavailable):
-            flash("Ce créneau est marqué comme indisponible.")
-            return redirect(url_for("book_appointment", professional_id=professional_id))
-
-        appointment = Appointment(
-            patient_id=current_user.id, professional_id=professional_id,
-            appointment_date=appointment_datetime, consultation_type=consultation_type,
-            status="en_attente", notes=notes
-        )
-        db.session.add(appointment); db.session.commit()
-
-        # créer une session thérapie planifiée (facultatif)
-        try:
-            db.session.add(TherapySession(
-                patient_id=current_user.id,
-                professional_id=professional_id,
-                start_at=appointment_datetime,
-                mode=consultation_type if consultation_type in ("cabinet","domicile","en_ligne") else "cabinet",
-                meet_url=None,
-                status="planifie",
-                appointment_id=appointment.id
-            ))
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-
-        try:
-            subject, text = _build_notif("pending", appointment, role="patient")
-            safe_send_email(current_user.email, subject, text)
-        except Exception:
-            pass
-        try:
-            pro_user = User.query.filter_by(username=professional.name).first()
-            if pro_user and pro_user.email:
-                subject, text = _build_notif("pending", appointment, role="pro")
-                safe_send_email(pro_user.email, subject, text)
-        except Exception:
-            pass
-
-        flash("Rendez-vous réservé avec succès! Le professionnel confirmera bientôt.")
-        return redirect(url_for("my_appointments"))
-
-    availabilities = ProfessionalAvailability.query.filter_by(professional_id=professional_id, is_available=True).all()
-    today = date.today()
-    unavailable_dates = [
-        (today + timedelta(days=i)).isoformat()
-        for i in range(30)
-        if UnavailableSlot.query.filter_by(professional_id=professional_id, date=(today + timedelta(days=i))).first()
-    ]
-    return render_or_text("book_appointment.html",
-                           "Réserver un rendez-vous",
-                           professional=professional,
-                           availabilities=availabilities,
-                           unavailable_dates=unavailable_dates)
-
-@app.route("/api/professional/<int:professional_id>/available-slots", endpoint="api_available_slots")
-def api_available_slots(professional_id: int):
-    professional = Professional.query.get_or_404(professional_id)
-    if professional.status != "valide":
-        return jsonify({"error": "Professionnel non validé"}), 400
-
-    requested_date = request.args.get("date", date.today().isoformat())
-    try:
-        target_date = datetime.strptime(requested_date, "%Y-%m-%d").date()
-    except ValueError:
-        return jsonify({"error": "Format de date invalide"}), 400
-
-    day_of_week = target_date.weekday()
-    availabilities = ProfessionalAvailability.query.filter_by(
-        professional_id=professional_id, day_of_week=day_of_week, is_available=True
-    ).all()
-    unavailable_slots = UnavailableSlot.query.filter_by(professional_id=professional_id, date=target_date).all()
-    confirmed = Appointment.query.filter_by(professional_id=professional_id, status="confirme")\
-        .filter(db.func.date(Appointment.appointment_date) == target_date).all()
-
-    duration = int(getattr(professional, "consultation_duration_minutes", 45) or 45)
-    buffer_m = int(getattr(professional, "buffer_between_appointments_minutes", 15) or 15)
-    step = max(1, duration + buffer_m)
-
-    def _slots():
-        out = []
-        for av in availabilities:
-            start_time = _str_to_time(av.start_time)
-            end_time = _str_to_time(av.end_time)
-            current = start_time
-            while _add_minutes(current, duration) <= end_time:
-                slot_start = current
-                slot_end = _add_minutes(current, duration)
-                is_unavailable = any(_overlap(slot_start, slot_end, _str_to_time(u.start_time), _str_to_time(u.end_time))
-                                     for u in unavailable_slots)
-                is_booked = any(_overlap(slot_start, slot_end, a.appointment_date.time(), _add_minutes(a.appointment_date.time(), duration))
-                                for a in confirmed)
-                if not is_unavailable and not is_booked:
-                    out.append({"start_time": slot_start.strftime("%H:%M"),
-                                "end_time": slot_end.strftime("%H:%M"),
-                                "available": True})
-                current = _add_minutes(current, step)
-        return out
-
-    return jsonify({
-        "professional_id": professional_id,
-        "date": target_date.isoformat(),
-        "duration_minutes": duration,
-        "buffer_minutes": buffer_m,
-        "available_slots": _slots()
-    })
+    return redirect(url_for("pro_patients"))
 
 # =========================
 #   BUREAU VIRTUEL — PRO
 # =========================
-from flask import abort, render_template
-from flask_login import login_required, current_user
-from models import Professional   # assure-toi que c'est bien importé plus haut
-
 # --- Bureau virtuel pro: page d'accueil ---
 @app.route("/pro-office/", methods=["GET"], endpoint="pro_office_index")
 @login_required
 def pro_office_index():
-    # Restreindre l'accès aux comptes 'professional'
     if getattr(current_user, "user_type", None) != "professional":
         abort(403)
-
-    return render_template("pro_office/index.html")
+    # Valeurs par défaut pour que la page vive même sans données
+    return render_or_text("pro/office.html", "Bureau virtuel",
+                          next_sessions=[],
+                          upcoming_count=0,
+                          unread_messages=0,
+                          pending_payments=0)
 
 # --- Aide : obtenir l'objet Professional du current_user
 def _current_professional_or_403():
@@ -1956,7 +1644,6 @@ def _current_professional_or_403():
     if not getattr(current_user, "is_authenticated", False) or getattr(current_user, "user_type", None) != "professional":
         abort(403)
 
-    # Tente de faire correspondre le pro soit au full_name, soit au username
     pro = (
         Professional.query
         .filter(
@@ -1967,7 +1654,6 @@ def _current_professional_or_403():
     )
 
     if not pro:
-        # Aucun professionnel trouvé pour ce compte
         abort(403)
 
     return pro
@@ -1976,28 +1662,73 @@ def _current_professional_or_403():
 @login_required
 def pro_desk():
     pro = _current_professional_or_403()
-    # Dernières activités
     latest_threads = MessageThread.query.filter_by(professional_id=pro.id).order_by(MessageThread.id.desc()).limit(10).all()
     latest_sessions = TherapySession.query.filter_by(professional_id=pro.id).order_by(TherapySession.start_at.desc()).limit(10).all()
     latest_invoices = Invoice.query.filter_by(professional_id=pro.id).order_by(Invoice.issued_at.desc()).limit(10).all()
     return render_or_text("pro/desk.html", "Bureau virtuel",
                           professional=pro, threads=latest_threads, sessions=latest_sessions, invoices=latest_invoices)
 
-# --- Patients du pro (dérivé des RDV / threads / sessions)
-@app.route("/pro/patients", endpoint="pro_patients")
+# --- Patients du pro (agrégés + pagination, unifiée)
+@app.route("/pro/patients", methods=["GET"], endpoint="pro_patients")
 @login_required
 def pro_patients():
-    pro = _current_professional_or_403()
-    # patients connus via RDV / threads / sessions
-    patient_ids = set(
-        [a.patient_id for a in Appointment.query.filter_by(professional_id=pro.id).all() if a.patient_id] +
-        [t.patient_id for t in MessageThread.query.filter_by(professional_id=pro.id).all()] +
-        [s.patient_id for s in TherapySession.query.filter_by(professional_id=pro.id).all()]
-    )
-    patients = User.query.filter(User.id.in_(patient_ids)).all() if patient_ids else []
-    profiles = {p.id: PatientProfile.query.filter_by(user_id=p.id).first() for p in patients}
-    return render_or_text("pro/patients.html", "Mes patients", patients=patients, profiles=profiles, professional=pro)
+    if current_user.user_type != "professional":
+        flash("Accès réservé aux professionnels.", "warning")
+        return redirect(url_for("index"))
 
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "danger")
+        return redirect(url_for("professional_dashboard"))
+
+    q = (request.args.get("q") or "").strip()
+    page = max(1, request.args.get("page", type=int) or 1)
+    per_page = 20
+
+    subq = (
+        db.session.query(
+            Appointment.patient_id.label("pid"),
+            func.count(Appointment.id).label("total_rdv"),
+            func.sum(case((Appointment.status == "confirme", 1), else_=0)).label("confirme_count"),
+            func.max(Appointment.appointment_date).label("last_date"),
+        )
+        .filter(Appointment.professional_id == pro.id)
+        .group_by(Appointment.patient_id)
+        .subquery()
+    )
+
+    base = (
+        db.session.query(User, subq.c.total_rdv, subq.c.confirme_count, subq.c.last_date)
+        .join(subq, subq.c.pid == User.id)
+        .order_by(subq.c.last_date.desc().nullslast())
+    )
+
+    if q:
+        like = f"%{q}%"
+        base = base.filter(
+            or_(
+                User.username.ilike(like),
+                User.full_name.ilike(like),
+                User.email.ilike(like),
+                User.phone.ilike(like),
+            )
+        )
+
+    total = base.count()
+    rows = base.limit(per_page).offset((page - 1) * per_page).all()
+
+    return render_or_text(
+        "pro/patients.html",
+        "Mes patients",
+        rows=rows,
+        q=q,
+        page=page,
+        per_page=per_page,
+        total=total,
+        professional=pro
+    )
+
+# --- Dossier patient (vue)
 @app.route("/pro/patients/<int:patient_id>", methods=["GET","POST"], endpoint="pro_patient_detail")
 @login_required
 def pro_patient_detail(patient_id: int):
@@ -2011,7 +1742,6 @@ def pro_patient_detail(patient_id: int):
     thread = MessageThread.query.filter_by(patient_id=patient.id, professional_id=pro.id).first()
 
     if request.method == "POST":
-        # mise à jour simple du résumé / custom fields
         summary = (request.form.get("summary") or "").strip()
         custom = (request.form.get("custom_fields") or "").strip()
         if not medhist:
@@ -2083,15 +1813,13 @@ def pro_thread(patient_id: int):
     messages = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
     return render_or_text("pro/thread.html", "Messagerie sécurisée",
                           professional=pro, patient=patient, thread=thread, messages=messages)
+
 @app.route("/messages", endpoint="messages_index")
 @login_required
 def messages_index():
-    # Route "hub" neutre pour satisfaire les templates existants
     if current_user.user_type == "professional":
-        # Chez les pros, on redirige vers la liste des patients (où partent les threads)
         return redirect(url_for("pro_patients"))
     else:
-        # Chez les patients, liste (simple) de leurs fils
         threads = MessageThread.query.filter_by(patient_id=current_user.id)\
                                      .order_by(MessageThread.updated_at.desc().nullslast()).all()
         return render_or_text("patient/messages_index.html", "Messagerie", threads=threads)
@@ -2131,7 +1859,6 @@ def pro_session_detail(session_id: int):
     if s.professional_id != pro.id:
         abort(403)
     if request.method == "POST":
-        # notes pro / partagées
         content = (request.form.get("content") or "").strip()
         visibility = (request.form.get("visibility") or "pro").strip()
         n = SessionNote(session_id=s.id, author_id=current_user.id, visibility=visibility, content=content)
@@ -2141,7 +1868,7 @@ def pro_session_detail(session_id: int):
     notes = SessionNote.query.filter_by(session_id=s.id).order_by(SessionNote.created_at.asc()).all()
     return render_or_text("pro/session_detail.html", "Détail séance", session=s, notes=notes, professional=pro)
 
-# --- Bibliothèque d’exercices (basique)
+# --- Bibliothèque d’exercices
 @app.route("/pro/library", methods=["GET","POST"], endpoint="pro_library")
 @login_required
 def pro_library():
@@ -2161,7 +1888,6 @@ def pro_library():
             visibility=(request.form.get("visibility") or "private").strip(),
             is_approved=False
         )
-        # fichier attaché (pdf/audio/vidéo)
         file = request.files.get("file")
         if file:
             try:
@@ -2174,7 +1900,7 @@ def pro_library():
         return redirect(url_for("pro_library"))
 
     q = Exercise.query.filter(
-        db.or_(Exercise.visibility == "public", Exercise.owner_id == current_user.id, Exercise.professional_id == pro.id)
+        or_(Exercise.visibility == "public", Exercise.owner_id == current_user.id, Exercise.professional_id == pro.id)
     ).order_by(Exercise.created_at.desc())
     exercises = q.all()
     return render_or_text("pro/library.html", "Bibliothèque", exercises=exercises, professional=pro)
@@ -2197,8 +1923,6 @@ def pro_assign_exercise():
     db.session.add(assign); db.session.commit()
     flash("Exercice assigné au patient.", "success")
     return redirect(request.referrer or url_for("pro_library"))
-from sqlalchemy import CheckConstraint, text
-
 
 # --- Factures & paiements
 @app.route("/pro/invoices", methods=["GET","POST"], endpoint="pro_invoices")
@@ -2274,7 +1998,6 @@ def _require_patient():
 def patient_home():
     _require_patient()
     profile = PatientProfile.query.filter_by(user_id=current_user.id).first()
-    # derniers items
     my_threads = MessageThread.query.filter_by(patient_id=current_user.id).order_by(MessageThread.updated_at.desc().nullslast()).all()
     my_assignments = ExerciseAssignment.query.filter_by(patient_id=current_user.id).order_by(ExerciseAssignment.created_at.desc()).limit(10).all()
     my_sessions = TherapySession.query.filter_by(patient_id=current_user.id).order_by(TherapySession.start_at.desc()).limit(10).all()
@@ -2292,10 +2015,9 @@ def patient_appointments():
 @login_required
 def patient_resources():
     _require_patient()
-    # Ressources visibles: public + my_patients + assignées
     visible_ids = set(a.exercise_id for a in ExerciseAssignment.query.filter_by(patient_id=current_user.id).all())
     q = Exercise.query.filter(
-        db.or_(Exercise.visibility == "public", Exercise.visibility == "my_patients", Exercise.id.in_(visible_ids))
+        or_(Exercise.visibility == "public", Exercise.visibility == "my_patients", Exercise.id.in_(visible_ids))
     ).order_by(Exercise.created_at.desc())
     return render_or_text("patient/resources.html", "Ressources", exercises=q.all())
 
@@ -2414,51 +2136,49 @@ def patient_thread(professional_id: int):
     messages = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
     return render_or_text("patient/thread.html", "Messagerie sécurisée",
                           professional=pro, thread=thread, messages=messages)
-# ===== Routes Patient manquantes (ajout sans doublure) =====
-from flask_login import login_required, current_user
-from flask import render_template, redirect, url_for, request
 
+# ===== Routes Patient (placeholders robustes avec fallback) =====
 @app.get("/patient/booking")
 @login_required
 def patient_booking():
-    # TODO: charger les filtres (spécialités, villes, pros) si tu as déjà les modèles
-    return render_template("patient/booking.html")
+    _require_patient()
+    return render_or_text("patient/booking.html", "Prendre un rendez-vous")
 
 @app.get("/patient/exercises")
 @login_required
 def patient_exercises():
-    # TODO: lister les exercices du patient courant depuis ExerciseAssignment si dispo
-    # ex_assignments = ExerciseAssignment.query.filter_by(patient_id=current_user.id).all()
-    return render_template("patient/exercises.html")  # template déjà présent
+    _require_patient()
+    return render_or_text("patient/exercises.html", "Mes exercices")
 
 @app.get("/patient/documents")
 @login_required
 def patient_documents():
-    # TODO: lister les fichiers partagés au patient (si modèle existant)
-    return render_template("patient/files.html")  # template déjà présent
+    _require_patient()
+    return render_or_text("patient/files.html", "Mes documents")
 
 @app.get("/patient/billing")
 @login_required
 def patient_billing():
-    # TODO: lister les factures du patient (si modèle Invoice/Payment existe)
-    return render_template("patient/billing.html")
+    _require_patient()
+    return render_or_text("patient/billing.html", "Ma facturation")
 
 @app.get("/patient/messages")
 @login_required
 def patient_messages():
-    # Redirige vers la boîte de réception existante si tu as déjà un inbox
-    return render_template("patient/messages_inbox.html")  # template déjà présent
+    _require_patient()
+    return render_or_text("patient/messages_inbox.html", "Messagerie")
 
 @app.get("/patient/profile")
 @login_required
 def patient_profile():
-    # TODO: préremplir avec le téléphone du user, préférences de rappel, etc.
-    return render_template("patient/profile.html")
+    _require_patient()
+    return render_or_text("patient/profile.html", "Mon profil")
 
 @app.get("/patient/help")
 @login_required
 def patient_help():
-    return render_template("patient/help.html")
+    _require_patient()
+    return render_or_text("patient/help.html", "Aide & support")
 # ===== Fin ajouts =====
 
 # =========================
@@ -2481,67 +2201,6 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return render_or_text("errors/500.html", "500 — Erreur serveur"), 500
-# ====== MES PATIENTS (pro) ======
-from sqlalchemy import func, case
-
-@app.route("/pro/patients", methods=["GET"], endpoint="pro_list_patients")
-@login_required
-def pro_list_patients():
-    if current_user.user_type != "professional":
-        flash("Accès réservé aux professionnels.", "warning")
-        return redirect(url_for("index"))
-
-    pro = Professional.query.filter_by(name=current_user.username).first()
-    if not pro:
-        flash("Profil professionnel non trouvé", "danger")
-        return redirect(url_for("professional_dashboard"))
-
-    q = (request.args.get("q") or "").strip()
-    page = max(1, request.args.get("page", type=int) or 1)
-    per_page = 20
-
-    # Sous-requête : agrégats par patient pour CE professionnel
-    subq = (
-        db.session.query(
-            Appointment.patient_id.label("pid"),
-            func.count(Appointment.id).label("total_rdv"),
-            func.sum(case((Appointment.status == "confirme", 1), else_=0)).label("confirme_count"),
-            func.max(Appointment.appointment_date).label("last_date"),
-        )
-        .filter(Appointment.professional_id == pro.id)
-        .group_by(Appointment.patient_id)
-        .subquery()
-    )
-
-    base = (
-        db.session.query(User, subq.c.total_rdv, subq.c.confirme_count, subq.c.last_date)
-        .join(subq, subq.c.pid == User.id)
-        .order_by(subq.c.last_date.desc().nullslast())
-    )
-
-    if q:
-        like = f"%{q}%"
-        base = base.filter(
-            db.or_(
-                User.username.ilike(like),
-                User.full_name.ilike(like),
-                User.email.ilike(like),
-                User.phone.ilike(like),
-            )
-        )
-
-    total = base.count()
-    rows = base.limit(per_page).offset((page - 1) * per_page).all()
-
-    return render_template(
-        "pro_patients.html",
-        rows=rows,
-        q=q,
-        page=page,
-        per_page=per_page,
-        total=total,
-    )
-
 
 # =========================
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
@@ -2653,9 +2312,7 @@ with app.app_context():
             "CREATE INDEX IF NOT EXISTS ix_threads_patient ON message_threads(patient_id);",
 
             # Compat rétro pour anciens modèles qui lisent 'started_at'
-
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMP;",
-            # Backfill simple (si la colonne existe mais vide)
             "UPDATE therapy_sessions SET started_at = start_at WHERE started_at IS NULL AND start_at IS NOT NULL;",
 
             # --- medical_histories : champs réellement utilisés
@@ -2663,16 +2320,13 @@ with app.app_context():
             "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS custom_fields TEXT;",
         ]
 
-        # Exécuter toutes les ALTER idempotentes
         for sql in stmts:
             db.session.execute(text(sql))
 
-        # Index (idempotents) — à exécuter en dehors de la liste pour plus de clarté
         db.session.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_oauth_sub ON users(oauth_sub);"))
         db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_start  ON therapy_sessions (start_at);"))
         db.session.execute(text("CREATE INDEX IF NOT EXISTS ix_ts_status ON therapy_sessions (status);"))
 
-        # Normalisation consultation_fee (sécurisée)
         try:
             db.session.execute(text("UPDATE professionals SET consultation_fee = 0 WHERE consultation_fee IS NULL;"))
             db.session.execute(text("ALTER TABLE professionals ALTER COLUMN consultation_fee SET DEFAULT 0;"))
@@ -2683,7 +2337,6 @@ with app.app_context():
     except Exception as e:
         db.session.rollback()
         app.logger.warning(f"Mini-migration colonnes: {e}")
-
 
     # --- Taxonomy étendue
     try:
