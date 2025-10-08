@@ -248,6 +248,36 @@ def _vary_on_cookie_for_lang(resp):
         resp.headers["Pragma"] = "no-cache"
         resp.headers["Expires"] = "0"
     return resp
+# --- Helper i18n minimal pour les templates : {{ t('key.path', 'fallback') }}
+@app.context_processor
+def inject_t_helper():
+    def t(key: str, default: str | None = None, **kwargs):
+        """
+        Lookup simple de traduction.
+        - Cherche dans app.config['I18N'][<lang>] via un chemin 'a.b.c' (ou 'a:b:c')
+        - Sinon retourne le fallback 'default'
+        - Sinon retourne la dernière partie de la clé (jolie) : 'common.menu' -> 'menu'
+        """
+        lang = getattr(g, "current_locale", DEFAULT_LANG)
+        data = current_app.config.get("I18N", {}) or {}
+
+        # navigation dans les dicts imbriqués via '.' ou ':'
+        node = data.get(lang) or {}
+        for part in key.replace(":", ".").split("."):
+            if isinstance(node, dict):
+                node = node.get(part)
+            else:
+                node = None
+                break
+
+        text = node if isinstance(node, str) else (default or key.split(".")[-1].replace("_", " "))
+        try:
+            return text.format(**kwargs) if kwargs else text
+        except Exception:
+            # si .format(**kwargs) casse, renvoyer brut
+            return text
+
+    return dict(t=t)
 
 @app.route("/set-language/clear")
 def clear_language_cookie():
