@@ -102,7 +102,15 @@
         </ul>
         <ul class="navbar-nav align-items-center">
 
-          <!-- Lien direct Espace professionnel -> LOGIN + next=dashboard -->
+          <!-- Espace patient -> LOGIN + next=/patient -->
+          <li class="nav-item">
+            <a class="nav-link"
+               href="{{ url_for('login', next=url_for('patient_home')) }}">
+              Espace patient
+            </a>
+          </li>
+
+          <!-- Espace professionnel -> LOGIN + next=/professional_dashboard -->
           <li class="nav-item">
             <a class="nav-link"
                href="{{ url_for('login', next=url_for('professional_dashboard')) }}">
@@ -175,7 +183,13 @@
         <a class="list-group-item list-group-item-action" href="{{ url_for('anthecc') }}"><i class="fa-solid fa-certificate me-2"></i>{{ t('nav.anthecc','ANTHECC') }}</a>
         <a class="list-group-item list-group-item-action" href="{{ url_for('contact') }}"><i class="fas fa-envelope me-2"></i>{{ t('nav.contact','Contact') }}</a>
 
-        <!-- Espace professionnel (mobile) -> LOGIN + next=dashboard -->
+        <!-- Espace patient (mobile) -->
+        <a class="list-group-item list-group-item-action"
+           href="{{ url_for('login', next=url_for('patient_home')) }}">
+          <i class="fa-solid fa-user me-2"></i>Espace patient
+        </a>
+
+        <!-- Espace professionnel (mobile) -->
         <a class="list-group-item list-group-item-action"
            href="{{ url_for('login', next=url_for('professional_dashboard')) }}">
           <i class="fa-solid fa-user-tie me-2"></i>Espace professionnel
