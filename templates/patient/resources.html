@@ -28,6 +28,10 @@
       <a class="btn btn-light btn-sm" href="{{ url_for('patient_home') }}">↩ {{ t('nav.back_patient','Espace patient') }}</a>
     </div>
   </div>
+<a class="btn btn-outline-primary btn-sm"
+   href="{{ url_for('patient_resources', mode='all') }}">
+  Voir tous les professionnels
+</a>
 
   {% if professionals %}
     <div class="row g-3">
