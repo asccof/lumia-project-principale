@@ -59,6 +59,21 @@ def inject_has_endpoint():
     def has_endpoint(name: str) -> bool:
         return name in current_app.view_functions
     return dict(has_endpoint=has_endpoint)
+from datetime import timedelta
+from flask import session
+
+app.config.update(
+    SESSION_PERMANENT=True,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+    REMEMBER_COOKIE_DURATION=timedelta(days=30),
+    SESSION_COOKIE_SECURE=True,        # ton site est en HTTPS
+    REMEMBER_COOKIE_SECURE=True,       # idem
+    SESSION_COOKIE_SAMESITE="Lax",     # évite les déconnexions inattendues
+)
+
+@app.before_request
+def _keep_session_permanent():
+    session.permanent = True
 
 # Sécurité & cookies
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
@@ -198,6 +213,11 @@ def _load_user(user_id: str):
         return db.session.get(User, int(user_id))
     except Exception:
         return None
+from flask_login import login_user
+from datetime import timedelta
+
+# ...
+login_user(user, remember=True, duration=timedelta(days=30))
 
 @app.route("/professional", methods=["GET"])
 def professional_landing():
