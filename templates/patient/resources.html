@@ -25,7 +25,7 @@
     <h1 class="h4 m-0">{{ t('search.results_title','Résultats de recherche') }}</h1>
     <div class="d-flex gap-2">
       <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('patient_booking', **request.args) }}">🔎 {{ t('btn.edit_filters','Modifier la recherche') }}</a>
-      <a class="btn btn-light btn-sm" href="{{ url_for('patient_dashboard') }}">↩ {{ t('nav.back_patient','Espace patient') }}</a>
+      <a class="btn btn-light btn-sm" href="{{ url_for('patient_home') }}">↩ {{ t('nav.back_patient','Espace patient') }}</a>
     </div>
   </div>
 
