@@ -32,6 +32,10 @@
    href="{{ url_for('patient_resources', mode='all') }}">
   Voir tous les professionnels
 </a>
+<a class="btn btn-light btn-sm"
+   href="{{ url_for('professional_detail', professional_id=pro.id) }}">
+  Voir le profil
+</a>
 
   {% if professionals %}
     <div class="row g-3">
