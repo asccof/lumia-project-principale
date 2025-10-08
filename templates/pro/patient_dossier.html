@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="container py-4">
-  <a href="{{ url_for('pro_patients') if 'pro_patients' in current_app.view_functions else (url_for('pro_office') if 'pro_office' in current_app.view_functions else url_for('professional_dashboard')) }}" class="link-secondary d-inline-block mb-2">← Retour</a>
+  <a href="/pro/patients" class="link-secondary d-inline-block mb-2">← Retour</a>
   <h1 class="h4 mb-3">Dossier patient</h1>
 
   {% set p = patient if patient is defined else None %}
@@ -18,11 +18,12 @@
             {{ ('Âge : ' ~ p.age) if p and p.age is defined else '' }}
             {% if p and p.phone %} &nbsp;•&nbsp; {{ p.phone }}{% endif %}
             {% if p and p.language %} &nbsp;•&nbsp; {{ p.language }}{% endif %}
+            {% if p and p.anonymous %} &nbsp;•&nbsp; <span class="badge bg-secondary">Anonyme</span>{% endif %}
           </div>
         </div>
         <div class="mt-2 mt-md-0">
-          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('pro_messages_thread', patient_id=p.id) if p and 'pro_messages_thread' in current_app.view_functions else '#' }}"><i class="fa-solid fa-message me-1"></i>Écrire</a>
-          <a class="btn btn-primary btn-sm" href="{{ url_for('pro_new_session', patient_id=p.id) if p and 'pro_new_session' in current_app.view_functions else '#' }}"><i class="fa-solid fa-calendar-plus me-1"></i>Nouvelle séance</a>
+          <a class="btn btn-outline-primary btn-sm" href="/pro/messages/thread/{{ p.id if p and p.id is defined else 0 }}"><i class="fa-solid fa-message me-1"></i>Écrire</a>
+          <a class="btn btn-primary btn-sm" href="/pro/sessions/new?patient_id={{ p.id if p and p.id is defined else 0 }}"><i class="fa-solid fa-calendar-plus me-1"></i>Nouvelle séance</a>
         </div>
       </div>
     </div>
@@ -45,22 +46,10 @@
         <div class="card-body">
           <h2 class="h6 mb-3">Informations personnelles</h2>
           <div class="row g-3">
-            <div class="col-md-4">
-              <div class="text-muted small">Nom</div>
-              <div>{{ p.name if p and p.name is defined else '—' }}</div>
-            </div>
-            <div class="col-md-4">
-              <div class="text-muted small">Contact</div>
-              <div>{{ p.phone if p and p.phone is defined else '—' }}</div>
-            </div>
-            <div class="col-md-4">
-              <div class="text-muted small">Langue</div>
-              <div>{{ p.language if p and p.language is defined else '—' }}</div>
-            </div>
-            <div class="col-12">
-              <div class="text-muted small">Préférences</div>
-              <div>{{ p.preferences if p and p.preferences is defined else '—' }}</div>
-            </div>
+            <div class="col-md-4"><div class="text-muted small">Nom</div><div>{{ p.name if p and p.name is defined else '—' }}</div></div>
+            <div class="col-md-4"><div class="text-muted small">Contact</div><div>{{ p.phone if p and p.phone is defined else '—' }}</div></div>
+            <div class="col-md-4"><div class="text-muted small">Langue</div><div>{{ p.language if p and p.language is defined else '—' }}</div></div>
+            <div class="col-12"><div class="text-muted small">Préférences</div><div>{{ p.preferences if p and p.preferences is defined else '—' }}</div></div>
           </div>
         </div>
       </div>
@@ -167,9 +156,7 @@
                       <td>{{ i.date if i.date is defined else '' }}</td>
                       <td>{{ i.amount if i.amount is defined else '' }} MAD</td>
                       <td><span class="badge bg-{{ 'success' if (i.paid if i.paid is defined else False) else 'warning' }}">{{ 'Réglée' if (i.paid if i.paid is defined else False) else 'En attente' }}</span></td>
-                      <td class="text-end">
-                        {% if i.pdf_url is defined and i.pdf_url %}<a class="btn btn-sm btn-outline-secondary" href="{{ i.pdf_url }}">PDF</a>{% endif %}
-                      </td>
+                      <td class="text-end">{% if i.pdf_url is defined and i.pdf_url %}<a class="btn btn-sm btn-outline-secondary" href="{{ i.pdf_url }}">PDF</a>{% endif %}</td>
                     </tr>
                   {% endfor %}
                 </tbody>
