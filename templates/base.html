@@ -77,6 +77,26 @@
       <a class="navbar-brand" href="{{ url_for('index') }}">
         <i class="fas fa-heart me-2"></i>Tighri
       </a>
+{# à placer en haut du contenu (base.html ou début du template) #}
+{% macro bs_alert_class(category) -%}
+  {%- if category in ['success','info','warning','danger'] -%}{{ category }}
+  {%- elif category in ['error','err','failed'] -%}danger
+  {%- else -%}info
+  {%- endif -%}
+{%- endmacro %}
+
+{% with messages = get_flashed_messages(with_categories=True) %}
+  {% if messages %}
+    <div class="container mt-3">
+      {% for category, message in messages %}
+        <div class="alert alert-{{ bs_alert_class(category) }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
 
       <!-- Burger mobile -->
       <button id="burgerBtn" class="navbar-toggler d-lg-none" type="button"
