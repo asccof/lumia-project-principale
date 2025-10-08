@@ -15,8 +15,10 @@
             <h2 class="h6 mb-0">Séances à venir</h2>
             <i class="fa-solid fa-calendar-day"></i>
           </div>
-          <p class="display-6 my-2">{{ upcoming_count if upcoming_count is defined else (next_sessions|length if next_sessions is defined else 0) }}</p>
-          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_patients') if 'pro_patients' in globals() or 'pro_patients' in locals() else url_for('professional_dashboard') }}">Voir les patients</a>
+          <p class="display-6 my-2">
+            {{ upcoming_count if upcoming_count is defined else (next_sessions|length if next_sessions is defined and next_sessions else 0) }}
+          </p>
+          <a class="btn btn-sm btn-outline-primary" href="/pro/patients">Voir les patients</a>
         </div>
       </div>
     </div>
@@ -29,7 +31,7 @@
             <i class="fa-solid fa-inbox"></i>
           </div>
           <p class="display-6 my-2">{{ unread_messages if unread_messages is defined else 0 }}</p>
-          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_messages_inbox') if 'pro_messages_inbox' in current_app.view_functions else '#' }}">Ouvrir la messagerie</a>
+          <a class="btn btn-sm btn-outline-primary" href="/pro/messages">Ouvrir la messagerie</a>
         </div>
       </div>
     </div>
@@ -42,7 +44,7 @@
             <i class="fa-solid fa-file-invoice-dollar"></i>
           </div>
           <p class="display-6 my-2">{{ pending_payments if pending_payments is defined else 0 }}</p>
-          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_billing') if 'pro_billing' in current_app.view_functions else '#' }}">Gérer la facturation</a>
+          <a class="btn btn-sm btn-outline-primary" href="/pro/billing">Gérer la facturation</a>
         </div>
       </div>
     </div>
@@ -55,9 +57,9 @@
         <div class="card-body">
           <h2 class="h6 mb-3">Raccourcis</h2>
           <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pro_patients') if 'pro_patients' in current_app.view_functions else '#' }}"><i class="fa-solid fa-users me-1"></i> Mes patients</a>
-            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pro_library') if 'pro_library' in current_app.view_functions else (url_for('pro_office') if 'pro_office' in current_app.view_functions else '#') }}"><i class="fa-solid fa-book-open me-1"></i> Bibliothèque</a>
-            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pro_stats') if 'pro_stats' in current_app.view_functions else (url_for('pro_office') if 'pro_office' in current_app.view_functions else '#') }}"><i class="fa-solid fa-chart-line me-1"></i> Statistiques</a>
+            <a class="btn btn-outline-secondary btn-sm" href="/pro/patients"><i class="fa-solid fa-users me-1"></i> Mes patients</a>
+            <a class="btn btn-outline-secondary btn-sm" href="/pro/library"><i class="fa-solid fa-book-open me-1"></i> Bibliothèque</a>
+            <a class="btn btn-outline-secondary btn-sm" href="/pro/stats"><i class="fa-solid fa-chart-line me-1"></i> Statistiques</a>
             <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('professional_edit_profile') }}"><i class="fa-solid fa-user-pen me-1"></i> Mon profil</a>
           </div>
         </div>
