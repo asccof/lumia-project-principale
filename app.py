@@ -61,6 +61,14 @@ def inject_has_endpoint():
     return dict(has_endpoint=has_endpoint)
 from datetime import timedelta
 from flask import session
+from datetime import timedelta
+
+app.config.update(
+    REMEMBER_COOKIE_DURATION=timedelta(days=30),
+    REMEMBER_COOKIE_REFRESH_EACH_REQUEST=True,  # prolonge à chaque requête
+    REMEMBER_COOKIE_SECURE=True,               # True en prod (HTTPS)
+    REMEMBER_COOKIE_SAMESITE="Lax",
+)
 
 app.config.update(
     SESSION_PERMANENT=True,
@@ -216,13 +224,32 @@ def _load_user(user_id: str):
 from flask_login import login_user
 from datetime import timedelta
 
-# ...
-login_user(user, remember=True, duration=timedelta(days=30))
+from flask import request, redirect, url_for, flash
+from flask_login import login_user
 
-@app.route("/professional", methods=["GET"])
-def professional_landing():
-    # Force la nouvelle logique : login d’abord, puis redirection vers le dashboard pro
-    return redirect(url_for("login", next=url_for("professional_dashboard")))
+@app.post("/login")
+def login_post():
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+
+    user = User.query.filter_by(email=email).first()
+    if not user or not user.check_password(password):
+        flash("Email ou mot de passe invalide", "danger")
+        return redirect(url_for("login"))
+
+    # ✅ ICI, et seulement ici
+    login_user(user, remember=True, duration=timedelta(days=30))
+
+    next_url = request.args.get("next") or url_for("patient_home")  # ou ton alias
+    return redirect(next_url)
+from flask_login import logout_user, login_required
+
+@app.get("/logout")
+@login_required
+def logout():
+    logout_user()
+    flash("Vous êtes déconnecté.", "info")
+    return redirect(url_for("index"))
 
 # =========================
 #   I18N / LANG
