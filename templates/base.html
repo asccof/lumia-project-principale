@@ -18,6 +18,7 @@
       --warning-color:#ed8936; --danger-color:#e53e3e;
     }
     *{margin:0;padding:0;box-sizing:border-box}
+    html{scroll-behavior:smooth;}
     body{font-family:'Inter',sans-serif;line-height:1.6;color:var(--dark-color);background:#fff}
 
     .navbar{
@@ -66,6 +67,25 @@
       }
       #navbarNav{display:none !important;}
     }
+
+    /* === Bouton flottant "Besoin d’aide ? Nous contacter" === */
+    .help-fab{
+      position:fixed; bottom:18px; right:16px; z-index:1100;
+      display:inline-flex; align-items:center; gap:.5rem;
+      padding:.6rem .9rem; border-radius:999px;
+      background:linear-gradient(135deg,var(--primary-color),var(--accent-color));
+      color:#fff; text-decoration:none; font-weight:600; box-shadow:0 8px 22px rgba(0,0,0,.15);
+      transition:transform .2s ease, box-shadow .2s ease, opacity .2s ease;
+      opacity:.95;
+    }
+    .help-fab:hover{ transform:translateY(-2px); box-shadow:0 12px 26px rgba(0,0,0,.22); opacity:1; color:#fff; text-decoration:none; }
+    .help-fab i{ font-size:1rem; line-height:1; }
+    @media (max-width:575.98px){
+      .help-fab{ padding:.55rem .7rem; bottom:14px; }
+      .help-fab span{ display:none; }
+    }
+    /* RTL: placer à gauche */
+    [dir="rtl"] .help-fab{ right:auto; left:16px; }
   </style>
   {% block extra_css %}{% endblock %}
 </head>
@@ -248,7 +268,8 @@
             <li><a href="#">{{ t('auth.login','Connexion') }}</a></li>
           </ul>
         </div>
-        <div class="col-lg-2 col-md-6 mb-4">
+        <!-- Colonne CONTACT avec un ID pour l’ancre -->
+        <div class="col-lg-2 col-md-6 mb-4" id="contact-links">
           <h5>{{ t('nav.contact','Contact') }}</h5>
           <ul class="list-unstyled">
             <li><a href="{{ url_for('contact') }}">{{ t('nav.contact','Contact') }}</a></li>
@@ -269,6 +290,12 @@
       </div>
     </div>
   </footer>
+
+  <!-- Bouton flottant “Besoin d’aide ? Nous contacter” -->
+  <a href="#contact-links" class="help-fab" aria-label="Besoin d’aide ? Nous contacter">
+    <i class="fa-solid fa-life-ring"></i>
+    <span>Besoin d’aide ? Nous contacter</span>
+  </a>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
