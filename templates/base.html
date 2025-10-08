@@ -77,26 +77,6 @@
       <a class="navbar-brand" href="{{ url_for('index') }}">
         <i class="fas fa-heart me-2"></i>Tighri
       </a>
-{# à placer en haut du contenu (base.html ou début du template) #}
-{% macro bs_alert_class(category) -%}
-  {%- if category in ['success','info','warning','danger'] -%}{{ category }}
-  {%- elif category in ['error','err','failed'] -%}danger
-  {%- else -%}info
-  {%- endif -%}
-{%- endmacro %}
-
-{% with messages = get_flashed_messages(with_categories=True) %}
-  {% if messages %}
-    <div class="container mt-3">
-      {% for category, message in messages %}
-        <div class="alert alert-{{ bs_alert_class(category) }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
-        </div>
-      {% endfor %}
-    </div>
-  {% endif %}
-{% endwith %}
 
       <!-- Burger mobile -->
       <button id="burgerBtn" class="navbar-toggler d-lg-none" type="button"
@@ -121,6 +101,15 @@
           {% endif %}
         </ul>
         <ul class="navbar-nav align-items-center">
+
+          <!-- Lien direct Espace professionnel -> LOGIN + next=dashboard -->
+          <li class="nav-item">
+            <a class="nav-link"
+               href="{{ url_for('login', next=url_for('professional_dashboard')) }}">
+              Espace professionnel
+            </a>
+          </li>
+
           <!-- Sélecteur de langue -->
           <li class="nav-item dropdown me-2">
             <a class="nav-link dropdown-toggle d-flex align-items-center" href="#" role="button" data-bs-toggle="dropdown">
@@ -153,6 +142,26 @@
     </div>
   </nav>
 
+  <!-- Bloc flash global (unique) -->
+  {% macro bs_alert_class(category) -%}
+    {%- if category in ['primary','secondary','success','danger','warning','info','light','dark'] -%}{{ category }}
+    {%- elif category in ['error','err','failed'] -%}danger
+    {%- else -%}info
+    {%- endif -%}
+  {%- endmacro %}
+  {% with messages = get_flashed_messages(with_categories=True) %}
+    {% if messages %}
+      <div class="container mt-3">
+        {% for cat, message in messages %}
+          <div class="alert alert-{{ bs_alert_class(cat) }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fermer"></button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
   <!-- Offcanvas mobile -->
   <div class="offcanvas offcanvas-end" tabindex="-1" id="mobileMenu" aria-labelledby="mobileMenuLabel">
     <div class="offcanvas-header">
@@ -165,6 +174,12 @@
         <a class="list-group-item list-group-item-action" href="{{ url_for('index') }}#services"><i class="fas fa-briefcase-medical me-2"></i>{{ t('services.title','Nos Services') }}</a>
         <a class="list-group-item list-group-item-action" href="{{ url_for('anthecc') }}"><i class="fa-solid fa-certificate me-2"></i>{{ t('nav.anthecc','ANTHECC') }}</a>
         <a class="list-group-item list-group-item-action" href="{{ url_for('contact') }}"><i class="fas fa-envelope me-2"></i>{{ t('nav.contact','Contact') }}</a>
+
+        <!-- Espace professionnel (mobile) -> LOGIN + next=dashboard -->
+        <a class="list-group-item list-group-item-action"
+           href="{{ url_for('login', next=url_for('professional_dashboard')) }}">
+          <i class="fa-solid fa-user-tie me-2"></i>Espace professionnel
+        </a>
       </div>
       <hr class="my-3">
       <!-- Sélecteur langue mobile -->
@@ -183,19 +198,6 @@
       {% endif %}
     </div>
   </div>
-
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <div class="container mt-3">
-        {% for cat, message in messages %}
-          <div class="alert alert-{{ cat if cat in ['primary','secondary','success','danger','warning','info','light','dark'] else 'info' }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
 
   <main>
     {% block content %}{% endblock %}
