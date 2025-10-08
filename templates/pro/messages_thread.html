@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Conversation — Tighri{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <a href="/pro/messages" class="link-secondary d-inline-block mb-2">← Retour</a>
+  <h1 class="h5 mb-3">Conversation avec {{ peer_name if peer_name is defined else 'Patient' }}</h1>
+
+  <div class="card mb-3">
+    <div class="card-body" style="max-height: 50vh; overflow-y: auto;">
+      {% set msgs = messages if messages is defined and messages else [] %}
+      {% if msgs %}
+        {% for m in msgs %}
+          <div class="mb-3">
+            <div class="small text-muted">
+              {{ m.author if m.author is defined else '—' }} — {{ m.at if m.at is defined else '' }}
+            </div>
+            <div>{{ m.text if m.text is defined else '' }}</div>
+            {% if m.attachments %}
+              <div class="mt-1">
+                {% for a in m.attachments %}
+                  <a class="btn btn-sm btn-outline-secondary me-1" href="{{ a.url }}" target="_blank" rel="noopener">
+                    <i class="fa-regular fa-file"></i> {{ a.name or 'Pièce jointe' }}
+                  </a>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="text-muted">Aucun message pour le moment.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Composer -->
+  <form class="card" method="post" enctype="multipart/form-data">
+    <div class="card-body">
+      {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+      <div class="mb-2">
+        <textarea class="form-control" name="text" rows="3" placeholder="Écrire un message…" required></textarea>
+      </div>
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <input type="file" name="file" class="form-control form-control-sm">
+          <div class="form-text">Fichiers autorisés : PDF, audio, images.</div>
+        </div>
+        <button class="btn btn-primary">Envoyer</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}
