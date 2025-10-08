@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Bureau virtuel — Tighri{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <h1 class="h4 mb-3">Bureau virtuel</h1>
+  <p class="text-muted mb-4">Votre cabinet digital : séances, patients, documents, messagerie et plus.</p>
+
+  <!-- Cartes de synthèse -->
+  <div class="row g-3">
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h2 class="h6 mb-0">Séances à venir</h2>
+            <i class="fa-solid fa-calendar-day"></i>
+          </div>
+          <p class="display-6 my-2">{{ upcoming_count if upcoming_count is defined else (next_sessions|length if next_sessions is defined else 0) }}</p>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_patients') if 'pro_patients' in globals() or 'pro_patients' in locals() else url_for('professional_dashboard') }}">Voir les patients</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h2 class="h6 mb-0">Messages non lus</h2>
+            <i class="fa-solid fa-inbox"></i>
+          </div>
+          <p class="display-6 my-2">{{ unread_messages if unread_messages is defined else 0 }}</p>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_messages_inbox') if 'pro_messages_inbox' in current_app.view_functions else '#' }}">Ouvrir la messagerie</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <h2 class="h6 mb-0">Paiements en attente</h2>
+            <i class="fa-solid fa-file-invoice-dollar"></i>
+          </div>
+          <p class="display-6 my-2">{{ pending_payments if pending_payments is defined else 0 }}</p>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_billing') if 'pro_billing' in current_app.view_functions else '#' }}">Gérer la facturation</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Raccourcis -->
+  <div class="row g-3 mt-1">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <h2 class="h6 mb-3">Raccourcis</h2>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pro_patients') if 'pro_patients' in current_app.view_functions else '#' }}"><i class="fa-solid fa-users me-1"></i> Mes patients</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pro_library') if 'pro_library' in current_app.view_functions else (url_for('pro_office') if 'pro_office' in current_app.view_functions else '#') }}"><i class="fa-solid fa-book-open me-1"></i> Bibliothèque</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pro_stats') if 'pro_stats' in current_app.view_functions else (url_for('pro_office') if 'pro_office' in current_app.view_functions else '#') }}"><i class="fa-solid fa-chart-line me-1"></i> Statistiques</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('professional_edit_profile') }}"><i class="fa-solid fa-user-pen me-1"></i> Mon profil</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Séances imminentes -->
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-body">
+          <h2 class="h6 mb-3">Prochaines séances</h2>
+          {% set sessions = next_sessions if next_sessions is defined and next_sessions else [] %}
+          {% if sessions %}
+            <ul class="list-unstyled mb-0">
+              {% for s in sessions[:5] %}
+                <li class="mb-2">
+                  <strong>{{ s.patient_name if s.patient_name is defined else (s.patient.name if s.patient is defined else 'Patient') }}</strong>
+                  — <span class="text-muted">{{ s.when if s.when is defined else (s.start_at if s.start_at is defined else '') }}</span>
+                  {% if (s.meet_url is defined and s.meet_url) or (s.link is defined and s.link) %}
+                    <a class="btn btn-sm btn-success ms-2" target="_blank" rel="noopener" href="{{ s.meet_url if s.meet_url is defined and s.meet_url else s.link }}">Rejoindre la visio</a>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-muted mb-0">Aucune séance planifiée.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assistance -->
+  <div class="card mt-3">
+    <div class="card-body d-flex justify-content-between align-items-center">
+      <div>
+        <h2 class="h6 mb-1">Besoin d’aide ?</h2>
+        <div class="text-muted">Guides, support technique et supervision.</div>
+      </div>
+      <a class="btn btn-outline-primary" href="{{ url_for('contact') }}"><i class="fa-solid fa-life-ring me-2"></i>Contacter le support</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
