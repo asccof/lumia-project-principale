@@ -1,193 +1,148 @@
 # app.py — Tighri (contrat fixe + Bureau virtuel & Espace patient)
-# NOTE: Bloc d'initialisation corrigé (DB avant db.init_app, compat psycopg3, dotenv).
-#       Remplace du début du fichier jusqu'à la fin de la création des dossiers d’upload.
-
 from __future__ import annotations
 
-import os, io, uuid, secrets, hashlib, requests, json
-from datetime import datetime, date, timedelta, time as dtime
-from pathlib import Path
-from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
-from typing import Optional
-
-from dotenv import load_dotenv  # ← nouveau (tu as python-dotenv installé)
 import os
-from flask import request, jsonify, send_file, send_from_directory, abort, url_for
-from sqlalchemy import or_
-from flask_login import login_required, current_user
+import io
+import uuid
+import secrets
+import hashlib
+import json
+from pathlib import Path
+from typing import Optional
+from datetime import datetime, date, timedelta, time as dtime
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
+import requests
+from dotenv import load_dotenv
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
     send_from_directory, Response, current_app, make_response, g, abort
 )
-from werkzeug.middleware.proxy_fix import ProxyFix
-from werkzeug.security import generate_password_hash, check_password_hash
-from jinja2 import TemplateNotFound
-
 from flask_login import (
     LoginManager, login_user, login_required, logout_user, current_user
 )
-from authlib.integrations.flask_client import OAuth
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.security import generate_password_hash, check_password_hash
+from jinja2 import TemplateNotFound
 from sqlalchemy import or_, text, func, case
 
-from extensions import db  # OK : on reste sur db.init_app(app) après config
+from extensions import db  # db.init_app(app) sera appelé après config
 
-# Charger les variables d’environnement (.env en local ; sur Render, variables du service)
+# -------------------------------------------------------------------
+# Environnement
+# -------------------------------------------------------------------
 load_dotenv()
 
-# =========================
-#   CONSTANTES / DOSSIERS
-# =========================
+# -------------------------------------------------------------------
+# Constantes / Dossiers
+# -------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
 BRAND_NAME = os.getenv("BRAND_NAME", "Tighri")
 
 UPLOAD_ROOT = Path(os.getenv("UPLOAD_ROOT", BASE_DIR / "uploads"))
 UPLOAD_FOLDER = UPLOAD_ROOT / "profiles"
-ATTACHMENTS_FOLDER = UPLOAD_ROOT / "attachments"  # ← pièces jointes
+ATTACHMENTS_FOLDER = UPLOAD_ROOT / "attachments"  # pièces jointes
+
 ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif"}
 ALLOWED_DOC_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt"} | ALLOWED_IMAGE_EXT
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(5 * 1024 * 1024)))  # 5 Mo
 
-# =========================
-#   FLASK APP
-# =========================
+# -------------------------------------------------------------------
+# Flask app
+# -------------------------------------------------------------------
 app = Flask(__name__)
-# --- Jinja helper: tester l'existence d'un endpoint en template ---
+
+# Jinja helper: has_endpoint("name")
 @app.context_processor
 def inject_has_endpoint():
-    from flask import current_app
     def has_endpoint(name: str) -> bool:
         return name in current_app.view_functions
     return dict(has_endpoint=has_endpoint)
-from datetime import timedelta
-from flask import session
-from datetime import timedelta
 
+# Sécurité & cookies / sessions
 app.config.update(
-    REMEMBER_COOKIE_DURATION=timedelta(days=30),
-    REMEMBER_COOKIE_REFRESH_EACH_REQUEST=True,  # prolonge à chaque requête
-    REMEMBER_COOKIE_SECURE=True,               # True en prod (HTTPS)
-    REMEMBER_COOKIE_SAMESITE="Lax",
-)
+    SECRET_KEY=os.environ.get("SECRET_KEY", "dev-change-me"),
+    PREFERRED_URL_SCHEME="https",
 
-app.config.update(
     SESSION_PERMANENT=True,
     PERMANENT_SESSION_LIFETIME=timedelta(days=30),
-    REMEMBER_COOKIE_DURATION=timedelta(days=30),
-    SESSION_COOKIE_SECURE=True,        # ton site est en HTTPS
-    REMEMBER_COOKIE_SECURE=True,       # idem
-    SESSION_COOKIE_SAMESITE="Lax",     # évite les déconnexions inattendues
+    SESSION_COOKIE_SECURE=True,        # HTTPS
+    SESSION_COOKIE_SAMESITE="Lax",
+
+    REMEMBER_COOKIE_NAME="tighri_remember",
+    REMEMBER_COOKIE_DURATION=timedelta(days=60),
+    REMEMBER_COOKIE_SECURE=True,
+    REMEMBER_COOKIE_SAMESITE="Lax",
+
+    UPLOAD_FOLDER=str(UPLOAD_FOLDER),
+    MAX_CONTENT_LENGTH=MAX_CONTENT_LENGTH,
 )
 
+from flask import session
 @app.before_request
 def _keep_session_permanent():
     session.permanent = True
 
-# Sécurité & cookies
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-change-me")
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = True  # HTTPS (Render)
-app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
-app.config["REMEMBER_COOKIE_NAME"] = "tighri_remember"
-app.config["REMEMBER_COOKIE_DURATION"] = timedelta(days=60)
-app.config["REMEMBER_COOKIE_SECURE"] = True
-app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
-app.config["PREFERRED_URL_SCHEME"] = "https"
-app.config["UPLOAD_FOLDER"] = str(UPLOAD_FOLDER)
-app.config.setdefault("MAX_CONTENT_LENGTH", MAX_CONTENT_LENGTH)
+# -------------------------------------------------------------------
+# DB / SQLAlchemy + psycopg3
+# -------------------------------------------------------------------
+def _normalize_pg_uri(uri: str) -> str:
+    """Normalise une URI Postgres pour SQLAlchemy + psycopg3 et ajoute sslmode=require si manquant."""
+    if not uri:
+        return uri
+    # Heroku/Render fournissent parfois 'postgres://'
+    if uri.startswith("postgres://"):
+        uri = "postgresql://" + uri[len("postgres://"):]
+    # Forcer psycopg3
+    if uri.startswith("postgresql+psycopg2://"):
+        uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
+    elif uri.startswith("postgresql://"):
+        uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
+    # sslmode=require si absent
+    parsed = urlparse(uri)
+    q = parse_qs(parsed.query)
+    if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
+        q["sslmode"] = ["require"]
+        uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
+    return uri
 
-# ---- CONFIG DB (Doit être AVANT db.init_app(app)) ---------------------------
-# Prend SQLALCHEMY_DATABASE_URI > DATABASE_URL > POSTGRES_URL (Render)
 db_url = (
     os.getenv("SQLALCHEMY_DATABASE_URI")
     or os.getenv("DATABASE_URL")
     or os.getenv("POSTGRES_URL")
+    or os.getenv("DATABASE_URL_INTERNAL")
 )
-
 if not db_url:
-    # Message explicite si variable manquante côté Render
     raise RuntimeError("Missing DATABASE_URL or SQLALCHEMY_DATABASE_URI environment variable")
-
-# Compat Render/Heroku: 'postgres://' → SQLAlchemy attend 'postgresql://'
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
-
-# Forcer le driver psycopg3 (tu as psycopg 3.x installé)
-if db_url.startswith("postgresql://") and "+psycopg" not in db_url:
-    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+db_url = _normalize_pg_uri(db_url)
 
 app.config["SQLALCHEMY_DATABASE_URI"] = db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-# -----------------------------------------------------------------------------
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    **app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {}),
+    "pool_pre_ping": True,
+    "pool_recycle": 1800,
+    "pool_size": 5,
+    "max_overflow": 10,
+}
 
 # Proxy (Render/Cloudflare)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-# IMPORTANT : n'initialiser la DB QU'APRÈS la config ci-dessus
+# Initialiser la DB après config
 db.init_app(app)
 
-# Crée les dossiers d’upload si besoin (ne casse pas en lecture seule)
+# Crée les dossiers d’upload si besoin
 for _p in (UPLOAD_ROOT, UPLOAD_FOLDER, ATTACHMENTS_FOLDER):
     try:
         _p.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         app.logger.warning("Impossible de créer le dossier %s : %s", _p, e)
 
-# =========================
-#   DB / MODELS
-# =========================
-from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
-
-def _normalize_pg_uri(uri: str) -> str:
-    """Normalise une URI Postgres pour SQLAlchemy + psycopg3 et ajoute sslmode=require si manquant."""
-    if not uri:
-        return uri
-
-    # Heroku/Render fournissent parfois 'postgres://'
-    if uri.startswith("postgres://"):
-        uri = "postgresql://" + uri[len("postgres://"):]
-
-    # Forcer psycopg3 (tu as psycopg 3.x installé)
-    if uri.startswith("postgresql+psycopg2://"):
-        uri = "postgresql+psycopg://" + uri[len("postgresql+psycopg2://"):]
-    elif uri.startswith("postgresql://"):
-        uri = "postgresql+psycopg://" + uri[len("postgresql://"):]
-
-    # Ajouter sslmode=require si absent (utile sur Render/Cloudflare)
-    parsed = urlparse(uri)
-    q = parse_qs(parsed.query)
-    if parsed.scheme.startswith("postgresql+psycopg") and "sslmode" not in q:
-        q["sslmode"] = ["require"]
-        uri = urlunparse(parsed._replace(query=urlencode({k: v[0] for k, v in q.items()})))
-
-    return uri
-
-# Si l'URI n'a pas déjà été posée dans l'en-tête, on la déduit ici proprement
-if not app.config.get("SQLALCHEMY_DATABASE_URI"):
-    _uri = (
-        os.environ.get("SQLALCHEMY_DATABASE_URI")
-        or os.environ.get("DATABASE_URL")
-        or os.environ.get("POSTGRES_URL")
-        or os.environ.get("DATABASE_URL_INTERNAL")
-        or ""
-    )
-    if not _uri:
-        raise RuntimeError("DATABASE_URL manquant : lie ta base Postgres dans Render.")
-    app.config["SQLALCHEMY_DATABASE_URI"] = _normalize_pg_uri(_uri)
-
-# Options moteur (en conservant ce qui a déjà pu être défini en amont)
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-engine_opts = app.config.get("SQLALCHEMY_ENGINE_OPTIONS", {})
-engine_opts.setdefault("pool_pre_ping", True)
-engine_opts.setdefault("pool_recycle", 1800)   # recycle connexions inactives > 30min
-engine_opts.setdefault("pool_size", 5)         # valeur sûre sur Render Free/Starter
-engine_opts.setdefault("max_overflow", 10)
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_opts
-
-# ⚠️ Ne PAS rappeler db.init_app(app) ici (déjà fait dans l'en-tête corrigé)
-
+# -------------------------------------------------------------------
+# Models
+# -------------------------------------------------------------------
 from models import (
-    # db,  # ← ne pas réimporter db ici ; il vient de extensions et est déjà initialisé
     User, Professional, Appointment, ProfessionalAvailability, UnavailableSlot,
     MessageThread, Message, FileAttachment,
     TherapySession, SessionNote,
@@ -198,18 +153,18 @@ from models import (
     ConsentLog,
     PersonalJournalEntry, TherapyNotebookEntry,
     Specialty, City,
-    ProfessionalReview,   # ← AJOUT pour /patient/ratings
+    ProfessionalReview,
 )
 
-# =========================
-#   ADMIN BLUEPRINT
-# =========================
+# -------------------------------------------------------------------
+# Admin blueprint (utilisé aussi dans index pour l’ordre)
+# -------------------------------------------------------------------
 from admin_server import admin_bp, ProfessionalOrder, _build_notif
 app.register_blueprint(admin_bp, url_prefix="/admin")
 
-# =========================
-#   LOGIN MANAGER
-# =========================
+# -------------------------------------------------------------------
+# Login manager
+# -------------------------------------------------------------------
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -217,49 +172,15 @@ login_manager.login_view = "login"
 @login_manager.user_loader
 def _load_user(user_id: str):
     try:
-        # db vient de extensions, initialisé dans l’en-tête ; get évite une requête inutile si l'id est None/invalid
         return db.session.get(User, int(user_id))
     except Exception:
         return None
-from flask_login import login_user
-from datetime import timedelta
 
-from flask import request, redirect, url_for, flash
-from flask_login import login_user
-
-@app.post("/login")
-def login_post():
-    email = request.form.get("email", "").strip().lower()
-    password = request.form.get("password", "")
-
-    user = User.query.filter_by(email=email).first()
-    if not user or not user.check_password(password):
-        flash("Email ou mot de passe invalide", "danger")
-        return redirect(url_for("login"))
-
-    # ✅ ICI, et seulement ici
-    login_user(user, remember=True, duration=timedelta(days=30))
-
-    next_url = request.args.get("next") or url_for("patient_home")  # ou ton alias
-    return redirect(next_url)
-from flask_login import logout_user, login_required
-
-from flask import redirect, url_for, flash
-from flask_login import logout_user, login_required
-
-@app.get("/logout")  # endpoint implicite = 'logout'
-@login_required
-def logout():
-    logout_user()
-    flash("Vous êtes déconnecté.", "info")
-    return redirect(url_for("index"))
-
-# =========================
-#   I18N / LANG
-# =========================
+# -------------------------------------------------------------------
+# I18N / Lang
+# -------------------------------------------------------------------
 DEFAULT_LANG = "fr"
 SUPPORTED_LANGS = {"fr", "en", "ar"}
-
 LEGACY_LANG_COOKIE = "lang"
 LANG_COOKIE = "tighri_lang"
 LANG_MAX_AGE = 60 * 60 * 24 * 180
@@ -302,20 +223,13 @@ def _vary_on_cookie_for_lang(resp):
         resp.headers["Pragma"] = "no-cache"
         resp.headers["Expires"] = "0"
     return resp
-# --- Helper i18n minimal pour les templates : {{ t('key.path', 'fallback') }}
+
+# t() helper pour templates
 @app.context_processor
 def inject_t_helper():
     def t(key: str, default: str | None = None, **kwargs):
-        """
-        Lookup simple de traduction.
-        - Cherche dans app.config['I18N'][<lang>] via un chemin 'a.b.c' (ou 'a:b:c')
-        - Sinon retourne le fallback 'default'
-        - Sinon retourne la dernière partie de la clé (jolie) : 'common.menu' -> 'menu'
-        """
         lang = getattr(g, "current_locale", DEFAULT_LANG)
         data = current_app.config.get("I18N", {}) or {}
-
-        # navigation dans les dicts imbriqués via '.' ou ':'
         node = data.get(lang) or {}
         for part in key.replace(":", ".").split("."):
             if isinstance(node, dict):
@@ -323,14 +237,11 @@ def inject_t_helper():
             else:
                 node = None
                 break
-
         text = node if isinstance(node, str) else (default or key.split(".")[-1].replace("_", " "))
         try:
             return text.format(**kwargs) if kwargs else text
         except Exception:
-            # si .format(**kwargs) casse, renvoyer brut
             return text
-
     return dict(t=t)
 
 @app.route("/set-language/clear")
@@ -341,7 +252,6 @@ def clear_language_cookie():
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
-# /set-language/<code>  → définit directement le cookie (compat base.html)
 @app.route("/set-language/<lang_code>", endpoint="set_language")
 def set_language(lang_code):
     code = _normalize_lang(lang_code)
@@ -351,7 +261,6 @@ def set_language(lang_code):
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
-# /set-language?lang=fr  → variante par querystring
 @app.route("/set-language")
 def set_language_qs():
     code = _normalize_lang(request.args.get("lang"))
@@ -361,7 +270,6 @@ def set_language_qs():
     resp.delete_cookie(LEGACY_LANG_COOKIE, domain=dom, path="/", samesite="Lax")
     return resp
 
-# Legacy underscore → redirige vers la version querystring
 @app.route("/set_language")
 def set_language_fallback():
     lang_code = request.args.get("lang")
@@ -370,9 +278,9 @@ def set_language_fallback():
         return redirect(nxt)
     return redirect(url_for("set_language_qs", lang=lang_code, next=nxt))
 
-# =========================
-#   ⚙️ CANONICAL HOST
-# =========================
+# -------------------------------------------------------------------
+# Canonical host
+# -------------------------------------------------------------------
 PRIMARY_HOST = os.getenv("PRIMARY_HOST", "www.tighri.ma")
 
 @app.before_request
@@ -383,9 +291,9 @@ def _enforce_primary_domain():
     if host != PRIMARY_HOST:
         return redirect(request.url.replace(host, PRIMARY_HOST, 1), code=301)
 
-# =========================
-#   EMAILS (safe wrapper)
-# =========================
+# -------------------------------------------------------------------
+# Emails (safe wrapper)
+# -------------------------------------------------------------------
 from notifications import send_email as _notif_send_email
 def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None = None) -> bool:
     try:
@@ -401,9 +309,9 @@ def safe_send_email(to_addr: str, subject: str, body_text: str, html: str | None
         current_app.logger.exception("safe_send_email exception: %s", e)
         return False
 
-# =========================
-#   PIL (images)
-# =========================
+# -------------------------------------------------------------------
+# PIL (images)
+# -------------------------------------------------------------------
 try:
     from PIL import Image, ImageOps
     _PIL_OK = True
@@ -451,7 +359,6 @@ def _process_and_save_profile_image(file_storage) -> str:
     return out_name
 
 def _save_attachment(file_storage) -> str:
-    """Sauvegarde binaire dans ATTACHMENTS_FOLDER et retourne le nom de fichier."""
     filename = getattr(file_storage, "filename", None)
     if not filename or not _doc_ext_ok(filename):
         raise ValueError("Extension non autorisée")
@@ -480,9 +387,9 @@ def _avatar_fallback_response():
         return resp
     return redirect(PHOTO_PLACEHOLDER)
 
-# =========================
-#   SERVICE FICHIERS (Render Disk)
-# =========================
+# -------------------------------------------------------------------
+# Fichiers (Render Disk)
+# -------------------------------------------------------------------
 @app.route("/u/profiles/<path:filename>", endpoint="u_profiles")
 def u_profiles(filename: str):
     if not filename or ".." in filename or filename.startswith("/"):
@@ -496,7 +403,6 @@ def u_profiles(filename: str):
 
 @app.route("/u/attachments/<path:filename>", endpoint="u_attachments")
 def u_attachments(filename: str):
-    """Serveur de pièces jointes sécurisées (basiquement public ici – peut être restreint plus tard)."""
     if not filename or ".." in filename or filename.startswith("/"):
         abort(404)
     fpath = ATTACHMENTS_FOLDER / os.path.basename(filename)
@@ -507,14 +413,6 @@ def u_attachments(filename: str):
     return resp
 
 def _normalize_disk_url(value: str | None) -> Optional[str]:
-    """
-    Accepte :
-      - '/u/profiles/abc.jpg' (nouveau)
-      - '/media/profiles/abc.jpg' (legacy)
-      - 'abc.jpg'
-      - URL http(s)
-    Retourne une URL servie par l’app si possible.
-    """
     if not value:
         return None
     v = value.strip()
@@ -529,7 +427,6 @@ def _normalize_disk_url(value: str | None) -> Optional[str]:
         return v
     if v.startswith("/u/attachments/"):
         return v
-    # sinon nom nu → profils par défaut
     return url_for("u_profiles", filename=os.path.basename(v))
 
 def _pro_photo_field(pro: Professional, index: int) -> Optional[str]:
@@ -568,9 +465,9 @@ def inject_gallery_helpers():
         "professional_gallery_urls": professional_gallery_urls,
     }
 
-# =========================
-#   LISTES (ORM + seeds)
-# =========================
+# -------------------------------------------------------------------
+# Listes (ORM + seeds)
+# -------------------------------------------------------------------
 try:
     from seeds_taxonomy import (
         SPECIALTY_FAMILIES,
@@ -622,11 +519,9 @@ def inject_taxonomies_for_forms():
         "ALL_SPECIALTIES": SEED_SPECIALTIES,
     }
 
-# =========================
-#   ROUTES TECH
-# =========================
-
-
+# -------------------------------------------------------------------
+# Routes techniques
+# -------------------------------------------------------------------
 @app.route("/robots.txt")
 def robots():
     txt_path = Path(app.static_folder or (BASE_DIR / "static")) / "robots.txt"
@@ -634,9 +529,6 @@ def robots():
         return send_from_directory(app.static_folder, "robots.txt", mimetype="text/plain")
     return ("User-agent: *\nDisallow:\n", 200, {"Content-Type": "text/plain"})
 
-# =========================
-#   HELPER RENDER TEMPLATES (évite 500 si non dispo)
-# =========================
 def render_or_text(template_name: str, fallback_title: str, **kwargs):
     try:
         return render_template(template_name, **kwargs)
@@ -644,24 +536,20 @@ def render_or_text(template_name: str, fallback_title: str, **kwargs):
         body = f"<h1 style='font-family:system-ui,Segoe UI,Arial'>Tighri — {fallback_title}</h1>"
         body += "<p>Template manquant : <code>{}</code>. Cette page fonctionne en mode fallback sans casser l'app.</p>".format(template_name)
         return body, 200, {"Content-Type": "text/html; charset=utf-8"}
-# --- Favicon unique ---
-import os
-from flask import send_from_directory
 
 @app.get("/favicon.ico", endpoint="favicon_ico")
 def favicon_ico():
     static_dir = os.path.join(app.root_path, "static")
     return send_from_directory(static_dir, "favicon.ico", mimetype="image/x-icon")
 
-# (optionnel) si tu as aussi un PNG
 @app.get("/favicon.png", endpoint="favicon_png")
 def favicon_png():
     static_dir = os.path.join(app.root_path, "static")
     return send_from_directory(static_dir, "favicon.png", mimetype="image/png")
 
-# =========================
-#   PAGES PUBLIQUES (inchangées)
-# =========================
+# -------------------------------------------------------------------
+# Pages publiques (index / listings)
+# -------------------------------------------------------------------
 @app.route("/", endpoint="index")
 def index():
     try:
@@ -724,13 +612,10 @@ def professionals():
     q = (request.args.get("q") or "").strip()
     city = (request.args.get("city") or "").strip()
     city_id = request.args.get("city_id", type=int)
-
     family = (request.args.get("family") or "").strip()
-
     specialty = (request.args.get("specialty") or "").strip()
     specialty_id = request.args.get("specialty_id", type=int)
     mode = (request.args.get("mode") or "").strip().lower()
-
     if mode == "visio":
         mode = "en_ligne"
 
@@ -784,9 +669,9 @@ def professional_detail(professional_id: int):
     professional = Professional.query.get_or_404(professional_id)
     return render_template("professional_detail.html", professional=professional)
 
-# =========================
-#   MÉDIAS / PHOTOS
-# =========================
+# -------------------------------------------------------------------
+# Médias / Photos
+# -------------------------------------------------------------------
 @app.route("/media/profile/<int:professional_id>", endpoint="profile_photo")
 def profile_photo(professional_id: int):
     pro = Professional.query.get_or_404(professional_id)
@@ -875,6 +760,7 @@ def avatar_alias_qs():
 def avatar_alias_path(professional_id: int):
     return redirect(url_for("profile_photo", professional_id=professional_id))
 
+# Uploads pro
 @app.route("/professional/profile/photo", methods=["GET", "POST"], endpoint="professional_upload_photo")
 @login_required
 def professional_upload_photo():
@@ -950,10 +836,10 @@ def professional_upload_photo_n(index: int):
 def professional_photos_upload_alias():
     return professional_upload_photo()
 
-# =========================
-#   AUTH LOCAL
-# =========================
-@app.route("/register", methods=["GET","POST"], endpoint="register")
+# -------------------------------------------------------------------
+# Auth local
+# -------------------------------------------------------------------
+@app.route("/register", methods=["GET", "POST"], endpoint="register")
 def register():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
@@ -994,7 +880,7 @@ def register():
 
     return render_or_text("register.html", "Inscription")
 
-@app.route("/professional_register", methods=["GET","POST"], endpoint="professional_register")
+@app.route("/professional_register", methods=["GET", "POST"], endpoint="professional_register")
 def professional_register():
     if request.method == "POST":
         username = (request.form.get("username") or "").strip()
@@ -1109,7 +995,8 @@ def professional_register():
     return render_or_text("professional_register.html", "Inscription pro",
                            cities=cities, families=families, specialties=specialties)
 
-@app.route("/login", methods=["GET","POST"], endpoint="login")
+# --------- Login unique (GET+POST) ---------
+@app.route("/login", methods=["GET", "POST"], endpoint="login")
 def login():
     if request.method == "POST":
         username_or_email = (request.form.get("username") or "").strip()
@@ -1138,15 +1025,17 @@ def login():
         flash("Nom d'utilisateur / email ou mot de passe incorrect")
     return render_or_text("login.html", "Connexion")
 
-@app.route("/logout", endpoint="logout")
+# --------- Logout unique ---------
+@app.get("/logout")  # endpoint implicite = 'logout'
 @login_required
 def logout():
     logout_user()
     return redirect(url_for("index"))
 
-# =========================
-#   OAUTH GOOGLE
-# =========================
+# -------------------------------------------------------------------
+# OAuth Google
+# -------------------------------------------------------------------
+from authlib.integrations.flask_client import OAuth
 oauth = OAuth(app)
 google = oauth.register(
     name="google",
