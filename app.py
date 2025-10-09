@@ -1216,20 +1216,8 @@ def reset_password(token: str):
     return render_or_text("reset_password.html", "Réinitialiser le mot de passe")
 
 
-@app.route("/robots.txt")
-def robots_txt():
-    from flask import Response
-    rules = [
-        "User-agent: *",
-        "Disallow: /login",
-        "Disallow: /patient",
-        "Disallow: /pro",
-        "Disallow: /professional_dashboard",
-    ]
-    return Response("\n".join(rules) + "\n", mimetype="text/plain")
-
 # =========================
-#   ESPACE PRO / RDV (inchangé)
+#   ESPACE PRO / RDV
 # =========================
 @app.route("/professional_dashboard", endpoint="professional_dashboard")
 @login_required
@@ -1325,21 +1313,6 @@ def professional_unavailable_slots():
     return render_or_text("professional_unavailable_slots.html",
                            "Créneaux indisponibles",
                            professional=professional, unavailable_slots=unavailable_slots)
-
-@app.route("/professional/unavailable-slots/<int:slot_id>/delete", methods=["POST"], endpoint="delete_unavailable_slot")
-@login_required
-def delete_unavailable_slot(slot_id: int):
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé"); return redirect(url_for("index"))
-    professional = Professional.query.filter_by(name=current_user.username).first()
-    if not professional:
-        flash("Profil professionnel non trouvé"); return redirect(url_for("index"))
-    slot = UnavailableSlot.query.get_or_404(slot_id)
-    if slot.professional_id != professional.id:
-        flash("Accès non autorisé"); return redirect(url_for("professional_unavailable_slots"))
-    db.session.delete(slot); db.session.commit()
-    flash("Créneau indisponible supprimé!")
-    return redirect(url_for("professional_unavailable_slots"))
 
 # Edition profil pro
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
@@ -1615,25 +1588,18 @@ def pro_patient_entry():
 # =========================
 #   BUREAU VIRTUEL — PRO
 # =========================
-# --- Bureau virtuel pro: page d'accueil ---
 @app.route("/pro-office/", methods=["GET"], endpoint="pro_office_index")
 @login_required
 def pro_office_index():
     if getattr(current_user, "user_type", None) != "professional":
         abort(403)
-    # Valeurs par défaut pour que la page vive même sans données
     return render_or_text("pro/office.html", "Bureau virtuel",
                           next_sessions=[],
                           upcoming_count=0,
                           unread_messages=0,
                           pending_payments=0)
 
-# --- Aide : obtenir l'objet Professional du current_user
 def _current_professional_or_403():
-    """
-    Retourne l'objet Professional correspondant à l'utilisateur connecté.
-    On essaie d'abord par full_name puis par username (selon comment tes fiches pro sont remplies).
-    """
     if not getattr(current_user, "is_authenticated", False) or getattr(current_user, "user_type", None) != "professional":
         abort(403)
 
@@ -1645,10 +1611,8 @@ def _current_professional_or_403():
         )
         .first()
     )
-
     if not pro:
         abort(403)
-
     return pro
 
 @app.route("/pro/desk", endpoint="pro_desk")
@@ -1661,7 +1625,6 @@ def pro_desk():
     return render_or_text("pro/desk.html", "Bureau virtuel",
                           professional=pro, threads=latest_threads, sessions=latest_sessions, invoices=latest_invoices)
 
-# --- Patients du pro (agrégés + pagination, unifiée)
 @app.route("/pro/patients", methods=["GET"], endpoint="pro_patients")
 @login_required
 def pro_patients():
@@ -1721,7 +1684,6 @@ def pro_patients():
         professional=pro
     )
 
-# --- Dossier patient (vue)
 @app.route("/pro/patients/<int:patient_id>", methods=["GET","POST"], endpoint="pro_patient_detail")
 @login_required
 def pro_patient_detail(patient_id: int):
@@ -1750,7 +1712,6 @@ def pro_patient_detail(patient_id: int):
     return render_or_text("pro/patient_detail.html", "Dossier patient",
                           professional=pro, patient=patient, profile=profile, medhist=medhist, sessions=sessions, thread=thread)
 
-# --- Messagerie pro ↔ patient
 @app.route("/pro/threads/<int:patient_id>", methods=["GET","POST"], endpoint="pro_thread")
 @login_required
 def pro_thread(patient_id: int):
@@ -1794,7 +1755,6 @@ def pro_thread(patient_id: int):
                       attachment_id=attachment.id if attachment else None, audio_url=audio_url)
         db.session.add(msg); db.session.commit()
 
-        # notif email patient
         try:
             if patient.email:
                 safe_send_email(patient.email, f"{BRAND_NAME} — Nouveau message", f"Le professionnel vous a écrit sur {BRAND_NAME}.")
@@ -1816,24 +1776,20 @@ def messages_index():
         threads = MessageThread.query.filter_by(patient_id=current_user.id)\
                                      .order_by(MessageThread.updated_at.desc().nullslast()).all()
         return render_or_text("patient/messages_index.html", "Messagerie", threads=threads)
+
 @app.route("/pro/billing", methods=["GET"], endpoint="pro_billing")
 @login_required
 def pro_billing():
-    """
-    Page de facturation (placeholder fonctionnel, mais template complet).
-    On exige un compte pro (adapte le flag selon ton modèle).
-    """
-    if not getattr(current_user, "is_professional", False):
+    if getattr(current_user, "user_type", None) != "professional":
         abort(403)
 
-    # Exemple de données (remplace par tes vraies sources si tu en as)
     current_plan = {
         "name": "Essentiel",
         "price": 0,
         "currency": "MAD",
         "period": "mois",
         "features": ["Profil public", "Prise de RDV", "Agenda basique"],
-        "renews_at": None,  # None si gratuit
+        "renews_at": None,
         "status": "actif",
     }
 
@@ -1843,10 +1799,7 @@ def pro_billing():
         "exp": "08/27",
     }
 
-    invoices = [
-        # Exemple : remplace par ta liste (depuis DB / PSP) si existante
-        # {"id": "INV-2024-0001", "date": "2024-12-05", "amount": 199, "currency": "MAD", "status": "payée", "pdf_url": "https://..."},
-    ]
+    invoices = []
 
     return render_or_text(
         "pro_billing.html",
@@ -2021,7 +1974,6 @@ def pro_support():
 # =========================
 #   ESPACE PATIENT (CLEAN)
 # =========================
-
 def _require_patient():
     if not current_user.is_authenticated or current_user.user_type != "patient":
         abort(403)
@@ -2043,222 +1995,119 @@ def patient_home():
         profile=profile, threads=my_threads, assignments=my_assignments, sessions=my_sessions
     )
 
-# ---------- Rendez-vous ----------
-@app.route("/patient/appointments", endpoint="patient_appointments")
-@login_required
-def patient_appointments():
-    _require_patient()
-    appts = Appointment.query.filter_by(patient_id=current_user.id)\
-        .order_by(Appointment.appointment_date.desc()).all()
-    return render_or_text("patient/appointments.html", "Mes rendez-vous", appointments=appts)
-@app.route("/patient/book/<int:professional_id>", methods=["GET", "POST"])
+# ---------- Rendez-vous : alias simple vers la fiche pro ----------
+@app.route("/patient/book/<int:professional_id>", methods=["GET"], endpoint="patient_book")
 @login_required
 def patient_book(professional_id):
+    _require_patient()
     pro = db.session.get(Professional, professional_id)
-    if not pro or not pro.is_active:
+    if not pro:
         abort(404)
-
-    if request.method == "POST":
-        slot_id = request.form.get("slot_id")
-        if not slot_id:
-            flash("Veuillez choisir un créneau.", "warning")
-            return redirect(request.url)
-
-        # ⚠️ Adapte à ton modèle :
-        slot = db.session.get(AppointmentSlot, int(slot_id))
-        if not slot or not slot.is_open or slot.professional_id != professional_id:
-            flash("Créneau indisponible.", "danger")
-            return redirect(request.url)
-
-        # Crée l’appointment pour current_user (patient)
-        appt = Appointment(
-            patient_id=current_user.id,
-            professional_id=professional_id,
-            start_at=slot.start_at,
-            end_at=slot.end_at,
-            status="booked",
-        )
-        slot.is_open = False
-        db.session.add(appt)
-        db.session.commit()
-
-        flash("Votre rendez-vous a été réservé ✅", "success")
-        return redirect(url_for('patient_home'))
-
-    # GET : afficher les créneaux ouverts
-    # ⚠️ Adapte à ton modèle : ici on suppose un modèle AppointmentSlot
-    slots = db.session.execute(
-        select(AppointmentSlot)
-        .where(AppointmentSlot.professional_id == professional_id, AppointmentSlot.is_open.is_(True))
-        .order_by(AppointmentSlot.start_at)
-    ).scalars().all()
-
-    return render_template("patient/book_detail.html", professional=pro, slots=slots)
+    # Redirige vers la fiche pro (où tu peux mettre le bouton "Réserver")
+    return redirect(url_for("professional_detail", professional_id=professional_id))
 
 # ---------- Aide: construction de la requête pros à partir des filtres ----------
 def _build_professional_query_from_args(args):
     qs = Professional.query
-    if hasattr(Professional, "is_active"):
+
+    # Actifs / valides
+    if hasattr(Professional, "status"):
+        qs = qs.filter(Professional.status == 'valide')
+    elif hasattr(Professional, "is_active"):
         qs = qs.filter(Professional.is_active.is_(True))
 
     q = (args.get("q") or "").strip()
     if q:
-        if hasattr(Professional, "description"):
-            qs = qs.filter(or_(Professional.name.ilike(f"%{q}%"),
-                               Professional.description.ilike(f"%{q}%")))
-        elif hasattr(Professional, "bio"):
-            qs = qs.filter(or_(Professional.name.ilike(f"%{q}%"),
-                               Professional.bio.ilike(f"%{q}%")))
-        else:
-            qs = qs.filter(Professional.name.ilike(f"%{q}%"))
+        like = f"%{q}%"
+        conds = []
+        for attr in ("name", "full_name", "description", "specialty", "location", "address"):
+            if hasattr(Professional, attr):
+                conds.append(getattr(Professional, attr).ilike(like))
+        if conds:
+            qs = qs.filter(or_(*conds))
 
     city_id = args.get("city_id", type=int)
     if city_id and hasattr(Professional, "city_id"):
         qs = qs.filter(Professional.city_id == city_id)
     else:
         city = (args.get("city") or "").strip()
-        if city and hasattr(Professional, "city"):
-            try:
-                qs = qs.filter(or_(Professional.city == city,
-                                   Professional.city.ilike(f"%{city}%")))
-            except Exception:
-                pass
+        if city and hasattr(Professional, "location"):
+            qs = qs.filter(Professional.location.ilike(f"%{city}%"))
 
+    # "Famille" = Specialty.category (fallbacks inclus)
     family = (args.get("family") or "").strip()
     if family:
+        like_family = family
         try:
-            if hasattr(Professional, "family"):
-                qs = qs.filter(Professional.family == family)
-            elif hasattr(Professional, "primary_specialty") and "Family" in globals():
-                qs = qs.filter(Professional.primary_specialty.has(Family.name == family))
+            qs = qs.filter(
+                or_(
+                    Professional.primary_specialty.has(Specialty.category.ilike(like_family)),
+                    Professional.specialties.any(Specialty.category.ilike(like_family)),
+                    Professional.specialty.ilike(f"%{family}%"),
+                )
+            )
         except Exception:
             pass
 
     specialty_id = args.get("specialty_id", type=int)
     if specialty_id:
+        if hasattr(Professional, "primary_specialty_id"):
+            qs = qs.filter(Professional.primary_specialty_id == specialty_id)
         try:
-            if hasattr(Professional, "primary_specialty_id"):
-                qs = qs.filter(Professional.primary_specialty_id == specialty_id)
-            if hasattr(Professional, "secondary_specialties"):
-                qs = qs.filter(Professional.secondary_specialties.any(id=specialty_id))
+            if hasattr(Professional, "specialties"):
+                qs = qs.filter(Professional.specialties.any(Specialty.id == specialty_id))
         except Exception:
             pass
     else:
         specialty = (args.get("specialty") or "").strip()
         if specialty and hasattr(Professional, "specialty"):
-            qs = qs.filter(Professional.specialty == specialty)
+            qs = qs.filter(Professional.specialty.ilike(f"%{specialty}%"))
 
-    mode = (args.get("mode") or "").strip()
-    if mode:
-        try:
-            if hasattr(Professional, "consultation_types"):
-                qs = qs.filter(Professional.consultation_types.ilike(f"%{mode}%"))
-            else:
-                mode_map = {
-                    "visio": "offers_visio",
-                    "cabinet": "offers_in_office",
-                    "domicile": "offers_home_visits",
-                }
-                attr = mode_map.get(mode)
-                if attr and hasattr(Professional, attr):
-                    qs = qs.filter(getattr(Professional, attr).is_(True))
-        except Exception:
-            pass
+    mode = (args.get("mode") or "").strip().lower()
+    if mode == "visio":
+        mode = "en_ligne"
+    if mode and hasattr(Professional, "consultation_types"):
+        qs = qs.filter(Professional.consultation_types.ilike(f"%{mode}%"))
 
-    if hasattr(Professional, "name"):
-        qs = qs.order_by(Professional.name.asc())
+    if hasattr(Professional, "is_featured"):
+        qs = qs.order_by(Professional.is_featured.desc(), Professional.created_at.desc())
+    else:
+        qs = qs.order_by(Professional.created_at.desc() if hasattr(Professional, "created_at") else Professional.id.desc())
     return qs
 
-# ---------- Prendre RDV (formulaire) ----------
+# ---------- Formulaire "Prendre un rendez-vous" ----------
 @app.route("/patient/booking", methods=["GET"], endpoint="patient_booking")
 @login_required
 def patient_booking():
     _require_patient()
-    try:
-        cities = City.query.order_by(City.name).all()
-    except Exception:
-        cities = []
-    try:
-        families = Family.query.order_by(Family.name).all()
-    except Exception:
-        families = []
-    try:
-        specialties = Specialty.query.order_by(Specialty.name).all()
-    except Exception:
-        specialties = []
-    # Formulaire identique à la home, mais action -> patient_resources
+    cities = _ui_cities()
+    specialties = _ui_specialties()
+    families = _ui_families_rows()
     return render_or_text(
         "patient/booking.html", "Prendre un rendez-vous",
         cities=cities, families=families, specialties=specialties
     )
-from sqlalchemy import select
 
-@app.route("/patient/resources")
-@login_required
-def patient_resources():
-    mode = request.args.get("mode", "")
-    q = select(Professional).where(Professional.is_active.is_(True))
+# ---------- Résultats pros (unique) ----------
+if "patient_resources" not in app.view_functions:
+    @app.route("/patient/resources", methods=["GET"], endpoint="patient_resources")
+    @login_required
+    def patient_resources():
+        _require_patient()
+        try:
+            professionals = _build_professional_query_from_args(request.args).all()
+        except Exception:
+            professionals = []
 
-    # filtres optionnels
-    keyword = request.args.get("q", "").strip()
-    city_id = request.args.get("city_id")
-    family = request.args.get("family")
-    specialty_id = request.args.get("specialty_id")
+        # Listes pour garder les sélections
+        cities = _ui_cities()
+        specialties = _ui_specialties()
+        families = _ui_families_rows()
 
-    if mode != "all":
-        if keyword:
-            q = q.where(Professional.name.ilike(f"%{keyword}%"))
-        if city_id:
-            q = q.where(Professional.city_id == city_id)
-        if specialty_id:
-            q = q.where(Professional.specialty_id == specialty_id)
-        if family:
-            # si tu as un champ `family_slug` ou `family_id`, adapte la condition :
-            # q = q.where(Professional.family_slug == family)  # ou
-            # q = q.where(Professional.family_id == int(family))  # si c'est un id
-            pass
-
-    q = q.order_by(Professional.rank.desc(), Professional.id.desc())
-    professionals = db.session.execute(q).scalars().all()
-
-    families = db.session.execute(select(Family).order_by(Family.name)).scalars().all()
-    specialties = db.session.execute(select(Specialty).order_by(Specialty.name)).scalars().all()
-    cities = db.session.execute(select(City).order_by(City.name)).scalars().all()
-
-    return render_template("patient/resources.html",
-                           professionals=professionals,
-                           families=families,
-                           specialties=specialties,
-                           cities=cities)
-
-# ---------- Résultats (même logique que /professionals) ----------
-@app.route("/patient/resources", methods=["GET"], endpoint="patient_resources")
-@login_required
-def patient_resources():
-    _require_patient()
-    try:
-        professionals = _build_professional_query_from_args(request.args).all()
-    except Exception:
-        professionals = []
-
-    # Listes pour garder les sélections
-    try:
-        cities = City.query.order_by(City.name).all()
-    except Exception:
-        cities = []
-    try:
-        families = Family.query.order_by(Family.name).all()
-    except Exception:
-        families = []
-    try:
-        specialties = Specialty.query.order_by(Specialty.name).all()
-    except Exception:
-        specialties = []
-
-    return render_or_text(
-        "patient/resources.html", "Ressources",
-        professionals=professionals, cities=cities, families=families, specialties=specialties
-    )
+        return render_or_text(
+            "patient/resources.html", "Ressources",
+            professionals=professionals, cities=cities, families=families, specialties=specialties
+        )
 
 # ---------- API JSON (optionnelle) ----------
 @app.route("/api/patient/resources", methods=["GET"], endpoint="patient_resources_api")
@@ -2280,7 +2129,7 @@ def patient_resources_api():
         })
     return jsonify(payload)
 
-# ---------- Ressources/exercices (ex- /patient/resources) ----------
+# ---------- Ressources/exercices ----------
 @app.route("/patient/exercises", methods=["GET"], endpoint="patient_exercises")
 @login_required
 def patient_exercises():
@@ -2420,7 +2269,6 @@ def patient_thread(professional_id: int):
         )
         db.session.add(msg); db.session.commit()
 
-        # notif email pro (best-effort)
         try:
             pro_user = User.query.filter_by(username=pro.name).first()
             if pro_user and pro_user.email:
@@ -2488,40 +2336,28 @@ def not_found(e):
 @app.errorhandler(500)
 def server_error(e):
     return render_or_text("errors/500.html", "500 — Erreur serveur"), 500
-# --- Aliases pour compatibilité des templates existants ---
-from flask import redirect, url_for, request, flash
-from werkzeug.routing import BuildError
-from flask_login import login_required, current_user
 
-# 1) "Mes patients" : fournir l’endpoint attendu par le template
-#    -> /pro/patients/list (évite tout conflit d’URL) et endpoint="pro_list_patients"
+# --- Aliases pour compatibilité des templates existants ---
+from werkzeug.routing import BuildError
+
 @app.route("/pro/patients/list", methods=["GET"], endpoint="pro_list_patients")
 @login_required
 def pro_list_patients_alias():
-    # Si la vue canonique existe, on la réutilise telle quelle.
     try:
         return pro_patients()
     except Exception:
-        # Fallback: simple redirection vers l’URL déjà en place
         return redirect(url_for("pro_patients", **request.args))
 
-# 2) "Réserver un rendez-vous" : fournir l’endpoint attendu par professional_detail.html
+# "Réserver un rendez-vous" attendu par professional_detail.html
 @app.route("/book/<int:professional_id>", methods=["GET"], endpoint="book_appointment")
 @login_required
 def book_appointment(professional_id: int):
-    # Info utilisateur si ce n’est pas un patient (on le laisse quand même voir la page de booking cible)
     if getattr(current_user, "user_type", None) != "patient":
         flash("Connectez-vous en tant que patient pour réserver un rendez-vous.", "warning")
-    # Redirige vers la page de rendez-vous déjà existante
     try:
-        return redirect(url_for("professional_appointments", professional_id=professional_id))
+        return redirect(url_for("professional_detail", professional_id=professional_id))
     except BuildError:
-        # Si ta version n’a pas encore 'professional_appointments', on retombe sur le booking générique
-        try:
-            return redirect(url_for("patient_booking") + f"?pro={professional_id}")
-        except BuildError:
-            # Dernier filet de sécurité
-            return redirect(url_for("index"))
+        return redirect(url_for("index"))
 
 # =========================
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
@@ -2616,14 +2452,15 @@ with app.app_context():
             "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(255);",
             "ALTER TABLE patient_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();",
 
-            # --- therapy_sessions : champs normalisés (utilisés dans app.py)
+            # --- therapy_sessions : champs normalisés
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS start_at TIMESTAMP;",
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS end_at TIMESTAMP;",
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'planifie';",
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR(20) DEFAULT 'cabinet';",
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS meet_url TEXT;",
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS appointment_id INTEGER REFERENCES appointments(id) ON DELETE SET NULL;",
-            # --- message_threads : colonnes nécessaires au bureau virtuel
+
+            # --- message_threads
             "ALTER TABLE message_threads ADD COLUMN IF NOT EXISTS patient_id INTEGER REFERENCES users(id) ON DELETE CASCADE;",
             "ALTER TABLE message_threads ADD COLUMN IF NOT EXISTS professional_id INTEGER REFERENCES professionals(id) ON DELETE CASCADE;",
             "ALTER TABLE message_threads ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN DEFAULT FALSE;",
@@ -2632,11 +2469,11 @@ with app.app_context():
             "CREATE INDEX IF NOT EXISTS ix_threads_pro ON message_threads(professional_id);",
             "CREATE INDEX IF NOT EXISTS ix_threads_patient ON message_threads(patient_id);",
 
-            # Compat rétro pour anciens modèles qui lisent 'started_at'
+            # Compat rétro
             "ALTER TABLE therapy_sessions ADD COLUMN IF NOT EXISTS started_at TIMESTAMP;",
             "UPDATE therapy_sessions SET started_at = start_at WHERE started_at IS NULL AND start_at IS NOT NULL;",
 
-            # --- medical_histories : champs réellement utilisés
+            # --- medical_histories
             "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS summary TEXT;",
             "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS custom_fields TEXT;",
         ]
@@ -2698,3 +2535,4 @@ with app.app_context():
         app.logger.info("Admin '%s' créé.", admin_username)
 
 # Pas de __main__: Gunicorn lance app:app
+
