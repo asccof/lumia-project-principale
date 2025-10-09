@@ -1994,6 +1994,17 @@ def patient_home():
         "patient/home.html", "Espace patient",
         profile=profile, threads=my_threads, assignments=my_assignments, sessions=my_sessions
     )
+# ---------- Rendez-vous ----------
+if "patient_appointments" not in app.view_functions:
+    @app.route("/patient/appointments", methods=["GET"], endpoint="patient_appointments")
+    @login_required
+    def patient_appointments():
+        _require_patient()
+        appts = (Appointment.query
+                 .filter_by(patient_id=current_user.id)
+                 .order_by(Appointment.appointment_date.desc())
+                 .all())
+        return render_or_text("patient/appointments.html", "Mes rendez-vous", appointments=appts)
 
 # ---------- Rendez-vous : alias simple vers la fiche pro ----------
 @app.route("/patient/book/<int:professional_id>", methods=["GET"], endpoint="patient_book")
