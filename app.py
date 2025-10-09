@@ -2023,8 +2023,13 @@ def patient_book(professional_id):
     pro = db.session.get(Professional, professional_id)
     if not pro:
         abort(404)
-    # Redirige vers la fiche pro (où se trouve le bouton "Réserver")
-    return redirect(url_for("professional_detail", professional_id=professional_id))
+    # ➜ Au lieu de revenir sur la fiche pro, on ENVOIE vers la page de booking pré-filtrée
+    return redirect(url_for(
+        "patient_booking",
+        professional_id=pro.id,          # filtre exact par ID (ajouté ci-dessous)
+        mode="all"                       # ne pas filtrer par mode
+    ))
+
 
 # ---------- Aide: construction de la requête pros à partir des filtres ----------
 def _build_professional_query_from_args(args):
