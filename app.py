@@ -2427,6 +2427,21 @@ def book_alias(professional_id):
         return redirect(url_for("patient_book", professional_id=professional_id))
     return redirect(url_for("professional_detail", professional_id=professional_id))
 
+if "professionals_public" not in app.view_functions:
+    @app.get("/professionals", endpoint="professionals_public")
+    def professionals_public():
+        try:
+            base = Professional.query
+            pros = (base.order_by(Professional.created_at.desc()).limit(100).all()
+                    if hasattr(Professional, "created_at")
+                    else base.order_by(Professional.id.desc()).limit(100).all())
+        except Exception:
+            pros = []
+        first_pro = pros[0] if pros else type("X", (), {"id": 0})()
+        return render_or_text("patient/resources.html", "Ressources",
+                              professionals=pros, pros=pros, pro=first_pro,
+                              cities=[], families=[], specialties=[], fallback=False)
+
 # ---------- Pages diverses (placeholders sûrs) ----------
 @app.get("/patient/documents")
 @login_required
