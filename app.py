@@ -1974,6 +1974,7 @@ def pro_support():
 # =========================
 #   ESPACE PATIENT (CLEAN)
 # =========================
+
 def _require_patient():
     if not current_user.is_authenticated or current_user.user_type != "patient":
         abort(403)
@@ -1984,16 +1985,24 @@ def _require_patient():
 def patient_home():
     _require_patient()
     profile = PatientProfile.query.filter_by(user_id=current_user.id).first()
-    my_threads = MessageThread.query.filter_by(patient_id=current_user.id)\
-        .order_by(MessageThread.updated_at.desc().nullslast()).all()
-    my_assignments = ExerciseAssignment.query.filter_by(patient_id=current_user.id)\
-        .order_by(ExerciseAssignment.created_at.desc()).limit(10).all()
-    my_sessions = TherapySession.query.filter_by(patient_id=current_user.id)\
-        .order_by(TherapySession.start_at.desc()).limit(10).all()
+    my_threads = (MessageThread.query
+                  .filter_by(patient_id=current_user.id)
+                  .order_by(MessageThread.updated_at.desc().nullslast())
+                  .all())
+    my_assignments = (ExerciseAssignment.query
+                      .filter_by(patient_id=current_user.id)
+                      .order_by(ExerciseAssignment.created_at.desc())
+                      .limit(10).all())
+    my_sessions = (TherapySession.query
+                   .filter_by(patient_id=current_user.id)
+                   .order_by(TherapySession.start_at.desc())
+                   .limit(10).all())
     return render_or_text(
         "patient/home.html", "Espace patient",
-        profile=profile, threads=my_threads, assignments=my_assignments, sessions=my_sessions
+        profile=profile, threads=my_threads,
+        assignments=my_assignments, sessions=my_sessions
     )
+
 # ---------- Rendez-vous ----------
 if "patient_appointments" not in app.view_functions:
     @app.route("/patient/appointments", methods=["GET"], endpoint="patient_appointments")
@@ -2014,16 +2023,17 @@ def patient_book(professional_id):
     pro = db.session.get(Professional, professional_id)
     if not pro:
         abort(404)
-    # Redirige vers la fiche pro (où tu peux mettre le bouton "Réserver")
+    # Redirige vers la fiche pro (où se trouve le bouton "Réserver")
     return redirect(url_for("professional_detail", professional_id=professional_id))
 
 # ---------- Aide: construction de la requête pros à partir des filtres ----------
 def _build_professional_query_from_args(args):
+    from sqlalchemy import or_  # import local pour éviter un NameError si non importé en haut
     qs = Professional.query
 
     # Actifs / valides
     if hasattr(Professional, "status"):
-        qs = qs.filter(Professional.status == 'valide')
+        qs = qs.filter(Professional.status == "valide")
     elif hasattr(Professional, "is_active"):
         qs = qs.filter(Professional.is_active.is_(True))
 
@@ -2048,13 +2058,18 @@ def _build_professional_query_from_args(args):
     # "Famille" = Specialty.category (fallbacks inclus)
     family = (args.get("family") or "").strip()
     if family:
-        like_family = family
         try:
+            like_family = family if "%" in family or "_" in family else f"%{family}%"
             qs = qs.filter(
                 or_(
-                    Professional.primary_specialty.has(Specialty.category.ilike(like_family)),
-                    Professional.specialties.any(Specialty.category.ilike(like_family)),
-                    Professional.specialty.ilike(f"%{family}%"),
+                    getattr(Professional, "primary_specialty", None).has(
+                        Specialty.category.ilike(like_family)
+                    ) if hasattr(Professional, "primary_specialty") else False,
+                    getattr(Professional, "specialties", None).any(
+                        Specialty.category.ilike(like_family)
+                    ) if hasattr(Professional, "specialties") else False,
+                    getattr(Professional, "specialty", None).ilike(f"%{family}%")
+                    if hasattr(Professional, "specialty") else False,
                 )
             )
         except Exception:
@@ -2081,12 +2096,13 @@ def _build_professional_query_from_args(args):
         qs = qs.filter(Professional.consultation_types.ilike(f"%{mode}%"))
 
     if hasattr(Professional, "is_featured"):
-        qs = qs.order_by(Professional.is_featured.desc(), Professional.created_at.desc())
+        qs = qs.order_by(Professional.is_featured.desc(),
+                         Professional.created_at.desc() if hasattr(Professional, "created_at") else Professional.id.desc())
     else:
         qs = qs.order_by(Professional.created_at.desc() if hasattr(Professional, "created_at") else Professional.id.desc())
+
     return qs
 
-# ---------- Formulaire "Prendre un rendez-vous" ----------
 # ---------- Prendre RDV (formulaire) ----------
 @app.route("/patient/booking", methods=["GET"], endpoint="patient_booking")
 @login_required
@@ -2107,7 +2123,7 @@ def patient_booking():
     except Exception:
         specialties = []
 
-    # Petite liste de pros à afficher sur la page (selon filtres éventuels)
+    # Liste de pros à afficher sur la page (selon filtres éventuels)
     try:
         qs = _build_professional_query_from_args(request.args)
     except Exception:
@@ -2115,26 +2131,21 @@ def patient_booking():
         if hasattr(Professional, "is_active"):
             qs = qs.filter(Professional.is_active.is_(True))
 
-    # Tri neutre et limite pour la page
     try:
         pros = qs.order_by(Professional.id.desc()).limit(12).all()
     except Exception:
         pros = []
 
-    # Exemple unique si le template référence "pro" en dehors d'une boucle
-    first_pro = pros[0] if pros else None
+    # Évite 'pro' undefined dans les templates qui l'utilisent hors boucle
+    first_pro = pros[0] if pros else type("X", (), {"id": 0})()
 
     return render_or_text(
-        "patient/booking.html",
-        "Prendre un rendez-vous",
-        cities=cities,
-        families=families,
-        specialties=specialties,
-        pros=pros,                 # liste principale attendue par beaucoup de templates
-        professionals=pros,        # alias pour compat compat
-        pro=first_pro              # évite 'pro' undefined
+        "patient/booking.html", "Prendre un rendez-vous",
+        cities=cities, families=families, specialties=specialties,
+        pros=pros,                 # liste principale
+        professionals=pros,        # alias compat
+        pro=first_pro              # pour liens hors boucle
     )
-
 
 # ---------- Résultats pros (unique) ----------
 if "patient_resources" not in app.view_functions:
@@ -2143,18 +2154,42 @@ if "patient_resources" not in app.view_functions:
     def patient_resources():
         _require_patient()
         try:
-            professionals = _build_professional_query_from_args(request.args).all()
+            professionals = _build_professional_query_from_args(request.args).limit(100).all()
         except Exception:
             professionals = []
 
-        # Listes pour garder les sélections
-        cities = _ui_cities()
-        specialties = _ui_specialties()
-        families = _ui_families_rows()
+        # Listes pour garder les sélections (helpers si dispo, sinon fallback)
+        try:
+            cities = _ui_cities()
+        except Exception:
+            try:
+                cities = City.query.order_by(City.name).all()
+            except Exception:
+                cities = []
+        try:
+            specialties = _ui_specialties()
+        except Exception:
+            try:
+                specialties = Specialty.query.order_by(Specialty.name).all()
+            except Exception:
+                specialties = []
+        try:
+            families = _ui_families_rows()
+        except Exception:
+            try:
+                families = Family.query.order_by(Family.name).all()
+            except Exception:
+                families = []
+
+        # Pro “exemple” pour éviter UndefinedError si le template utilise `pro` hors boucle
+        first_pro = professionals[0] if professionals else type("X", (), {"id": 0})()
 
         return render_or_text(
             "patient/resources.html", "Ressources",
-            professionals=professionals, cities=cities, families=families, specialties=specialties
+            professionals=professionals,
+            pros=professionals,  # alias utile
+            pro=first_pro,       # évite 'pro' undefined
+            cities=cities, families=families, specialties=specialties
         )
 
 # ---------- API JSON (optionnelle) ----------
@@ -2170,7 +2205,8 @@ def patient_resources_api():
             "name": getattr(p, "name", None),
             "specialty": (
                 getattr(p, "specialty", None)
-                or (getattr(p, "primary_specialty", None).name if getattr(p, "primary_specialty", None) else None)
+                or (getattr(p, "primary_specialty", None).name
+                    if getattr(p, "primary_specialty", None) else None)
             ),
             "city": getattr(p, "city", None).name if hasattr(getattr(p, "city", None), "name") else getattr(p, "city", None),
             "profile_url": url_for("professional_detail", professional_id=p.id),
@@ -2181,17 +2217,25 @@ def patient_resources_api():
 @app.route("/patient/exercises", methods=["GET"], endpoint="patient_exercises")
 @login_required
 def patient_exercises():
+    from sqlalchemy import or_  # import local sécurisé
     _require_patient()
     try:
         visible_ids = {a.exercise_id for a in ExerciseAssignment.query.filter_by(patient_id=current_user.id).all()}
-        q = Exercise.query.filter(
-            or_(Exercise.visibility == "public",
-                Exercise.visibility == "my_patients",
-                Exercise.id.in_(visible_ids))
-        ).order_by(Exercise.created_at.desc())
-        exercises = q.all()
+    except Exception:
+        visible_ids = set()
+
+    try:
+        q = Exercise.query
+        if hasattr(Exercise, "visibility"):
+            q = q.filter(or_(Exercise.visibility == "public",
+                             Exercise.visibility == "my_patients",
+                             Exercise.id.in_(visible_ids) if visible_ids else False))
+        elif visible_ids:
+            q = q.filter(Exercise.id.in_(visible_ids))
+        exercises = q.order_by(Exercise.created_at.desc()).all() if hasattr(Exercise, "created_at") else q.all()
     except Exception:
         exercises = []
+
     return render_or_text("patient/exercises.html", "Mes ressources", exercises=exercises)
 
 # ---------- Carnet thérapeutique ----------
@@ -2208,11 +2252,14 @@ def patient_notebook():
             patient_id=current_user.id, professional_id=pro_id or 0, author_id=current_user.id,
             entry_type=entry_type, title=title, content=content
         )
-        db.session.add(entry); db.session.commit()
+        db.session.add(entry)
+        db.session.commit()
         flash("Entrée ajoutée au carnet.", "success")
         return redirect(url_for("patient_notebook"))
-    entries = TherapyNotebookEntry.query.filter_by(patient_id=current_user.id)\
-        .order_by(TherapyNotebookEntry.created_at.desc()).all()
+
+    entries = (TherapyNotebookEntry.query
+               .filter_by(patient_id=current_user.id)
+               .order_by(TherapyNotebookEntry.created_at.desc()).all())
     return render_or_text("patient/notebook.html", "Carnet thérapeutique", entries=entries)
 
 # ---------- Journal personnel ----------
@@ -2229,11 +2276,14 @@ def patient_journal():
             patient_id=current_user.id, title=title, content=content, emotion=emotion,
             is_shared_with_pro=share
         )
-        db.session.add(e); db.session.commit()
+        db.session.add(e)
+        db.session.commit()
         flash("Journal enregistré.", "success")
         return redirect(url_for("patient_journal"))
-    entries = PersonalJournalEntry.query.filter_by(patient_id=current_user.id)\
-        .order_by(PersonalJournalEntry.created_at.desc()).all()
+
+    entries = (PersonalJournalEntry.query
+               .filter_by(patient_id=current_user.id)
+               .order_by(PersonalJournalEntry.created_at.desc()).all())
     return render_or_text("patient/journal.html", "Journal personnel", entries=entries)
 
 # ---------- Avis ----------
@@ -2249,11 +2299,14 @@ def patient_ratings():
             patient_id=current_user.id, professional_id=professional_id,
             rating=rating, comment=comment, is_public=True
         )
-        db.session.add(r); db.session.commit()
+        db.session.add(r)
+        db.session.commit()
         flash("Avis publié.", "success")
         return redirect(url_for("patient_ratings"))
-    my_reviews = ProfessionalReview.query.filter_by(patient_id=current_user.id)\
-        .order_by(ProfessionalReview.created_at.desc()).all()
+
+    my_reviews = (ProfessionalReview.query
+                  .filter_by(patient_id=current_user.id)
+                  .order_by(ProfessionalReview.created_at.desc()).all())
     return render_or_text("patient/ratings.html", "Mes avis", reviews=my_reviews)
 
 # ---------- Charte & confidentialité ----------
@@ -2270,8 +2323,10 @@ def patient_charter():
         db.session.commit()
         flash("Consentement enregistré.", "success")
         return redirect(url_for("patient_charter"))
-    logs = ConsentLog.query.filter_by(user_id=current_user.id)\
-        .order_by(ConsentLog.accepted_at.desc()).all()
+
+    logs = (ConsentLog.query
+            .filter_by(user_id=current_user.id)
+            .order_by(ConsentLog.accepted_at.desc()).all())
     return render_or_text("patient/charter.html", "Charte & confidentialité", consents=logs)
 
 # ---------- Messagerie avec un pro ----------
@@ -2283,13 +2338,15 @@ def patient_thread(professional_id: int):
     thread = MessageThread.query.filter_by(patient_id=current_user.id, professional_id=pro.id).first()
     if not thread:
         thread = MessageThread(patient_id=current_user.id, professional_id=pro.id, is_anonymous=False)
-        db.session.add(thread); db.session.commit()
+        db.session.add(thread)
+        db.session.commit()
 
     if request.method == "POST":
         body = (request.form.get("body") or "").strip()
         file = request.files.get("attachment")
         audio = request.files.get("audio")
         attachment = None
+
         if file:
             try:
                 name = _save_attachment(file)
@@ -2301,9 +2358,11 @@ def patient_thread(professional_id: int):
                     owner_user_id=current_user.id,
                     patient_id=current_user.id
                 )
-                db.session.add(attachment); db.session.flush()
+                db.session.add(attachment)
+                db.session.flush()
             except Exception:
                 flash("Pièce jointe non acceptée.", "warning")
+
         audio_url = None
         if audio:
             try:
@@ -2311,23 +2370,30 @@ def patient_thread(professional_id: int):
                 audio_url = f"/u/attachments/{name}"
             except Exception:
                 flash("Audio non accepté.", "warning")
+
         msg = Message(
             thread_id=thread.id, sender_id=current_user.id, body=body or None,
             attachment_id=attachment.id if attachment else None, audio_url=audio_url
         )
-        db.session.add(msg); db.session.commit()
+        db.session.add(msg)
+        db.session.commit()
 
         try:
             pro_user = User.query.filter_by(username=pro.name).first()
             if pro_user and pro_user.email:
-                safe_send_email(pro_user.email, f"{BRAND_NAME} — Nouveau message patient",
-                                f"Un patient vous a écrit sur {BRAND_NAME}.")
+                safe_send_email(
+                    pro_user.email,
+                    f"{BRAND_NAME} — Nouveau message patient",
+                    f"Un patient vous a écrit sur {BRAND_NAME}."
+                )
         except Exception:
             pass
 
         return redirect(url_for("patient_thread", professional_id=pro.id))
 
-    messages = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
+    messages = (Message.query
+                .filter_by(thread_id=thread.id)
+                .order_by(Message.created_at.asc()).all())
     return render_or_text(
         "patient/thread.html", "Messagerie sécurisée",
         professional=pro, thread=thread, messages=messages
