@@ -2141,6 +2141,10 @@ def patient_booking():
         qs = _build_professional_query_from_args(request.args)
     except Exception:
         qs = Professional.query
+           prof_id = args.get("professional_id", type=int)
+    if prof_id:
+        qs = qs.filter(Professional.id == prof_id)
+ 
 
     try:
         pros = qs.limit(12).all()
