@@ -2087,17 +2087,54 @@ def _build_professional_query_from_args(args):
     return qs
 
 # ---------- Formulaire "Prendre un rendez-vous" ----------
+# ---------- Prendre RDV (formulaire) ----------
 @app.route("/patient/booking", methods=["GET"], endpoint="patient_booking")
 @login_required
 def patient_booking():
     _require_patient()
-    cities = _ui_cities()
-    specialties = _ui_specialties()
-    families = _ui_families_rows()
+
+    # Sélections pour les filtres (robustes)
+    try:
+        cities = City.query.order_by(City.name).all()
+    except Exception:
+        cities = []
+    try:
+        families = Family.query.order_by(Family.name).all()
+    except Exception:
+        families = []
+    try:
+        specialties = Specialty.query.order_by(Specialty.name).all()
+    except Exception:
+        specialties = []
+
+    # Petite liste de pros à afficher sur la page (selon filtres éventuels)
+    try:
+        qs = _build_professional_query_from_args(request.args)
+    except Exception:
+        qs = Professional.query
+        if hasattr(Professional, "is_active"):
+            qs = qs.filter(Professional.is_active.is_(True))
+
+    # Tri neutre et limite pour la page
+    try:
+        pros = qs.order_by(Professional.id.desc()).limit(12).all()
+    except Exception:
+        pros = []
+
+    # Exemple unique si le template référence "pro" en dehors d'une boucle
+    first_pro = pros[0] if pros else None
+
     return render_or_text(
-        "patient/booking.html", "Prendre un rendez-vous",
-        cities=cities, families=families, specialties=specialties
+        "patient/booking.html",
+        "Prendre un rendez-vous",
+        cities=cities,
+        families=families,
+        specialties=specialties,
+        pros=pros,                 # liste principale attendue par beaucoup de templates
+        professionals=pros,        # alias pour compat compat
+        pro=first_pro              # évite 'pro' undefined
     )
+
 
 # ---------- Résultats pros (unique) ----------
 if "patient_resources" not in app.view_functions:
