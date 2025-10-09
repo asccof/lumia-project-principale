@@ -2117,7 +2117,7 @@ def _build_professional_query_from_args(args):
 def patient_booking():
     _require_patient()
 
-    # Sélections pour les filtres (robustes)
+    # Sélections filtres
     try:
         cities = City.query.order_by(City.name).all()
     except Exception:
@@ -2131,28 +2131,37 @@ def patient_booking():
     except Exception:
         specialties = []
 
-    # Liste de pros à afficher sur la page (selon filtres éventuels)
+    # Pros listés
     try:
         qs = _build_professional_query_from_args(request.args)
     except Exception:
         qs = Professional.query
-        if hasattr(Professional, "is_active"):
-            qs = qs.filter(Professional.is_active.is_(True))
 
     try:
-        pros = qs.order_by(Professional.id.desc()).limit(12).all()
+        pros = qs.limit(12).all()
     except Exception:
         pros = []
 
-    # Évite 'pro' undefined dans les templates qui l'utilisent hors boucle
+    # Fallback si rien
+    fallback = False
+    if not pros:
+        try:
+            base = Professional.query
+            pros = (base.order_by(Professional.created_at.desc()).limit(12).all()
+                    if hasattr(Professional, "created_at")
+                    else base.order_by(Professional.id.desc()).limit(12).all())
+            fallback = True
+        except Exception:
+            pros = []
+
     first_pro = pros[0] if pros else type("X", (), {"id": 0})()
 
     return render_or_text(
-        "patient/booking.html", "Prendre un rendez-vous",
+        "patient/booking.html",
+        "Prendre un rendez-vous",
         cities=cities, families=families, specialties=specialties,
-        pros=pros,                 # liste principale
-        professionals=pros,        # alias compat
-        pro=first_pro              # pour liens hors boucle
+        pros=pros, professionals=pros, pro=first_pro,
+        fallback=fallback
     )
 
 # ---------- Résultats pros (unique) ----------
@@ -2162,43 +2171,48 @@ if "patient_resources" not in app.view_functions:
     def patient_resources():
         _require_patient()
         try:
-            professionals = _build_professional_query_from_args(request.args).limit(100).all()
+            qs = _build_professional_query_from_args(request.args)
+            professionals = qs.limit(100).all()
         except Exception:
             professionals = []
 
-        # Listes pour garder les sélections (helpers si dispo, sinon fallback)
+        fallback = False
+        if not professionals:
+            try:
+                base = Professional.query
+                professionals = (base.order_by(Professional.created_at.desc()).limit(24).all()
+                                 if hasattr(Professional, "created_at")
+                                 else base.order_by(Professional.id.desc()).limit(24).all())
+                fallback = True
+            except Exception:
+                professionals = []
+
+        # Listes UI (robustes)
         try:
             cities = _ui_cities()
         except Exception:
-            try:
-                cities = City.query.order_by(City.name).all()
-            except Exception:
-                cities = []
+            try: cities = City.query.order_by(City.name).all()
+            except Exception: cities = []
         try:
             specialties = _ui_specialties()
         except Exception:
-            try:
-                specialties = Specialty.query.order_by(Specialty.name).all()
-            except Exception:
-                specialties = []
+            try: specialties = Specialty.query.order_by(Specialty.name).all()
+            except Exception: specialties = []
         try:
             families = _ui_families_rows()
         except Exception:
-            try:
-                families = Family.query.order_by(Family.name).all()
-            except Exception:
-                families = []
+            try: families = Family.query.order_by(Family.name).all()
+            except Exception: families = []
 
-        # Pro “exemple” pour éviter UndefinedError si le template utilise `pro` hors boucle
         first_pro = professionals[0] if professionals else type("X", (), {"id": 0})()
 
         return render_or_text(
             "patient/resources.html", "Ressources",
-            professionals=professionals,
-            pros=professionals,  # alias utile
-            pro=first_pro,       # évite 'pro' undefined
-            cities=cities, families=families, specialties=specialties
+            professionals=professionals, pros=professionals, pro=first_pro,
+            cities=cities, families=families, specialties=specialties,
+            fallback=fallback
         )
+
 
 # ---------- API JSON (optionnelle) ----------
 @app.route("/api/patient/resources", methods=["GET"], endpoint="patient_resources_api")
@@ -2406,6 +2420,12 @@ def patient_thread(professional_id: int):
         "patient/thread.html", "Messagerie sécurisée",
         professional=pro, thread=thread, messages=messages
     )
+
+@app.route("/book/<int:professional_id>", methods=["GET"], endpoint="book_alias")
+def book_alias(professional_id):
+    if current_user.is_authenticated and getattr(current_user, "user_type", None) == "patient":
+        return redirect(url_for("patient_book", professional_id=professional_id))
+    return redirect(url_for("professional_detail", professional_id=professional_id))
 
 # ---------- Pages diverses (placeholders sûrs) ----------
 @app.get("/patient/documents")
