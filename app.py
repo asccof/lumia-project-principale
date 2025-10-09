@@ -2432,9 +2432,12 @@ def patient_thread(professional_id: int):
 
 @app.route("/book/<int:professional_id>", methods=["GET"], endpoint="book_alias")
 def book_alias(professional_id):
+    next_url = url_for("patient_book", professional_id=professional_id)
     if current_user.is_authenticated and getattr(current_user, "user_type", None) == "patient":
-        return redirect(url_for("patient_book", professional_id=professional_id))
-    return redirect(url_for("professional_detail", professional_id=professional_id))
+        return redirect(next_url)
+    # Non connecté → login puis retour vers patient_book
+    return redirect(url_for("login", next=next_url))
+
 
 if "professionals_public" not in app.view_functions:
     @app.get("/professionals", endpoint="professionals_public")
