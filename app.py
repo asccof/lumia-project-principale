@@ -2033,18 +2033,20 @@ def patient_book(professional_id):
 
 # ---------- Aide: construction de la requête pros à partir des filtres ----------
 def _build_professional_query_from_args(args):
-    from sqlalchemy import or_
     qs = Professional.query
 
-    # Filtre "actifs" seulement si demandé explicitement
-    only_active = (args.get("only_active") or "").strip().lower() in ("1", "true", "on", "yes")
-    if only_active:
-        if hasattr(Professional, "status"):
-            qs = qs.filter(Professional.status.in_(["valide", "validated", "approved", "active"]))
-        elif hasattr(Professional, "is_active"):
-            qs = qs.filter(Professional.is_active.is_(True))
+    # --- Filtrer par ID direct si présent (clic "Réserver" depuis une fiche) ---
+    prof_id = args.get("professional_id", type=int)
+    if prof_id:
+        qs = qs.filter(Professional.id == prof_id)
 
-    # Recherche textuelle
+    # Actifs / valides
+    if hasattr(Professional, "status"):
+        qs = qs.filter(Professional.status == 'valide')
+    elif hasattr(Professional, "is_active"):
+        qs = qs.filter(Professional.is_active.is_(True))
+
+    # Recherche plein texte simple
     q = (args.get("q") or "").strip()
     if q:
         like = f"%{q}%"
@@ -2064,20 +2066,18 @@ def _build_professional_query_from_args(args):
         if city and hasattr(Professional, "location"):
             qs = qs.filter(Professional.location.ilike(f"%{city}%"))
 
-    # Famille
+    # Famille (catégorie)
     family = (args.get("family") or "").strip()
     if family:
-        like_family = family if any(x in family for x in "%_") else f"%{family}%"
+        like_family = family
         try:
-            ors = []
-            if hasattr(Professional, "primary_specialty"):
-                ors.append(Professional.primary_specialty.has(Specialty.category.ilike(like_family)))
-            if hasattr(Professional, "specialties"):
-                ors.append(Professional.specialties.any(Specialty.category.ilike(like_family)))
-            if hasattr(Professional, "specialty"):
-                ors.append(Professional.specialty.ilike(f"%{family}%"))
-            if ors:
-                qs = qs.filter(or_(*ors))
+            qs = qs.filter(
+                or_(
+                    Professional.primary_specialty.has(Specialty.category.ilike(like_family)),
+                    Professional.specialties.any(Specialty.category.ilike(like_family)),
+                    Professional.specialty.ilike(f"%{family}%"),
+                )
+            )
         except Exception:
             pass
 
@@ -2096,24 +2096,20 @@ def _build_professional_query_from_args(args):
         if specialty and hasattr(Professional, "specialty"):
             qs = qs.filter(Professional.specialty.ilike(f"%{specialty}%"))
 
-    # Mode de consultation
+    # Mode (présentiel / en_ligne / visio)
     mode = (args.get("mode") or "").strip().lower()
-    if mode in ("", "all", "tout", "tous"):  # pas de filtre
-        mode = None
-    elif mode == "visio":
+    if mode == "visio":
         mode = "en_ligne"
     if mode and hasattr(Professional, "consultation_types"):
         qs = qs.filter(Professional.consultation_types.ilike(f"%{mode}%"))
 
     # Tri
     if hasattr(Professional, "is_featured"):
-        qs = qs.order_by(
-            Professional.is_featured.desc(),
-            (Professional.created_at.desc() if hasattr(Professional, "created_at") else Professional.id.desc())
-        )
+        qs = qs.order_by(Professional.is_featured.desc(), Professional.created_at.desc())
     else:
-        qs = qs.order_by(Professional.created_at.desc() if hasattr(Professional, "created_at") else Professional.id.desc())
-
+        qs = qs.order_by(
+            Professional.created_at.desc() if hasattr(Professional, "created_at") else Professional.id.desc()
+        )
     return qs
 
 # ---------- Prendre RDV (formulaire) ----------
