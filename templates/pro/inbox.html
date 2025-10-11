@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Messagerie — Espace Pro{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 980px">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Boîte de réception</h1>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('professional_dashboard') }}">← Tableau de bord</a>
+  </div>
+
+  {% if rows and rows|length %}
+    <div class="list-group shadow-sm rounded-3">
+      {% for r in rows %}
+        {% set p = r.patient %}
+        <a class="list-group-item list-group-item-action d-flex gap-3 align-items-center"
+           href="{{ url_for('pro_thread', patient_id=p.id) if p else '#' }}">
+          <div class="position-relative">
+            <div class="rounded-circle bg-light d-grid place-items-center"
+                 style="width:48px;height:48px;font-weight:700;color:#6b7280;">
+              {{ (p.full_name or p.username or 'P')[:1] if p else '?' }}
+            </div>
+            {% if r.unread %}
+              <span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle">
+                <span class="visually-hidden">Nouveau</span>
+              </span>
+            {% endif %}
+          </div>
+
+          <div class="flex-fill">
+            <div class="d-flex justify-content-between">
+              <div class="fw-semibold">
+                {{ p.full_name or p.username or ('Patient #' ~ p.id) if p else 'Patient' }}
+              </div>
+              <div class="text-muted small">
+                {% if r.last and r.last.created_at %}
+                  {{ r.last.created_at.strftime('%d/%m/%Y %H:%M') }}
+                {% endif %}
+              </div>
+            </div>
+            <div class="text-muted small">
+              {{ r.preview or '—' }}
+              {% if r.last and r.last.attachment_id %} · 📎 pièce jointe{% endif %}
+              {% if r.last and r.last.audio_url %} · 🎤 audio{% endif %}
+            </div>
+          </div>
+
+          {% if r.unread %}
+            <span class="badge text-bg-primary">Non lu</span>
+          {% else %}
+            <span class="badge text-bg-light">Lu</span>
+          {% endif %}
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">Aucun message pour l’instant.</div>
+  {% endif %}
+
+  <div class="mt-3">
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('pro_patients') }}">
+      <i class="fa-solid fa-users me-1"></i> Mes patients
+    </a>
+  </div>
+</div>
+{% endblock %}
