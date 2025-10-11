@@ -31,7 +31,8 @@
             <i class="fa-solid fa-inbox"></i>
           </div>
           <p class="display-6 my-2">{{ unread_messages if unread_messages is defined else 0 }}</p>
-         <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_messages') }}">Ouvrir la messagerie</a>
+          {# Pas d'endpoint /pro/messages chez toi -> on passe par la liste des patients #}
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_patients') }}">Ouvrir la messagerie</a>
         </div>
       </div>
     </div>
