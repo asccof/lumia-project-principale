@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Choisir un créneau — {{ professional.name or 'Professionnel' }}{% endblock %}
+
+{% block content %}
+<header class="page" style="background:linear-gradient(90deg,#8B5CF6,#6D28D9);color:#fff;padding:3rem 0 1.25rem;text-align:center">
+  <h1 style="margin:0">{{ professional.name or 'Professionnel' }}</h1>
+  <p style="opacity:.95">Choisissez une date et une heure parmi les créneaux libres.</p>
+  <p><a href="{{ url_for('patient_booking') }}" class="btn btn-light btn-sm">↩ Retour à la recherche</a></p>
+</header>
+
+<div class="container" style="max-width:980px;margin:1.25rem auto;padding:0 1rem">
+  {% if grouped_slots %}
+    {% for day, slots in grouped_slots.items() %}
+      <section style="background:#fff;border-radius:14px;box-shadow:0 2px 12px rgba(139,92,246,.08);margin-bottom:1rem">
+        <div style="padding:.9rem 1rem;border-bottom:1px solid #eee;font-weight:700">{{ day }}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:.5rem;padding:1rem">
+          {% for s in slots %}
+            {% if s.free %}
+              <form method="post" action="{{ url_for('patient_confirm_booking') }}">
+                <input type="hidden" name="professional_id" value="{{ professional.id }}">
+                <input type="hidden" name="when" value="{{ s.iso }}">
+                <button type="submit" class="btn btn-primary btn-sm">{{ s.time }}</button>
+              </form>
+            {% else %}
+              <button class="btn btn-outline-secondary btn-sm" disabled>{{ s.time }}</button>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+  {% else %}
+    <div class="alert alert-warning">Aucun créneau n’est disponible sur la période.</div>
+  {% endif %}
+
+  <div style="text-align:center;margin-top:1rem">
+    <a class="btn btn-outline-primary" href="{{ url_for('patient_availability', professional_id=professional.id, days=(days+7)) }}">
+      Charger plus de jours
+    </a>
+  </div>
+</div>
+{% endblock %}
