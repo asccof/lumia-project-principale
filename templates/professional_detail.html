@@ -144,7 +144,9 @@
       </div>
 
       <div class="actions">
-        <a class="btn" href="{{ url_for('book_appointment', professional_id=professional.id) }}">Réserver un rendez-vous</a>
+        <a class="btn btn-primary" href="{{ url_for('patient_book', professional_id=professional.id) }}">
+          Réserver un rendez-vous
+        </a>
         {% if professional.phone %}
           <a class="btn btn-alt" href="tel:{{ professional.phone|replace(' ','')|replace('.','') }}">Appeler</a>
         {% endif %}
@@ -212,7 +214,9 @@
     <h2>Réserver</h2>
     <div class="box" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
       <div style="color:#4B3869">Choisissez une date sur la page de réservation pour voir les créneaux disponibles.</div>
-      <a class="btn" href="{{ url_for('book_appointment', professional_id=professional.id) }}">Aller à la réservation</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('patient_booking', professional_id=professional.id, mode='all') }}">
+        Aller à la réservation
+      </a>
     </div>
   </div>
 
