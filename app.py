@@ -2015,7 +2015,7 @@ if "patient_appointments" not in app.view_functions:
                  .all())
         return render_or_text("patient/appointments.html", "Mes rendez-vous", appointments=appts)
 
-# ---------- Rendez-vous : alias simple vers la fiche pro ----------
+# ---------- Rendez-vous : alias simple vers la réservation ----------
 @app.route("/patient/book/<int:professional_id>", methods=["GET"], endpoint="patient_book")
 @login_required
 def patient_book(professional_id):
@@ -2023,27 +2023,22 @@ def patient_book(professional_id):
     pro = db.session.get(Professional, professional_id)
     if not pro:
         abort(404)
-    # ➜ Au lieu de revenir sur la fiche pro, on ENVOIE vers la page de booking pré-filtrée
-    return redirect(url_for(
-        "patient_booking",
-        professional_id=pro.id,          # filtre exact par ID (ajouté ci-dessous)
-        mode="all"                       # ne pas filtrer par mode
-    ))
-
+    # Redirige vers la page de réservation PRÉ-FILTRÉE
+    return redirect(url_for("patient_booking", professional_id=pro.id, mode="all"))
 
 # ==== FILTRES PROFESSIONNELS (SANS TABS) ====
 from sqlalchemy import or_
+from datetime import datetime
 
 def _build_professional_query_from_args(args):
     qs = Professional.query
 
-    # 1) Si on arrive depuis une fiche pro, autoriser le pré-filtrage par ID
+    # 1) Pré-filtrage par ID si transmis
     prof_id = args.get("professional_id", type=int)
     if prof_id:
         qs = qs.filter(Professional.id == prof_id)
 
-    # 2) Statut/activité : TEMPORAIREMENT DÉSACTIVÉ pour éviter "aucun résultat"
-    #    (on le remettra quand on saura quelles valeurs exactes existent en DB)
+    # 2) Statut/activité : désactivé pour éviter "0 résultat" si valeurs DB inconnues
     # if hasattr(Professional, "status"):
     #     qs = qs.filter(Professional.status == 'valide')
     # elif hasattr(Professional, "is_active"):
@@ -2115,7 +2110,6 @@ def _build_professional_query_from_args(args):
 
     return qs
 
-
 # ---------- Prendre RDV (formulaire) ----------
 @app.route("/patient/booking", methods=["GET"], endpoint="patient_booking")
 @login_required
@@ -2136,15 +2130,16 @@ def patient_booking():
     except Exception:
         specialties = []
 
-    # Pros listés
+    # Pros listés (construction depuis l'URL)
     try:
         qs = _build_professional_query_from_args(request.args)
     except Exception:
         qs = Professional.query
-           prof_id = args.get("professional_id", type=int)
+
+    # (sécurité) appliquer professional_id si présent même en cas d'exception au-dessus
+    prof_id = request.args.get("professional_id", type=int)
     if prof_id:
         qs = qs.filter(Professional.id == prof_id)
- 
 
     try:
         pros = qs.limit(12).all()
@@ -2200,18 +2195,24 @@ if "patient_resources" not in app.view_functions:
         try:
             cities = _ui_cities()
         except Exception:
-            try: cities = City.query.order_by(City.name).all()
-            except Exception: cities = []
+            try:
+                cities = City.query.order_by(City.name).all()
+            except Exception:
+                cities = []
         try:
             specialties = _ui_specialties()
         except Exception:
-            try: specialties = Specialty.query.order_by(Specialty.name).all()
-            except Exception: specialties = []
+            try:
+                specialties = Specialty.query.order_by(Specialty.name).all()
+            except Exception:
+                specialties = []
         try:
             families = _ui_families_rows()
         except Exception:
-            try: families = Family.query.order_by(Family.name).all()
-            except Exception: families = []
+            try:
+                families = Family.query.order_by(Family.name).all()
+            except Exception:
+                families = []
 
         first_pro = professionals[0] if professionals else type("X", (), {"id": 0})()
 
@@ -2221,7 +2222,6 @@ if "patient_resources" not in app.view_functions:
             cities=cities, families=families, specialties=specialties,
             fallback=fallback
         )
-
 
 # ---------- API JSON (optionnelle) ----------
 @app.route("/api/patient/resources", methods=["GET"], endpoint="patient_resources_api")
@@ -2430,6 +2430,7 @@ def patient_thread(professional_id: int):
         professional=pro, thread=thread, messages=messages
     )
 
+# ---------- Alias public /book/<id> ----------
 @app.route("/book/<int:professional_id>", methods=["GET"], endpoint="book_alias")
 def book_alias(professional_id):
     next_url = url_for("patient_book", professional_id=professional_id)
@@ -2438,7 +2439,7 @@ def book_alias(professional_id):
     # Non connecté → login puis retour vers patient_book
     return redirect(url_for("login", next=next_url))
 
-
+# ---------- Liste publique de pros ----------
 if "professionals_public" not in app.view_functions:
     @app.get("/professionals", endpoint="professionals_public")
     def professionals_public():
@@ -2453,6 +2454,7 @@ if "professionals_public" not in app.view_functions:
         return render_or_text("patient/resources.html", "Ressources",
                               professionals=pros, pros=pros, pro=first_pro,
                               cities=[], families=[], specialties=[], fallback=False)
+
 
 # ---------- Pages diverses (placeholders sûrs) ----------
 @app.get("/patient/documents")
