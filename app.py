@@ -2024,72 +2024,111 @@ def patient_home():
     # -------------------------
     #   Prochain rendez-vous
     # -------------------------
-    next_appointment = None
-    try:
-        if dt_field is not None:
-            q = Appointment.query.filter(Appointment.patient_id == current_user.id, dt_field >= now)
-            if hasattr(Appointment, "status"):
-                q = q.filter(Appointment.status.in_(list(CONFIRMED)))
-            a = q.order_by(dt_field.asc()).first()
-            if a:
-                # Récupération du datetime, lieu, lien, pro
-                when_dt = getattr(a, "appointment_date", None) or getattr(a, "start_at", None)
-                where = getattr(a, "location", None) or getattr(a, "place", None) or getattr(a, "address", None)
-                link = getattr(a, "meeting_link", None) or getattr(a, "video_link", None) or None
-
-                # objet "professional" minimal compatible avec ton template
-                pro_obj = getattr(a, "professional", None)
-                if pro_obj is None:
-                    # tentative de résolution douce
-                    try:
-                        pro_obj = Professional.query.get(getattr(a, "professional_id", None))
-                    except Exception:
-                        pro_obj = None
-
-                next_appointment = {
-                    "when": when_dt.strftime("%d/%m/%Y à %H:%M") if isinstance(when_dt, datetime) else None,
-                    "where": where,
-                    "link": link,
-                    "professional": pro_obj
-                }
-    except Exception:
-        next_appointment = None  # ne casse pas la page
-
+       # -------------------------
+    #   Prochain rendez-vous (robuste)
     # -------------------------
-    #   Demandes en attente
-    # -------------------------
-    pending_requests = []
-    try:
-        base = Appointment.query.filter(Appointment.patient_id == current_user.id)
-        if hasattr(Appointment, "status"):
-            base = base.filter(Appointment.status.in_(list(PENDING)))
-        # On ordonne par date (si dispo), sinon par id desc
-        if dt_field is not None:
-            base = base.order_by(dt_field.asc())
-        else:
-            base = base.order_by(Appointment.id.desc())
-
-        rows = base.limit(10).all()
-
-        for r in rows:
-            when_dt = getattr(r, "appointment_date", None) or getattr(r, "start_at", None)
-            pro_name = None
+    def _extract_dt(a):
+        """Essaie de récupérer un datetime à partir de plusieurs schémas connus."""
+        from datetime import datetime as _DT, time as _T
+        # 1) Datetime direct
+        for attr in ("appointment_date", "start_at", "scheduled_at", "start_time_dt"):
+            v = getattr(a, attr, None)
+            if isinstance(v, _DT):
+                return v
+        # 2) Date + Time séparés
+        d = getattr(a, "date", None) or getattr(a, "appointment_day", None)
+        t = getattr(a, "time", None) or getattr(a, "appointment_time", None) or getattr(a, "start_time", None)
+        if d and t:
             try:
-                if getattr(r, "professional", None) and getattr(r.professional, "name", None):
-                    pro_name = r.professional.name
-                elif getattr(r, "professional_id", None):
-                    pro = Professional.query.get(r.professional_id)
-                    pro_name = getattr(pro, "name", None)
+                if isinstance(t, str) and ":" in t:
+                    hh, mm = t.split(":")[:2]
+                    t = _T(int(hh), int(mm))
+                return _DT.combine(d, t)
             except Exception:
                 pass
+        # 3) Date seule => midi par défaut
+        if d:
+            try:
+                return _DT.combine(d, _T(12, 0))
+            except Exception:
+                pass
+        return None
 
-            pending_requests.append({
-                "pro": pro_name or "—",
-                "date": when_dt.strftime("%d/%m/%Y %H:%M") if isinstance(when_dt, datetime) else "—",
-                "status": getattr(r, "status", "en attente")
-            })
+    # jeux de statuts (exclusion des non-confirmés)
+    PENDING = {"requested", "pending", "en_attente"}
+    CANCELLED = {"cancelled", "canceled", "refused", "rejected", "declined", "annule", "annulé", "no_show"}
+    CONFIRMED_HINTS = {"confirmed", "accepted", "approved", "valide", "validated"}
+
+    def _is_confirmed(a):
+        """Vrai si RDV considéré confirmé."""
+        st = getattr(a, "status", None)
+        if st is None:
+            # Pas de champ statut => on considère confirmé
+            return True
+        st_l = str(st).strip().lower()
+        if st_l in CANCELLED:
+            return False
+        if st_l in PENDING:
+            return False
+        # Si le statut est clairement confirmé
+        if st_l in CONFIRMED_HINTS:
+            return True
+        # Autres statuts inconnus => on les considère confirmés (hors pending/cancelled)
+        return True
+
+    from datetime import datetime as _DT
+    now = _DT.utcnow()
+
+    next_appointment = None
+    try:
+        # On récupère un ensemble raisonnable, on filtre en Python (robuste aux schémas)
+        q = Appointment.query.filter(Appointment.patient_id == current_user.id)
+        # Si on a un champ datetime en DB, filtre côté SQL pour l'efficacité
+        dt_field = None
+        if hasattr(Appointment, "appointment_date"):
+            dt_field = Appointment.appointment_date
+        elif hasattr(Appointment, "start_at"):
+            dt_field = Appointment.start_at
+        if dt_field is not None:
+            q = q.filter(dt_field >= now).order_by(dt_field.asc())
+        else:
+            q = q.order_by(Appointment.id.desc())
+
+        candidates = q.limit(100).all()
+
+        best = None
+        best_dt = None
+        for a in candidates:
+            dtv = _extract_dt(a)
+            if not dtv:
+                continue
+            if dtv < now:
+                continue
+            if not _is_confirmed(a):
+                continue
+            if (best_dt is None) or (dtv < best_dt):
+                best, best_dt = a, dtv
+
+        if best and best_dt:
+            where = getattr(best, "location", None) or getattr(best, "place", None) or getattr(best, "address", None)
+            link = getattr(best, "meeting_link", None) or getattr(best, "video_link", None) or None
+            pro_obj = getattr(best, "professional", None)
+            if pro_obj is None and getattr(best, "professional_id", None):
+                try:
+                    pro_obj = Professional.query.get(best.professional_id)
+                except Exception:
+                    pro_obj = None
+
+            next_appointment = {
+                "when": best_dt.strftime("%d/%m/%Y à %H:%M"),
+                "where": where,
+                "link": link,
+                "professional": pro_obj
+            }
+        else:
+            next_appointment = None
     except Exception:
-        pending_requests = []
+        next_appointment = None
 
     # -------------------------
     #   Mes exercices (mapping)
