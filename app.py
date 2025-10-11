@@ -2032,6 +2032,8 @@ def patient_book(professional_id):
 
 
 # ---------- Aide: construction de la requête pros à partir des filtres ----------
+from sqlalchemy import or_
+
 def _build_professional_query_from_args(args):
     qs = Professional.query
 
@@ -2111,6 +2113,7 @@ def _build_professional_query_from_args(args):
             Professional.created_at.desc() if hasattr(Professional, "created_at") else Professional.id.desc()
         )
     return qs
+
 
 # ---------- Prendre RDV (formulaire) ----------
 @app.route("/patient/booking", methods=["GET"], endpoint="patient_booking")
