@@ -1,174 +1,71 @@
 {% extends "base.html" %}
 {% block title %}Dossier patient — Tighri{% endblock %}
-
 {% block content %}
-<div class="container py-4">
-  <a href="/pro/patients" class="link-secondary d-inline-block mb-2">← Retour</a>
-  <h1 class="h4 mb-3">Dossier patient</h1>
+<div class="container py-4" style="max-width:980px">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h5 mb-0"><i class="fa-solid fa-folder-open me-2"></i>Dossier — {{ profile.full_name or patient.username }}</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('pro_patients') }}"><i class="fa-solid fa-users me-1"></i>Mes patients</a>
+      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_patient_exercises', patient_id=patient.id) }}"><i class="fa-solid fa-dumbbell me-1"></i>Exercices</a>
+    </div>
+  </div>
 
-  {% set p = patient if patient is defined else None %}
-
-  <!-- Bandeau identité -->
-  <div class="card mb-3">
+  <form method="post" class="card">
     <div class="card-body">
-      <div class="d-md-flex justify-content-between">
-        <div>
-          <div class="h5 mb-1">{{ (p.name if p and p.name is defined else '—') }}</div>
-          <div class="text-muted small">
-            {{ ('Âge : ' ~ p.age) if p and p.age is defined else '' }}
-            {% if p and p.phone %} &nbsp;•&nbsp; {{ p.phone }}{% endif %}
-            {% if p and p.language %} &nbsp;•&nbsp; {{ p.language }}{% endif %}
-            {% if p and p.anonymous %} &nbsp;•&nbsp; <span class="badge bg-secondary">Anonyme</span>{% endif %}
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Nom complet</label>
+          <input name="full_name" class="form-control" value="{{ profile.full_name or '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Email</label>
+          <input name="email" class="form-control" value="{{ profile.email or '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Téléphone</label>
+          <input name="phone" class="form-control" value="{{ profile.phone or '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Adresse</label>
+          <input name="address" class="form-control" value="{{ profile.address or '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Alias dossier</label>
+          <input name="display_name" class="form-control" value="{{ case.display_name or '' }}">
+        </div>
+        <div class="col-md-6 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="is_anonymous" {% if case.is_anonymous %}checked{% endif %}>
+            <label class="form-check-label">Anonyme</label>
           </div>
         </div>
-        <div class="mt-2 mt-md-0">
-          <a class="btn btn-outline-primary btn-sm" href="/pro/messages/thread/{{ p.id if p and p.id is defined else 0 }}"><i class="fa-solid fa-message me-1"></i>Écrire</a>
-          <a class="btn btn-primary btn-sm" href="/pro/sessions/new?patient_id={{ p.id if p and p.id is defined else 0 }}"><i class="fa-solid fa-calendar-plus me-1"></i>Nouvelle séance</a>
+        <div class="col-12">
+          <label class="form-label">Résumé clinique</label>
+          <textarea name="summary" class="form-control" rows="4">{{ medhist.summary if medhist else '' }}</textarea>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Diagnostics / objectifs</label>
+          <textarea name="diagnostics" class="form-control" rows="3">{{ medhist.custom_fields if medhist else '' }}</textarea>
         </div>
       </div>
+    </div>
+    <div class="card-footer d-flex gap-2">
+      <button class="btn btn-primary"><i class="fa-solid fa-floppy-disk me-1"></i>Enregistrer</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('pro_patient_exercises', patient_id=patient.id) }}">Exercices</a>
+    </div>
+  </form>
+
+  {% if sessions %}
+  <div class="card mt-3">
+    <div class="card-body">
+      <h2 class="h6 mb-2"><i class="fa-solid fa-calendar-day me-2"></i>Dernières séances</h2>
+      <ul class="list-unstyled mb-0">
+        {% for s in sessions %}
+          <li class="mb-1 text-muted small">{{ s.start_at }} — {{ s.mode or 'cabinet' }}</li>
+        {% endfor %}
+      </ul>
     </div>
   </div>
-
-  <!-- Onglets -->
-  <ul class="nav nav-pills mb-3" id="tabs" role="tablist">
-    <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-infos" type="button">Infos</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-sessions" type="button">Séances</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-docs" type="button">Documents</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-carnet" type="button">Carnet</button></li>
-    <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-billing" type="button">Factures</button></li>
-  </ul>
-
-  <div class="tab-content">
-
-    <!-- Infos -->
-    <div class="tab-pane fade show active" id="tab-infos">
-      <div class="card">
-        <div class="card-body">
-          <h2 class="h6 mb-3">Informations personnelles</h2>
-          <div class="row g-3">
-            <div class="col-md-4"><div class="text-muted small">Nom</div><div>{{ p.name if p and p.name is defined else '—' }}</div></div>
-            <div class="col-md-4"><div class="text-muted small">Contact</div><div>{{ p.phone if p and p.phone is defined else '—' }}</div></div>
-            <div class="col-md-4"><div class="text-muted small">Langue</div><div>{{ p.language if p and p.language is defined else '—' }}</div></div>
-            <div class="col-12"><div class="text-muted small">Préférences</div><div>{{ p.preferences if p and p.preferences is defined else '—' }}</div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Séances -->
-    <div class="tab-pane fade" id="tab-sessions">
-      <div class="card">
-        <div class="card-body">
-          <h2 class="h6 mb-3">Historique & à venir</h2>
-          {% set sess = sessions if sessions is defined and sessions else [] %}
-          {% if sess %}
-            <div class="table-responsive">
-              <table class="table table-sm align-middle">
-                <thead><tr><th>Date/heure</th><th>Type</th><th>Statut</th><th>Note</th><th class="text-end">Action</th></tr></thead>
-                <tbody>
-                  {% for s in sess %}
-                    <tr>
-                      <td>{{ s.when if s.when is defined else (s.start_at if s.start_at is defined else '') }}</td>
-                      <td>{{ s.kind if s.kind is defined else (s.type if s.type is defined else '') }}</td>
-                      <td><span class="badge bg-secondary">{{ s.status if s.status is defined else '—' }}</span></td>
-                      <td class="text-truncate" style="max-width:260px;">{{ s.note if s.note is defined else '' }}</td>
-                      <td class="text-end">
-                        {% if s.meet_url is defined and s.meet_url %}
-                          <a class="btn btn-success btn-sm" target="_blank" rel="noopener" href="{{ s.meet_url }}">Rejoindre la visio</a>
-                        {% endif %}
-                      </td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <p class="text-muted mb-0">Aucune séance enregistrée.</p>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-
-    <!-- Documents -->
-    <div class="tab-pane fade" id="tab-docs">
-      <div class="card">
-        <div class="card-body">
-          <h2 class="h6 mb-3">Documents liés</h2>
-          {% set docs = documents if documents is defined and documents else [] %}
-          {% if docs %}
-            <div class="row g-2">
-              {% for d in docs %}
-                <div class="col-md-4">
-                  <div class="border rounded p-2 h-100">
-                    <div class="fw-semibold">{{ d.title if d.title is defined else 'Document' }}</div>
-                    <div class="text-muted small mb-2">{{ d.created_at if d.created_at is defined else '' }}</div>
-                    <div class="d-flex gap-2">
-                      {% if d.url is defined and d.url %}<a class="btn btn-sm btn-outline-primary" href="{{ d.url }}" target="_blank" rel="noopener">Ouvrir</a>{% endif %}
-                      {% if d.download_url is defined and d.download_url %}<a class="btn btn-sm btn-outline-secondary" href="{{ d.download_url }}">Télécharger</a>{% endif %}
-                    </div>
-                  </div>
-                </div>
-              {% endfor %}
-            </div>
-          {% else %}
-            <p class="text-muted mb-0">Aucun document pour l’instant.</p>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-
-    <!-- Carnet -->
-    <div class="tab-pane fade" id="tab-carnet">
-      <div class="card">
-        <div class="card-body">
-          <h2 class="h6 mb-3">Carnet thérapeutique</h2>
-          {% set notes_list = notes if notes is defined and notes else [] %}
-          {% if notes_list %}
-            <ul class="list-unstyled mb-0">
-              {% for n in notes_list %}
-                <li class="mb-2">
-                  <div class="small text-muted">{{ n.created_at if n.created_at is defined else '' }}</div>
-                  <div>{{ n.content if n.content is defined else '' }}</div>
-                </li>
-              {% endfor %}
-            </ul>
-          {% else %}
-            <p class="text-muted mb-0">Aucune note pour le moment.</p>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-
-    <!-- Factures -->
-    <div class="tab-pane fade" id="tab-billing">
-      <div class="card">
-        <div class="card-body">
-          <h2 class="h6 mb-3">Factures</h2>
-          {% set inv = invoices if invoices is defined and invoices else [] %}
-          {% if inv %}
-            <div class="table-responsive">
-              <table class="table table-sm">
-                <thead><tr><th>#</th><th>Date</th><th>Montant</th><th>Statut</th><th class="text-end">Action</th></tr></thead>
-                <tbody>
-                  {% for i in inv %}
-                    <tr>
-                      <td>{{ i.number if i.number is defined else i.id }}</td>
-                      <td>{{ i.date if i.date is defined else '' }}</td>
-                      <td>{{ i.amount if i.amount is defined else '' }} MAD</td>
-                      <td><span class="badge bg-{{ 'success' if (i.paid if i.paid is defined else False) else 'warning' }}">{{ 'Réglée' if (i.paid if i.paid is defined else False) else 'En attente' }}</span></td>
-                      <td class="text-end">{% if i.pdf_url is defined and i.pdf_url %}<a class="btn btn-sm btn-outline-secondary" href="{{ i.pdf_url }}">PDF</a>{% endif %}</td>
-                    </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          {% else %}
-            <p class="text-muted mb-0">Aucune facture associée.</p>
-          {% endif %}
-        </div>
-      </div>
-    </div>
-
-  </div>
+  {% endif %}
 </div>
 {% endblock %}
