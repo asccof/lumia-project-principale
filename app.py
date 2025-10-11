@@ -186,6 +186,71 @@ def _assign_exercise_to_patient(ex, pro_id: int, patient_user_id: int, due_date_
     db.session.add(assign); db.session.commit()
     return assign
 # ============================================================================
+# =========================
+#   MESSAGERIE — PRO (INBOX)
+# =========================
+@app.route("/pro/messages", methods=["GET"], endpoint="pro_messages")
+@login_required
+def pro_messages():
+    # autorisation
+    if getattr(current_user, "user_type", None) != "professional":
+        abort(403)
+
+    # pro courant (même logique que le reste de ton app)
+    pro = (
+        Professional.query
+        .filter(
+            (Professional.name == (getattr(current_user, "full_name", "") or "")) |
+            (Professional.name == (getattr(current_user, "username", "") or ""))
+        )
+        .first()
+    )
+    if not pro:
+        abort(403)
+
+    # threads liés à ce pro (ordre: récent d'abord)
+    threads = (
+        MessageThread.query
+        .filter_by(professional_id=pro.id)
+        .order_by(MessageThread.updated_at.desc().nullslast(), MessageThread.id.desc())
+        .all()
+    )
+
+    rows = []
+    for th in threads:
+        # compat: patient_id OU patient_user_id
+        pid = getattr(th, "patient_id", None) or getattr(th, "patient_user_id", None)
+        patient = User.query.get(pid) if pid else None
+
+        last = (
+            Message.query
+            .filter_by(thread_id=getattr(th, "id", None))
+            .order_by(Message.created_at.desc(), Message.id.desc())
+            .first()
+        )
+
+        # compat: sender_user_id OU sender_id
+        sender_id = getattr(last, "sender_user_id", None)
+        if sender_id is None:
+            sender_id = getattr(last, "sender_id", None)
+
+        unread = bool(last and sender_id and sender_id != getattr(current_user, "id", None))
+
+        # petit aperçu texte
+        preview = ""
+        if last:
+            body = getattr(last, "body", None) or ""
+            preview = (body[:120] + "…") if len(body) > 120 else body
+
+        rows.append({
+            "thread": th,
+            "patient": patient,
+            "last": last,
+            "preview": preview,
+            "unread": unread,
+        })
+
+    return render_or_text("pro/inbox.html", "Messagerie", rows=rows, professional=pro)
 
 # -------------------------------------------------------------------
 # Environnement
