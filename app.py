@@ -2529,6 +2529,262 @@ def book_appointment(professional_id: int):
         return redirect(url_for("professional_detail", professional_id=professional_id))
     except BuildError:
         return redirect(url_for("index"))
+# ========= PATIENT BOOKING (en s'appuyant sur les plages "pro") =========
+from datetime import datetime, date, time as dtime, timedelta
+from sqlalchemy import or_
+
+# -- 0) Détection souple du modèle "fenêtre de dispo par jour" -------------
+def _resolve_availability_model():
+    """
+    Essaie plusieurs noms de classe courants pour tes fenêtres de disponibilité
+    (celles qui alimentent windows_by_day dans le template pro).
+    Le modèle attendu contient au minimum:
+      - professional_id : int
+      - weekday         : int (0=lundi .. 6=dimanche)  NB: ton template fait range(0,7) -> Lundi first
+      - start_time, end_time : time (HH:MM)
+    """
+    for cls_name in (
+        "ProfessionalAvailabilityWindow",
+        "AvailabilityWindow",
+        "ProAvailabilityWindow",
+        "AvailabilityDayWindow",
+    ):
+        if cls_name in globals():
+            return globals()[cls_name]
+    return None
+
+def _iter_minutes(start_t: dtime, end_t: dtime, minutes=60):
+    """Génère des datetime.time à pas régulier (exclut end_t)."""
+    h = start_t.hour
+    m = start_t.minute
+    while True:
+        t = dtime(hour=h, minute=m)
+        if t >= end_t:
+            break
+        yield t
+        full = (h * 60 + m) + minutes
+        h, m = divmod(full, 60)
+        if h >= 24:
+            break
+
+def _build_slots_from_windows(pro_id: int, start_day: date, days: int, slot_minutes: int = 60):
+    """
+    Construit la grille de créneaux à partir des fenêtres jour par jour que le pro a saisies.
+    - days: nombre de jours à partir d'aujourd'hui
+    - slot_minutes: pas d’un créneau
+    """
+    Model = _resolve_availability_model()
+    slots = []
+
+    # fallback: si aucun modèle trouvé, proposer 9h..17h par défaut
+    def _default_for(d: date):
+        for h in range(9, 17):
+            slots.append(datetime.combine(d, dtime(hour=h, minute=0)))
+
+    for i in range(days):
+        d = start_day + timedelta(days=i)
+        # ton template affiche Lundi..Dimanche pour d in range(0,7)
+        # Python weekday(): Lundi=0..Dimanche=6, donc on est aligné ✅
+        wd = d.weekday()
+
+        if Model is None:
+            _default_for(d)
+            continue
+
+        try:
+            windows = (Model.query
+                       .filter_by(professional_id=pro_id, weekday=wd)
+                       .all())
+        except Exception:
+            # si la table existe pas / erreur de query -> fallback
+            _default_for(d)
+            continue
+
+        if not windows:
+            # pas de fenêtres ce jour -> aucune dispo
+            continue
+
+        for w in windows:
+            st = getattr(w, "start_time", None)
+            et = getattr(w, "end_time", None)
+            if not isinstance(st, dtime) or not isinstance(et, dtime) or st >= et:
+                continue
+            for t in _iter_minutes(st, et, minutes=slot_minutes):
+                slots.append(datetime.combine(d, t))
+
+    return slots
+
+def _appointments_taken(pro_id: int, start_dt: datetime, end_dt: datetime):
+    """
+    Retourne l'ensemble des datetimes déjà occupés (requested/confirmed).
+    S’adapte au schéma: appointment_date OU start_at.
+    """
+    taken = set()
+    try:
+        q = Appointment.query.filter(Appointment.professional_id == pro_id)
+
+        # plage de dates : on teste les 2 champs possibles
+        if hasattr(Appointment, "appointment_date"):
+            q = q.filter(Appointment.appointment_date >= start_dt,
+                         Appointment.appointment_date <  end_dt)
+        elif hasattr(Appointment, "start_at"):
+            q = q.filter(Appointment.start_at >= start_dt,
+                         Appointment.start_at <  end_dt)
+
+        # filtre statut si présent
+        if hasattr(Appointment, "status"):
+            q = q.filter(Appointment.status.in_(["requested", "confirmed"]))
+
+        for a in q.all():
+            dt = getattr(a, "appointment_date", None) or getattr(a, "start_at", None)
+            if isinstance(dt, datetime):
+                taken.add(dt.replace(second=0, microsecond=0))
+    except Exception:
+        pass
+    return taken
+
+# -- 1) Page d’affichage des créneaux patient --------------------------------
+@app.route("/patient/availability/<int:professional_id>", methods=["GET"], endpoint="patient_availability")
+@login_required
+def patient_availability(professional_id: int):
+    _require_patient()
+    pro = Professional.query.get_or_404(professional_id)
+
+    days = int(request.args.get("days", 7))
+    days = max(1, min(days, 30))
+    slot_minutes = int(request.args.get("slot", 60))
+    slot_minutes = 15 if slot_minutes < 15 else slot_minutes  # sécurité
+
+    start_day = datetime.utcnow().date()
+    end_day   = start_day + timedelta(days=days)
+    start_dt  = datetime.combine(start_day, dtime.min)
+    end_dt    = datetime.combine(end_day,   dtime.min)
+
+    # 1) slots théoriques (depuis les fenêtres pro)
+    all_slots = _build_slots_from_windows(pro.id, start_day, days, slot_minutes=slot_minutes)
+
+    # 2) retirer les pris
+    taken = _appointments_taken(pro.id, start_dt, end_dt)
+    view_slots = []
+    for dt in all_slots:
+        key = dt.replace(second=0, microsecond=0)
+        view_slots.append({
+            "iso":  key.strftime("%Y-%m-%d %H:%M"),
+            "date": key.strftime("%Y-%m-%d"),
+            "time": key.strftime("%H:%M"),
+            "free": key not in taken
+        })
+
+    # grouper par jour pour le template
+    grouped = {}
+    for s in view_slots:
+        grouped.setdefault(s["date"], []).append(s)
+
+    return render_or_text(
+        "patient/availability.html",
+        "Choisir un créneau",
+        professional=pro,
+        grouped_slots=grouped,
+        days=days,
+        slot_minutes=slot_minutes
+    )
+
+# -- 2) Création de la demande (status=requested) -----------------------------
+@app.route("/patient/appointments/confirm", methods=["POST"], endpoint="patient_confirm_booking")
+@login_required
+def patient_confirm_booking():
+    _require_patient()
+    pro_id = request.form.get("professional_id", type=int)
+    when   = (request.form.get("when") or "").strip()
+    if not pro_id or not when:
+        flash("Créneau invalide.", "warning")
+        return redirect(url_for("patient_home"))
+
+    pro = Professional.query.get_or_404(pro_id)
+
+    # parse "YYYY-MM-DD HH:MM" ou "YYYY-MM-DDTHH:MM"
+    appt_dt = None
+    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
+        try:
+            appt_dt = datetime.strptime(when, fmt)
+            break
+        except ValueError:
+            continue
+    if not appt_dt:
+        flash("Format de date/heure non reconnu.", "warning")
+        return redirect(url_for("patient_availability", professional_id=pro_id))
+
+    # anti-doublon en base
+    clash_q = Appointment.query.filter(Appointment.professional_id == pro_id)
+    if hasattr(Appointment, "appointment_date"):
+        clash_q = clash_q.filter(Appointment.appointment_date == appt_dt)
+    elif hasattr(Appointment, "start_at"):
+        clash_q = clash_q.filter(Appointment.start_at == appt_dt)
+    if hasattr(Appointment, "status"):
+        clash_q = clash_q.filter(Appointment.status.in_(["requested", "confirmed"]))
+    if clash_q.first():
+        flash("Ce créneau vient d’être pris, choisissez un autre créneau.", "warning")
+        return redirect(url_for("patient_availability", professional_id=pro_id))
+
+    # création de l'objet
+    appt_kwargs = dict(patient_id=current_user.id, professional_id=pro_id)
+    field_name = "appointment_date" if hasattr(Appointment, "appointment_date") else "start_at"
+    appt_kwargs[field_name] = appt_dt
+    if hasattr(Appointment, "status"):
+        appt_kwargs["status"] = "requested"
+
+    appt = Appointment(**appt_kwargs)
+    db.session.add(appt)
+    db.session.commit()
+
+    # notifications (best effort)
+    try:
+        if 'Notification' in globals():
+            # pour le pro (si on sait le rattacher à un user)
+            pro_user_id = getattr(pro, "user_id", None)
+            if pro_user_id:
+                db.session.add(Notification(
+                    user_id=pro_user_id,
+                    title="Nouvelle demande de rendez-vous",
+                    body=f"Un patient demande {appt_dt.strftime('%Y-%m-%d %H:%M')}",
+                    kind="appointment_request"
+                ))
+            # pour le patient
+            db.session.add(Notification(
+                user_id=current_user.id,
+                title="Demande envoyée",
+                body="Votre demande de rendez-vous est en attente de validation.",
+                kind="appointment_request"
+            ))
+            db.session.commit()
+    except Exception:
+        pass
+
+    # email pro (on tente via username==pro.name, comme tu fais ailleurs)
+    try:
+        pro_user = User.query.filter_by(username=pro.name).first()
+        if pro_user and pro_user.email:
+            safe_send_email(
+                pro_user.email,
+                f"{BRAND_NAME} — Demande de RDV",
+                f"Un patient a demandé un rendez-vous le {appt_dt.strftime('%Y-%m-%d %H:%M')}."
+            )
+    except Exception:
+        pass
+
+    # email patient
+    try:
+        if getattr(current_user, "email", None):
+            safe_send_email(
+                current_user.email,
+                f"{BRAND_NAME} — Demande envoyée",
+                "Votre demande de rendez-vous a été transmise au professionnel."
+            )
+    except Exception:
+        pass
+
+    flash("Demande envoyée. Vous serez notifié(e) après validation du professionnel.", "success")
+    return redirect(url_for("patient_appointments"))
 
 # =========================
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
