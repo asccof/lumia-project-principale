@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Choisir un créneau — {{ professional.name or 'Professionnel' }}{% endblock %}
-
 {% block content %}
 <header class="page" style="background:linear-gradient(90deg,#8B5CF6,#6D28D9);color:#fff;padding:3rem 0 1.25rem;text-align:center">
   <h1 style="margin:0">{{ professional.name or 'Professionnel' }}</h1>
-  <p style="opacity:.95">Choisissez une date et une heure parmi les créneaux libres.</p>
-  <p><a href="{{ url_for('patient_booking') }}" class="btn btn-light btn-sm">↩ Retour à la recherche</a></p>
+  <p style="opacity:.95">Choisissez une date et une heure parmi les créneaux libres (les créneaux gris sont indisponibles).</p>
+  <p>
+    <a href="{{ url_for('patient_booking') }}" class="btn btn-light btn-sm">↩ Retour à la recherche</a>
+    <a href="{{ url_for('professional_detail', professional_id=professional.id) }}" class="btn btn-outline-light btn-sm">Voir le profil</a>
+  </p>
 </header>
 
 <div class="container" style="max-width:980px;margin:1.25rem auto;padding:0 1rem">
@@ -17,19 +19,20 @@
           {% for s in slots %}
             {% if s.free %}
               <form method="post" action="{{ url_for('patient_confirm_booking') }}">
+                {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
                 <input type="hidden" name="professional_id" value="{{ professional.id }}">
                 <input type="hidden" name="when" value="{{ s.iso }}">
                 <button type="submit" class="btn btn-primary btn-sm">{{ s.time }}</button>
               </form>
             {% else %}
-              <button class="btn btn-outline-secondary btn-sm" disabled>{{ s.time }}</button>
+              <button class="btn btn-outline-secondary btn-sm" disabled title="Indisponible">{{ s.time }}</button>
             {% endif %}
           {% endfor %}
         </div>
       </section>
     {% endfor %}
   {% else %}
-    <div class="alert alert-warning">Aucun créneau n’est disponible sur la période.</div>
+    <div class="alert alert-warning">Aucun créneau n’est disponible sur la période choisie.</div>
   {% endif %}
 
   <div style="text-align:center;margin-top:1rem">
