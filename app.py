@@ -1615,14 +1615,12 @@ def professional_edit_profile():
 @login_required
 def professional_appointments():
     from datetime import datetime
-    if current_user.user_type != "professional":
-        flash("Accès non autorisé")
-        return redirect(url_for("index"))
+    if getattr(current_user, "user_type", None) != "professional":
+        flash("Accès non autorisé"); return redirect(url_for("index"))
 
     pro = Professional.query.filter_by(name=current_user.username).first()
     if not pro:
-        flash("Profil professionnel non trouvé")
-        return redirect(url_for("professional_dashboard"))
+        flash("Profil professionnel non trouvé"); return redirect(url_for("professional_dashboard"))
 
     status = (request.args.get("status") or "all").strip()
     scope  = (request.args.get("scope")  or "upcoming").strip()
@@ -1630,16 +1628,28 @@ def professional_appointments():
     q = Appointment.query.filter_by(professional_id=pro.id)
     now = datetime.utcnow()
 
-    if scope == "upcoming":
-        q = q.filter(Appointment.appointment_date >= now)
-    elif scope == "past":
-        q = q.filter(Appointment.appointment_date < now)
+    # Supporte appointment_date OU start_at selon ton modèle
+    if hasattr(Appointment, "appointment_date"):
+        date_col = Appointment.appointment_date
+    else:
+        date_col = getattr(Appointment, "start_at", None)
 
-    # Statuts utilisés par tes filtres/templates : "en_attente" | "confirme" | "annule"
+    if scope == "upcoming" and date_col is not None:
+        q = q.filter(date_col >= now)
+    elif scope == "past" and date_col is not None:
+        q = q.filter(date_col < now)
+
+    # Statuts utilisés dans tes templates
     if status in ("en_attente", "confirme", "annule"):
         q = q.filter_by(status=status)
 
-    appointments = q.order_by(Appointment.appointment_date.desc()).all()
+    # Tri robuste
+    if date_col is not None:
+        q = q.order_by(date_col.desc())
+    else:
+        q = q.order_by(Appointment.id.desc())
+
+    appointments = q.all()
 
     return render_or_text(
         "professional_appointments.html",
@@ -1649,51 +1659,56 @@ def professional_appointments():
         scope=scope
     )
 
-
-# ==> Endpoint d’action utilisé par professional_appointments.html (confirm/cancel)
-@app.route("/professional/appointments/<int:appointment_id>/<action>", methods=["POST"], endpoint="professional_appointment_action")
+# ===== Action RDV (confirmer / annuler / etc.) =====
+@app.route(
+    "/professional/appointments/<int:appointment_id>/<action>",
+    methods=["POST"],
+    endpoint="professional_appointment_action"
+)
 @login_required
 def professional_appointment_action(appointment_id: int, action: str):
+    # Pas de dépendance à _current_professional_or_403 pour éviter les NameError
     if getattr(current_user, "user_type", None) != "professional":
         abort(403)
-    pro = _current_professional_or_403()
+
+    pro = Professional.query.filter_by(name=current_user.username).first()
+    if not pro:
+        flash("Profil professionnel non trouvé", "danger")
+        return redirect(url_for("professional_dashboard"))
+
     ap = Appointment.query.get_or_404(appointment_id)
     if ap.professional_id != pro.id:
         abort(403)
 
     act = (action or "").strip().lower()
-    # On aligne sur tes statuts côté pro :
-    if act in {"confirm", "confirmed", "accept", "accepted", "approve"}:
-        if hasattr(ap, "status"):
-            ap.status = "confirme"
-        flash("Rendez-vous confirmé.", "success")
-    elif act in {"cancel", "canceled", "annule", "annulé", "reject", "refuse"}:
-        if hasattr(ap, "status"):
-            ap.status = "annule"
-        flash("Rendez-vous annulé.", "warning")
-    else:
-        flash("Action inconnue.", "danger")
+    status_map = {
+        # confirmer
+        "confirm": "confirme", "confirmed": "confirme", "accept": "confirme", "approve": "confirme",
+        # annuler
+        "cancel": "annule", "canceled": "annule", "annuler": "annule", "reject": "annule", "refuse": "annule",
+        # états optionnels si tu veux t’en servir plus tard
+        "pending": "en_attente", "request": "en_attente", "requested": "en_attente",
+        "done": "termine", "complete": "termine", "finish": "termine",
+        "noshow": "no_show", "no-show": "no_show"
+    }
+    new_status = status_map.get(act)
+    if not new_status:
+        flash("Action inconnue.", "warning")
         return redirect(request.referrer or url_for("professional_appointments"))
 
-    db.session.commit()
-    return redirect(request.referrer or url_for("professional_appointments"))
+    ap.status = new_status
+    # Tente de mettre à jour updated_at si présent
+    try:
+        from datetime import datetime as _dt
+        if hasattr(ap, "updated_at"):
+            ap.updated_at = _dt.utcnow()
+    except Exception:
+        pass
 
-# ===== Action RDV (confirmer/annuler) pour supporter professional_appointment_action
-@app.route("/professional/appointments/<int:appointment_id>/<action>", methods=["POST"], endpoint="professional_appointment_action")
-@login_required
-def professional_appointment_action(appointment_id: int, action: str):
-    pro = _current_professional_or_403()
-    ap = Appointment.query.get_or_404(appointment_id)
-    if ap.professional_id != pro.id:
-        abort(403)
-    action = (action or "").strip().lower()
-    if action in ("cancel", "annule", "annuler"):
-        ap.status = "annule"
-    elif action in ("confirm", "confirme", "valider"):
-        ap.status = "confirme"
     db.session.commit()
     flash("Rendez-vous mis à jour.", "success")
-    return redirect(url_for("professional_appointments"))
+    return redirect(request.referrer or url_for("professional_appointments"))
+
 
 # ====== Entrée "Dossier patient" (alias smart) ======
 @app.route("/pro/patient", methods=["GET"], endpoint="pro_patient_entry")
