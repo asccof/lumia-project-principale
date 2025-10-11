@@ -1982,15 +1982,23 @@ def _require_patient():
         abort(403)
 
 # ---------- Accueil ----------
-# ---------- Accueil ----------
 @app.route("/patient", endpoint="patient_home")
 @login_required
 def patient_home():
     _require_patient()
 
-    from datetime import datetime
+    # Import local sûr
+    from datetime import datetime, time as _Time
 
-    # --- Profils & blocs existants (on garde tel quel) ---
+    # 0) Initialisations pour éviter toute NameError (contrat fixe : jamais casser le rendu)
+    next_appointment = None
+    pending_requests = []
+    exercises = []
+    docs_count = 0
+    invoices_due = 0
+    last_message = None
+
+    # --- Profils & blocs existants (inchangés) ---
     profile = PatientProfile.query.filter_by(user_id=current_user.id).first()
     my_threads = (MessageThread.query
                   .filter_by(patient_id=current_user.id)
@@ -2008,101 +2016,110 @@ def patient_home():
     # =========================
     #   RDV : helpers robustes
     # =========================
-    # champ datetime : appointment_date OU start_at
+    # Champ datetime connu en DB
     dt_field = None
     if hasattr(Appointment, "appointment_date"):
         dt_field = Appointment.appointment_date
     elif hasattr(Appointment, "start_at"):
         dt_field = Appointment.start_at
 
-    # statuts possibles (on couvre plusieurs variantes courantes)
+    # Statuts (on couvre les variantes courantes)
     PENDING = {"requested", "pending", "en_attente"}
-    CONFIRMED = {"confirmed", "accepted", "approved", "valide"}
+    CANCELLED = {"cancelled", "canceled", "refused", "rejected", "declined", "annule", "annulé", "no_show"}
+    CONFIRMED_HINTS = {"confirmed", "accepted", "approved", "valide", "validated"}
 
-    now = datetime.utcnow()
-
-    # -------------------------
-    #   Prochain rendez-vous
-    # -------------------------
-       # -------------------------
-    #   Prochain rendez-vous (robuste)
-    # -------------------------
     def _extract_dt(a):
-        """Essaie de récupérer un datetime à partir de plusieurs schémas connus."""
-        from datetime import datetime as _DT, time as _T
+        """Retourne un datetime à partir de plusieurs schémas possibles."""
         # 1) Datetime direct
         for attr in ("appointment_date", "start_at", "scheduled_at", "start_time_dt"):
             v = getattr(a, attr, None)
-            if isinstance(v, _DT):
+            if isinstance(v, datetime):
                 return v
-        # 2) Date + Time séparés
+        # 2) Date + time séparés
         d = getattr(a, "date", None) or getattr(a, "appointment_day", None)
         t = getattr(a, "time", None) or getattr(a, "appointment_time", None) or getattr(a, "start_time", None)
         if d and t:
             try:
                 if isinstance(t, str) and ":" in t:
                     hh, mm = t.split(":")[:2]
-                    t = _T(int(hh), int(mm))
-                return _DT.combine(d, t)
+                    t = _Time(int(hh), int(mm))
+                return datetime.combine(d, t)
             except Exception:
                 pass
-        # 3) Date seule => midi par défaut
+        # 3) Date seule → midi par défaut
         if d:
             try:
-                return _DT.combine(d, _T(12, 0))
+                return datetime.combine(d, _Time(12, 0))
             except Exception:
                 pass
         return None
 
-    # jeux de statuts (exclusion des non-confirmés)
-    PENDING = {"requested", "pending", "en_attente"}
-    CANCELLED = {"cancelled", "canceled", "refused", "rejected", "declined", "annule", "annulé", "no_show"}
-    CONFIRMED_HINTS = {"confirmed", "accepted", "approved", "valide", "validated"}
-
     def _is_confirmed(a):
-        """Vrai si RDV considéré confirmé."""
+        """Considère le RDV confirmé s'il n'est ni pending ni cancelled (ou explicitement confirmé)."""
         st = getattr(a, "status", None)
         if st is None:
-            # Pas de champ statut => on considère confirmé
-            return True
+            return True  # pas de champ status → on traite comme confirmé
         st_l = str(st).strip().lower()
         if st_l in CANCELLED:
             return False
         if st_l in PENDING:
             return False
-        # Si le statut est clairement confirmé
         if st_l in CONFIRMED_HINTS:
             return True
-        # Autres statuts inconnus => on les considère confirmés (hors pending/cancelled)
-        return True
+        return True  # autres statuts inconnus → on les considère confirmés
 
-    from datetime import datetime as _DT
-    now = _DT.utcnow()
+    now = datetime.utcnow()
 
-    next_appointment = None
+    # -------------------------
+    #   Demandes en attente
+    # -------------------------
     try:
-        # On récupère un ensemble raisonnable, on filtre en Python (robuste aux schémas)
+        base = Appointment.query.filter(Appointment.patient_id == current_user.id)
+        if hasattr(Appointment, "status"):
+            base = base.filter(Appointment.status.in_(list(PENDING)))
+        # Ordonner par date si disponible, sinon par id
+        if dt_field is not None:
+            base = base.order_by(dt_field.asc())
+        else:
+            base = base.order_by(Appointment.id.desc())
+
+        rows = base.limit(10).all()
+        tmp = []
+        for r in rows:
+            when_dt = _extract_dt(r)
+            pro_name = None
+            try:
+                if getattr(r, "professional", None) and getattr(r.professional, "name", None):
+                    pro_name = r.professional.name
+                elif getattr(r, "professional_id", None):
+                    pro = Professional.query.get(r.professional_id)
+                    pro_name = getattr(pro, "name", None)
+            except Exception:
+                pass
+            tmp.append({
+                "pro": pro_name or "—",
+                "date": when_dt.strftime("%d/%m/%Y %H:%M") if isinstance(when_dt, datetime) else "—",
+                "status": getattr(r, "status", "en attente")
+            })
+        pending_requests = tmp
+    except Exception:
+        pending_requests = []
+
+    # -------------------------
+    #   Prochain RDV confirmé à venir
+    # -------------------------
+    try:
         q = Appointment.query.filter(Appointment.patient_id == current_user.id)
-        # Si on a un champ datetime en DB, filtre côté SQL pour l'efficacité
-        dt_field = None
-        if hasattr(Appointment, "appointment_date"):
-            dt_field = Appointment.appointment_date
-        elif hasattr(Appointment, "start_at"):
-            dt_field = Appointment.start_at
         if dt_field is not None:
             q = q.filter(dt_field >= now).order_by(dt_field.asc())
         else:
-            q = q.order_by(Appointment.id.desc())
+            q = q.order_by(Appointment.id.desc())  # pas de champ datetime → on trie par id
 
         candidates = q.limit(100).all()
-
-        best = None
-        best_dt = None
+        best, best_dt = None, None
         for a in candidates:
             dtv = _extract_dt(a)
-            if not dtv:
-                continue
-            if dtv < now:
+            if not dtv or dtv < now:
                 continue
             if not _is_confirmed(a):
                 continue
@@ -2131,9 +2148,8 @@ def patient_home():
         next_appointment = None
 
     # -------------------------
-    #   Mes exercices (mapping)
+    #   Mes exercices (mapping simple)
     # -------------------------
-    exercises = []
     try:
         for a in my_assignments:
             ex = getattr(a, "exercise", None)
@@ -2150,16 +2166,13 @@ def patient_home():
     # -------------------------
     #   Documents & Factures
     # -------------------------
-    docs_count = 0
     try:
         if "FileAttachment" in globals():
             docs_count = FileAttachment.query.filter_by(patient_id=current_user.id).count()
     except Exception:
         docs_count = 0
 
-    invoices_due = 0
     try:
-        # Si un modèle Invoice existe avec champs patient_id + status/paid/due_amount
         if "Invoice" in globals():
             q = Invoice.query.filter_by(patient_id=current_user.id)
             if hasattr(Invoice, "status"):
@@ -2171,16 +2184,13 @@ def patient_home():
     # -------------------------
     #   Dernier message
     # -------------------------
-    last_message = None
     try:
-        # On récupère le dernier message (tous threads confondus)
         last = (Message.query
                 .join(MessageThread, Message.thread_id == MessageThread.id)
                 .filter(MessageThread.patient_id == current_user.id)
                 .order_by(Message.created_at.desc())
                 .first())
         if last:
-            # nom du pro lié au thread
             pro_name = None
             try:
                 th = MessageThread.query.get(last.thread_id)
@@ -2197,7 +2207,7 @@ def patient_home():
     except Exception:
         last_message = None
 
-    # Rendu : on injecte les clés attendues par ton template
+    # Rendu : on injecte les clés attendues par le template home.html
     return render_or_text(
         "patient/home.html", "Espace patient",
         profile=profile,
@@ -2211,6 +2221,7 @@ def patient_home():
         invoices_due=invoices_due,
         last_message=last_message
     )
+
 
 # ---------- Rendez-vous ----------
 if "patient_appointments" not in app.view_functions:
