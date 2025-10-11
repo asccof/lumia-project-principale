@@ -18,7 +18,7 @@
           <p class="display-6 my-2">
             {{ upcoming_count if upcoming_count is defined else (next_sessions|length if next_sessions is defined and next_sessions else 0) }}
           </p>
-          <a class="btn btn-sm btn-outline-primary" href="/pro/patients">Voir les patients</a>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_patients') }}">Voir les patients</a>
         </div>
       </div>
     </div>
@@ -31,7 +31,8 @@
             <i class="fa-solid fa-inbox"></i>
           </div>
           <p class="display-6 my-2">{{ unread_messages if unread_messages is defined else 0 }}</p>
-          <a class="btn btn-sm btn-outline-primary" href="/pro/messages">Ouvrir la messagerie</a>
+          {# /pro/messages n'existe pas. On redirige vers la liste des patients pour ouvrir un fil #}
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_patients') }}">Ouvrir la messagerie</a>
         </div>
       </div>
     </div>
@@ -44,7 +45,7 @@
             <i class="fa-solid fa-file-invoice-dollar"></i>
           </div>
           <p class="display-6 my-2">{{ pending_payments if pending_payments is defined else 0 }}</p>
-          <a class="btn btn-sm btn-outline-primary" href="/pro/billing">Gérer la facturation</a>
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_billing') }}">Gérer la facturation</a>
         </div>
       </div>
     </div>
@@ -57,9 +58,9 @@
         <div class="card-body">
           <h2 class="h6 mb-3">Raccourcis</h2>
           <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-outline-secondary btn-sm" href="/pro/patients"><i class="fa-solid fa-users me-1"></i> Mes patients</a>
-            <a class="btn btn-outline-secondary btn-sm" href="/pro/library"><i class="fa-solid fa-book-open me-1"></i> Bibliothèque</a>
-            <a class="btn btn-outline-secondary btn-sm" href="/pro/stats"><i class="fa-solid fa-chart-line me-1"></i> Statistiques</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pro_patients') }}"><i class="fa-solid fa-users me-1"></i> Mes patients</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pro_library') }}"><i class="fa-solid fa-book-open me-1"></i> Bibliothèque</a>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('pro_stats') }}"><i class="fa-solid fa-chart-line me-1"></i> Statistiques</a>
             <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('professional_edit_profile') }}"><i class="fa-solid fa-user-pen me-1"></i> Mon profil</a>
           </div>
         </div>
@@ -76,10 +77,13 @@
             <ul class="list-unstyled mb-0">
               {% for s in sessions[:5] %}
                 <li class="mb-2">
-                  <strong>{{ s.patient_name if s.patient_name is defined else (s.patient.name if s.patient is defined else 'Patient') }}</strong>
-                  — <span class="text-muted">{{ s.when if s.when is defined else (s.start_at if s.start_at is defined else '') }}</span>
+                  <strong>{{ s.patient_name if s.patient_name is defined and s.patient_name else 'Patient' }}</strong>
+                  — <span class="text-muted">
+                      {{ s.when if s.when is defined and s.when else (s.start_at if s.start_at is defined else '') }}
+                    </span>
                   {% if (s.meet_url is defined and s.meet_url) or (s.link is defined and s.link) %}
-                    <a class="btn btn-sm btn-success ms-2" target="_blank" rel="noopener" href="{{ s.meet_url if s.meet_url is defined and s.meet_url else s.link }}">Rejoindre la visio</a>
+                    <a class="btn btn-sm btn-success ms-2" target="_blank" rel="noopener"
+                       href="{{ s.meet_url if s.meet_url is defined and s.meet_url else s.link }}">Rejoindre la visio</a>
                   {% endif %}
                 </li>
               {% endfor %}
