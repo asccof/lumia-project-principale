@@ -1988,7 +1988,9 @@ def _require_patient():
 def patient_home():
     _require_patient()
 
-    # --- Récup profils & blocs déjà en place ---
+    from datetime import datetime
+
+    # --- Profils & blocs existants (on garde tel quel) ---
     profile = PatientProfile.query.filter_by(user_id=current_user.id).first()
     my_threads = (MessageThread.query
                   .filter_by(patient_id=current_user.id)
@@ -2003,56 +2005,172 @@ def patient_home():
                    .order_by(TherapySession.start_at.desc())
                    .limit(10).all())
 
-    # --- Champs et statuts RDV (robuste aux schémas différents) ---
-    from datetime import datetime
+    # =========================
+    #   RDV : helpers robustes
+    # =========================
+    # champ datetime : appointment_date OU start_at
     dt_field = None
     if hasattr(Appointment, "appointment_date"):
         dt_field = Appointment.appointment_date
     elif hasattr(Appointment, "start_at"):
         dt_field = Appointment.start_at
 
-    # Jeux de statuts (on couvre plusieurs variantes possibles)
-    PENDING_STATUSES = {"requested", "pending", "en_attente"}
-    CONFIRMED_STATUSES = {"confirmed", "accepted", "approved"}
+    # statuts possibles (on couvre plusieurs variantes courantes)
+    PENDING = {"requested", "pending", "en_attente"}
+    CONFIRMED = {"confirmed", "accepted", "approved", "valide"}
 
     now = datetime.utcnow()
 
+    # -------------------------
+    #   Prochain rendez-vous
+    # -------------------------
     next_appointment = None
-    pending_count = 0
-
     try:
-        base_q = Appointment.query.filter(Appointment.patient_id == current_user.id)
-
-        # Comptage des "en attente"
-        if hasattr(Appointment, "status"):
-            pending_count = (base_q
-                             .filter(Appointment.status.in_(list(PENDING_STATUSES)))
-                             .count())
-        else:
-            pending_count = 0  # si pas de champ status, on considère 0 "en attente"
-
-        # Prochain rendez-vous confirmé à venir
         if dt_field is not None:
-            q = base_q.filter(dt_field >= now)
+            q = Appointment.query.filter(Appointment.patient_id == current_user.id, dt_field >= now)
             if hasattr(Appointment, "status"):
-                q = q.filter(Appointment.status.in_(list(CONFIRMED_STATUSES)))
-            next_appointment = q.order_by(dt_field.asc()).first()
-        else:
-            next_appointment = None
-    except Exception:
-        # En cas d'anomalie DB, ne casse pas le dashboard
-        next_appointment = None
-        pending_count = 0
+                q = q.filter(Appointment.status.in_(list(CONFIRMED)))
+            a = q.order_by(dt_field.asc()).first()
+            if a:
+                # Récupération du datetime, lieu, lien, pro
+                when_dt = getattr(a, "appointment_date", None) or getattr(a, "start_at", None)
+                where = getattr(a, "location", None) or getattr(a, "place", None) or getattr(a, "address", None)
+                link = getattr(a, "meeting_link", None) or getattr(a, "video_link", None) or None
 
+                # objet "professional" minimal compatible avec ton template
+                pro_obj = getattr(a, "professional", None)
+                if pro_obj is None:
+                    # tentative de résolution douce
+                    try:
+                        pro_obj = Professional.query.get(getattr(a, "professional_id", None))
+                    except Exception:
+                        pro_obj = None
+
+                next_appointment = {
+                    "when": when_dt.strftime("%d/%m/%Y à %H:%M") if isinstance(when_dt, datetime) else None,
+                    "where": where,
+                    "link": link,
+                    "professional": pro_obj
+                }
+    except Exception:
+        next_appointment = None  # ne casse pas la page
+
+    # -------------------------
+    #   Demandes en attente
+    # -------------------------
+    pending_requests = []
+    try:
+        base = Appointment.query.filter(Appointment.patient_id == current_user.id)
+        if hasattr(Appointment, "status"):
+            base = base.filter(Appointment.status.in_(list(PENDING)))
+        # On ordonne par date (si dispo), sinon par id desc
+        if dt_field is not None:
+            base = base.order_by(dt_field.asc())
+        else:
+            base = base.order_by(Appointment.id.desc())
+
+        rows = base.limit(10).all()
+
+        for r in rows:
+            when_dt = getattr(r, "appointment_date", None) or getattr(r, "start_at", None)
+            pro_name = None
+            try:
+                if getattr(r, "professional", None) and getattr(r.professional, "name", None):
+                    pro_name = r.professional.name
+                elif getattr(r, "professional_id", None):
+                    pro = Professional.query.get(r.professional_id)
+                    pro_name = getattr(pro, "name", None)
+            except Exception:
+                pass
+
+            pending_requests.append({
+                "pro": pro_name or "—",
+                "date": when_dt.strftime("%d/%m/%Y %H:%M") if isinstance(when_dt, datetime) else "—",
+                "status": getattr(r, "status", "en attente")
+            })
+    except Exception:
+        pending_requests = []
+
+    # -------------------------
+    #   Mes exercices (mapping)
+    # -------------------------
+    exercises = []
+    try:
+        for a in my_assignments:
+            ex = getattr(a, "exercise", None)
+            title = getattr(ex, "title", None) or getattr(ex, "name", None) or "Exercice"
+            due = getattr(a, "due_date", None)
+            exercises.append({
+                "title": title,
+                "due": due.strftime("%d/%m/%Y") if due else None,
+                "status": getattr(a, "status", None) or "assigné"
+            })
+    except Exception:
+        exercises = []
+
+    # -------------------------
+    #   Documents & Factures
+    # -------------------------
+    docs_count = 0
+    try:
+        if "FileAttachment" in globals():
+            docs_count = FileAttachment.query.filter_by(patient_id=current_user.id).count()
+    except Exception:
+        docs_count = 0
+
+    invoices_due = 0
+    try:
+        # Si un modèle Invoice existe avec champs patient_id + status/paid/due_amount
+        if "Invoice" in globals():
+            q = Invoice.query.filter_by(patient_id=current_user.id)
+            if hasattr(Invoice, "status"):
+                q = q.filter(Invoice.status.in_(["due", "unpaid"]))
+            invoices_due = q.count()
+    except Exception:
+        invoices_due = 0
+
+    # -------------------------
+    #   Dernier message
+    # -------------------------
+    last_message = None
+    try:
+        # On récupère le dernier message (tous threads confondus)
+        last = (Message.query
+                .join(MessageThread, Message.thread_id == MessageThread.id)
+                .filter(MessageThread.patient_id == current_user.id)
+                .order_by(Message.created_at.desc())
+                .first())
+        if last:
+            # nom du pro lié au thread
+            pro_name = None
+            try:
+                th = MessageThread.query.get(last.thread_id)
+                if th and getattr(th, "professional_id", None):
+                    pro = Professional.query.get(th.professional_id)
+                    pro_name = getattr(pro, "name", None)
+            except Exception:
+                pass
+            last_message = {
+                "with": pro_name or "—",
+                "at": getattr(last, "created_at", None).strftime("%d/%m/%Y %H:%M") if getattr(last, "created_at", None) else "",
+                "excerpt": (last.body[:120] + "…") if getattr(last, "body", None) and len(last.body) > 120 else (last.body or "")
+            }
+    except Exception:
+        last_message = None
+
+    # Rendu : on injecte les clés attendues par ton template
     return render_or_text(
-        "patient/home.html",
-        "Espace patient",
+        "patient/home.html", "Espace patient",
         profile=profile,
         threads=my_threads,
         assignments=my_assignments,
         sessions=my_sessions,
         next_appointment=next_appointment,
-        pending_count=pending_count
+        pending_requests=pending_requests,
+        exercises=exercises,
+        docs_count=docs_count,
+        invoices_due=invoices_due,
+        last_message=last_message
     )
 
 # ---------- Rendez-vous ----------
