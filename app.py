@@ -2031,24 +2031,25 @@ def patient_book(professional_id):
     ))
 
 
-# ---------- Aide: construction de la requête pros à partir des filtres ----------
+# ==== FILTRES PROFESSIONNELS (SANS TABS) ====
 from sqlalchemy import or_
 
 def _build_professional_query_from_args(args):
     qs = Professional.query
 
-    # --- Filtrer par ID direct si présent (clic "Réserver" depuis une fiche) ---
+    # 1) Si on arrive depuis une fiche pro, autoriser le pré-filtrage par ID
     prof_id = args.get("professional_id", type=int)
     if prof_id:
         qs = qs.filter(Professional.id == prof_id)
 
-    # Actifs / valides
-    if hasattr(Professional, "status"):
-        qs = qs.filter(Professional.status == 'valide')
-    elif hasattr(Professional, "is_active"):
-        qs = qs.filter(Professional.is_active.is_(True))
+    # 2) Statut/activité : TEMPORAIREMENT DÉSACTIVÉ pour éviter "aucun résultat"
+    #    (on le remettra quand on saura quelles valeurs exactes existent en DB)
+    # if hasattr(Professional, "status"):
+    #     qs = qs.filter(Professional.status == 'valide')
+    # elif hasattr(Professional, "is_active"):
+    #     qs = qs.filter(Professional.is_active.is_(True))
 
-    # Recherche plein texte simple
+    # 3) Recherche plein texte simple
     q = (args.get("q") or "").strip()
     if q:
         like = f"%{q}%"
@@ -2059,7 +2060,7 @@ def _build_professional_query_from_args(args):
         if conds:
             qs = qs.filter(or_(*conds))
 
-    # Ville
+    # 4) Ville
     city_id = args.get("city_id", type=int)
     if city_id and hasattr(Professional, "city_id"):
         qs = qs.filter(Professional.city_id == city_id)
@@ -2068,22 +2069,21 @@ def _build_professional_query_from_args(args):
         if city and hasattr(Professional, "location"):
             qs = qs.filter(Professional.location.ilike(f"%{city}%"))
 
-    # Famille (catégorie)
+    # 5) Famille (catégorie)
     family = (args.get("family") or "").strip()
     if family:
-        like_family = family
         try:
             qs = qs.filter(
                 or_(
-                    Professional.primary_specialty.has(Specialty.category.ilike(like_family)),
-                    Professional.specialties.any(Specialty.category.ilike(like_family)),
+                    Professional.primary_specialty.has(Specialty.category.ilike(family)),
+                    Professional.specialties.any(Specialty.category.ilike(family)),
                     Professional.specialty.ilike(f"%{family}%"),
                 )
             )
         except Exception:
             pass
 
-    # Spécialité
+    # 6) Spécialité
     specialty_id = args.get("specialty_id", type=int)
     if specialty_id:
         if hasattr(Professional, "primary_specialty_id"):
@@ -2098,20 +2098,21 @@ def _build_professional_query_from_args(args):
         if specialty and hasattr(Professional, "specialty"):
             qs = qs.filter(Professional.specialty.ilike(f"%{specialty}%"))
 
-    # Mode (présentiel / en_ligne / visio)
+    # 7) Mode (présentiel / en_ligne / visio)
     mode = (args.get("mode") or "").strip().lower()
     if mode == "visio":
         mode = "en_ligne"
     if mode and hasattr(Professional, "consultation_types"):
         qs = qs.filter(Professional.consultation_types.ilike(f"%{mode}%"))
 
-    # Tri
+    # 8) Tri
     if hasattr(Professional, "is_featured"):
         qs = qs.order_by(Professional.is_featured.desc(), Professional.created_at.desc())
+    elif hasattr(Professional, "created_at"):
+        qs = qs.order_by(Professional.created_at.desc())
     else:
-        qs = qs.order_by(
-            Professional.created_at.desc() if hasattr(Professional, "created_at") else Professional.id.desc()
-        )
+        qs = qs.order_by(Professional.id.desc())
+
     return qs
 
 
