@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}Tighri — Mes rendez-vous{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Mes rendez-vous</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('patient_home') }}">↩ Espace patient</a>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('patient_booking') }}">+ Prendre un rendez-vous</a>
+    </div>
+  </div>
+
+  {% if appointments and appointments|length %}
+
+    <div class="table-responsive d-none d-md-block">
+      <table class="table align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Date</th>
+            <th>Heure</th>
+            <th>Professionnel</th>
+            <th>Adresse</th>
+            <th>Mode</th>
+            <th>Durée</th>
+            <th>Tarif</th>
+            <th>Statut</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in appointments %}
+            {# ==== Résolution robuste des champs ==== #}
+            {% set dt = a.appointment_date
+                        if a.appointment_date is defined and a.appointment_date
+                        else (a.start_at if a.start_at is defined else None) %}
+            {% set end_dt = a.end_at if a.end_at is defined else None %}
+
+            {% set pro = a.professional if a.professional is defined and a.professional else None %}
+            {% set pro_id = pro.id if pro else (a.professional_id if a.professional_id is defined else None) %}
+            {% set pro_name = (pro.name if pro and pro.name else
+                               (pro.full_name if pro and pro.full_name else
+                               (a.professional_name if a.professional_name is defined else
+                               (('Professionnel #' ~ pro_id) if pro_id else '—')))) %}
+
+            {% set addr = (
+                a.address if a.address is defined and a.address else
+                (pro.address if pro and pro.address else
+                (pro.location if pro and pro.location else
+                (pro.city.name if pro and pro.city is defined and pro.city and pro.city.name else
+                (a.location if a.location is defined else '—'))))
+            ) %}
+
+            {% set mode = (
+                a.mode if a.mode is defined and a.mode else
+                (a.consultation_mode if a.consultation_mode is defined else
+                (a.consultation_type if a.consultation_type is defined else
+                (pro.consultation_types if pro and pro.consultation_types else '—')))
+            ) %}
+
+            {% set duration_min = (
+                a.duration_minutes if a.duration_minutes is defined else
+                (a.duration if a.duration is defined else
+                (pro.session_duration if pro and pro.session_duration is defined else None))
+            ) %}
+
+            {% set price = (
+                a.price if a.price is defined else
+                (a.fee if a.fee is defined else
+                (pro.price if pro and pro.price is defined else None))
+            ) %}
+
+            {% set status_raw = a.status if a.status is defined and a.status else 'inconnu' %}
+            {% set st = status_raw|string|lower %}
+
+            <tr>
+              <td>
+                {% if dt %}{{ dt.strftime('%d/%m/%Y') }}{% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td>
+                {% if dt %}{{ dt.strftime('%H:%M') }}{% else %}<span class="text-muted">—</span>{% endif %}
+                {% if end_dt %}– {{ end_dt.strftime('%H:%M') }}{% endif %}
+              </td>
+              <td>
+                {% if pro_id %}
+                  <a href="{{ url_for('professional_detail', professional_id=pro_id) }}">{{ pro_name }}</a>
+                {% else %}
+                  {{ pro_name }}
+                {% endif %}
+              </td>
+              <td>
+                {{ addr }}
+              </td>
+              <td>
+                {{ mode if mode else '—' }}
+              </td>
+              <td>
+                {% if duration_min %}{{ duration_min }} min{% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td>
+                {% if price is not none %}{{ price }} {{ currency or 'MAD' }}{% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+              <td>
+                {% if st in ['requested','en_attente','pending'] %}
+                  <span class="badge bg-warning text-dark">En attente</span>
+                {% elif st in ['confirmed','confirmé','confirme','accepted','accepté'] %}
+                  <span class="badge bg-success">Confirmé</span>
+                {% elif st in ['cancelled','annulé','annule','rejected','refusé'] %}
+                  <span class="badge bg-secondary">Annulé</span>
+                {% else %}
+                  <span class="badge bg-light text-muted">{{ status_raw }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if pro_id %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('professional_detail', professional_id=pro_id) }}">
+                    Profil
+                  </a>
+                {% endif %}
+                {% if a.id is defined %}
+                  {# branche si tu as une route d’annulation #}
+                  {# <a class="btn btn-sm btn-outline-danger" href="{{ url_for('patient_cancel_appt', appt_id=a.id) }}">Annuler</a> #}
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# ====== Version mobile (cartes) ====== #}
+    <div class="d-md-none">
+      {% for a in appointments %}
+        {% set dt = a.appointment_date if a.appointment_date is defined and a.appointment_date else (a.start_at if a.start_at is defined else None) %}
+        {% set end_dt = a.end_at if a.end_at is defined else None %}
+        {% set pro = a.professional if a.professional is defined and a.professional else None %}
+        {% set pro_id = pro.id if pro else (a.professional_id if a.professional_id is defined else None) %}
+        {% set pro_name = (pro.name if pro and pro.name else (pro.full_name if pro and pro.full_name else (a.professional_name if a.professional_name is defined else (('Professionnel #' ~ pro_id) if pro_id else '—')))) %}
+        {% set addr = (a.address if a.address is defined and a.address else (pro.address if pro and pro.address else (pro.location if pro and pro.location else (pro.city.name if pro and pro.city is defined and pro.city and pro.city.name else (a.location if a.location is defined else '—'))))) %}
+        {% set mode = (a.mode if a.mode is defined and a.mode else (a.consultation_mode if a.consultation_mode is defined else (a.consultation_type if a.consultation_type is defined else (pro.consultation_types if pro and pro.consultation_types else '—')))) %}
+        {% set duration_min = (a.duration_minutes if a.duration_minutes is defined else (a.duration if a.duration is defined else (pro.session_duration if pro and pro.session_duration is defined else None))) %}
+        {% set price = (a.price if a.price is defined else (a.fee if a.fee is defined else (pro.price if pro and pro.price is defined else None))) %}
+        {% set status_raw = a.status if a.status is defined and a.status else 'inconnu' %}
+        {% set st = status_raw|string|lower %}
+
+        <div class="card mb-3 shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between">
+              <div>
+                <div class="fw-bold">{{ dt and dt.strftime('%d/%m/%Y') or '—' }} • {{ dt and dt.strftime('%H:%M') or '—' }}{% if end_dt %}–{{ end_dt.strftime('%H:%M') }}{% endif %}</div>
+                <div class="small text-muted">{{ mode }}{% if duration_min %} • {{ duration_min }} min{% endif %}{% if price is not none %} • {{ price }} {{ currency or 'MAD' }}{% endif %}</div>
+              </div>
+              <div>
+                {% if st in ['requested','en_attente','pending'] %}
+                  <span class="badge bg-warning text-dark">En attente</span>
+                {% elif st in ['confirmed','confirmé','confirme','accepted','accepté'] %}
+                  <span class="badge bg-success">Confirmé</span>
+                {% elif st in ['cancelled','annulé','annule','rejected','refusé'] %}
+                  <span class="badge bg-secondary">Annulé</span>
+                {% else %}
+                  <span class="badge bg-light text-muted">{{ status_raw }}</span>
+                {% endif %}
+              </div>
+            </div>
+
+            <hr class="my-2">
+
+            <div class="mb-1">
+              <div class="fw-semibold">Professionnel</div>
+              <div>
+                {% if pro_id %}
+                  <a href="{{ url_for('professional_detail', professional_id=pro_id) }}">{{ pro_name }}</a>
+                {% else %}
+                  {{ pro_name }}
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="mb-2">
+              <div class="fw-semibold">Adresse</div>
+              <div class="text-muted">{{ addr }}</div>
+            </div>
+
+            {% if a.note is defined and a.note %}
+              <div class="mb-2">
+                <div class="fw-semibold">Note</div>
+                <div class="text-muted">{{ a.note }}</div>
+              </div>
+            {% endif %}
+
+            <div class="d-flex gap-2">
+              {% if pro_id %}
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('professional_detail', professional_id=pro_id) }}">Profil</a>
+              {% endif %}
+              {# <a class="btn btn-sm btn-outline-danger" href="{{ url_for('patient_cancel_appt', appt_id=a.id) }}">Annuler</a> #}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+  {% else %}
+    <div class="text-center py-5">
+      <p class="lead mb-3">Vous n’avez pas encore de rendez-vous.</p>
+      <a class="btn btn-primary" href="{{ url_for('patient_booking') }}">Chercher un professionnel</a>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}
