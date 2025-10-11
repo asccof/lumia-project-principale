@@ -3223,29 +3223,97 @@ def patient_resources_api():
     return jsonify(payload)
 
 # ---------- Ressources/exercices ----------
-@app.route("/patient/exercises", methods=["GET"], endpoint="patient_exercises")
-@login_required
-def patient_exercises():
-    from sqlalchemy import or_  # import local sécurisé
-    _require_patient()
-    try:
-        visible_ids = {a.exercise_id for a in ExerciseAssignment.query.filter_by(patient_id=current_user.id).all()}
-    except Exception:
-        visible_ids = set()
+# ====== Côté patient : liste ================================================
+def _patient_exercises_view():
+    if getattr(current_user, "user_type", None) != "patient":
+        abort(403)
+    q = ExerciseAssignment.query
+    if hasattr(ExerciseAssignment, "patient_user_id"):
+        q = q.filter_by(patient_user_id=current_user.id)
+    else:
+        q = q.filter_by(patient_id=current_user.id)
+    assigns = (q.order_by(ExerciseAssignment.created_at.desc().nullslast()).all()
+               if hasattr(ExerciseAssignment, "created_at") else q.all())
+    return render_or_text("patient/exercises.html", "Mes exercices", assignments=assigns)
 
-    try:
-        q = Exercise.query
-        if hasattr(Exercise, "visibility"):
-            q = q.filter(or_(Exercise.visibility == "public",
-                             Exercise.visibility == "my_patients",
-                             Exercise.id.in_(visible_ids) if visible_ids else False))
-        elif visible_ids:
-            q = q.filter(Exercise.id.in_(visible_ids))
-        exercises = q.order_by(Exercise.created_at.desc()).all() if hasattr(Exercise, "created_at") else q.all()
-    except Exception:
-        exercises = []
+# ✅ N’enregistre la route que si l’endpoint n’existe pas déjà
+if "patient_exercises" not in app.view_functions:
+    app.add_url_rule(
+        "/patient/exercises",
+        endpoint="patient_exercises",
+        view_func=login_required(_patient_exercises_view),
+        methods=["GET"]
+    )
 
-    return render_or_text("patient/exercises.html", "Mes ressources", exercises=exercises)
+# ====== Côté patient : détail + remise ======================================
+def _patient_exercise_detail_view(assign_id: int):
+    if getattr(current_user, "user_type", None) != "patient":
+        abort(403)
+    a = ExerciseAssignment.query.get_or_404(assign_id)
+    ok = (a.patient_user_id == current_user.id) if hasattr(a, "patient_user_id") else (a.patient_id == current_user.id)
+    if not ok:
+        abort(403)
+    ex = getattr(a, "exercise", None) or (Exercise.query.get(a.exercise_id) if hasattr(a, "exercise_id") else None)
+    pro = Professional.query.get(a.professional_id)
+
+    if request.method == "POST":
+        f = request.form
+        text_answer = (f.get("text_answer") or "").strip() or None
+        upload = request.files.get("file_answer")
+        file_url = None
+        if upload and getattr(upload, "filename", ""):
+            try:
+                name = _save_attachment(upload); file_url = f"/u/attachments/{name}"
+                try:
+                    pf = PatientFile(
+                        user_id=current_user.id, professional_id=a.professional_id,
+                        file_url=file_url, file_name=upload.filename, content_type=upload.mimetype,
+                        size_bytes=getattr(upload, "content_length", 0) or 0,
+                    )
+                    db.session.add(pf)
+                except Exception:
+                    pass
+            except Exception:
+                flash("Fichier non accepté.", "warning")
+        try:
+            if "ExerciseProgress" in globals():
+                ep = ExerciseProgress(
+                    exercise_id=getattr(ex, "id", None),
+                    assignment_id=getattr(a, "id", None) if hasattr(a, "id") else None,
+                    patient_user_id=current_user.id if hasattr(ExerciseProgress, "patient_user_id") else None,
+                    status="submitted", notes=text_answer or None
+                )
+                if file_url and hasattr(ep, "file_url"):
+                    ep.file_url = file_url
+                db.session.add(ep)
+        except Exception:
+            pass
+        thread = _get_or_create_thread(a.professional_id, current_user.id)
+        body = f"Le patient a rendu l'exercice : {getattr(ex,'title','Exercice')}."
+        if text_answer:
+            body += f"\n\nRéponse :\n{text_answer[:2000]}"
+        _notify_in_thread(thread, current_user.id, body, file_url)
+        _email_or_pass(getattr(pro, "email", None),
+                       f"{BRAND_NAME} — Réponse d'exercice",
+                       f"Votre patient a rendu l'exercice « {getattr(ex,'title','Exercice')} ».")        
+        try:
+            db.session.commit(); flash("Réponse envoyée au professionnel.", "success")
+        except Exception:
+            db.session.rollback(); flash("Impossible d'enregistrer la réponse.", "danger")
+        return redirect(url_for("patient_exercise_detail", assign_id=a.id))
+
+    return render_or_text("patient/exercise_detail.html", "Exercice",
+                          assignment=a, exercise=ex, professional=pro)
+
+# ✅ Même logique : n’enregistre que si l’endpoint n’existe pas encore
+if "patient_exercise_detail" not in app.view_functions:
+    app.add_url_rule(
+        "/patient/exercises/<int:assign_id>",
+        endpoint="patient_exercise_detail",
+        view_func=login_required(_patient_exercise_detail_view),
+        methods=["GET", "POST"]
+    )
+
 
 # ---------- Carnet thérapeutique ----------
 @app.route("/patient/notebook", methods=["GET", "POST"], endpoint="patient_notebook")
