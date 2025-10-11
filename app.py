@@ -29,6 +29,98 @@ from jinja2 import TemplateNotFound
 from sqlalchemy import or_, text, func, case
 
 from extensions import db  # db.init_app(app) sera appelé après config
+# ===== Helpers robustes (compatibles avec ton schéma actuel) =================
+from datetime import datetime, date, time as _Time
+from flask import abort, flash, redirect, render_template, request, url_for, current_app
+from flask_login import current_user, login_required
+from sqlalchemy import or_, func, case
+
+def _current_professional_or_403():
+    if not getattr(current_user, "is_authenticated", False) or getattr(current_user, "user_type", None) != "professional":
+        abort(403)
+    pro = (Professional.query
+           .filter(
+               (Professional.name == (getattr(current_user, "full_name", "") or "")) |
+               (Professional.name == (getattr(current_user, "username", "") or ""))
+           ).first()) or Professional.query.filter_by(name=getattr(current_user, "username", None)).first()
+    if not pro:
+        abort(403)
+    return pro
+
+def _ensure_patient_case(pro_id: int, patient_user_id: int):
+    case_obj, profile = None, None
+    try:
+        case_obj = PatientCase.query.filter_by(professional_id=pro_id, patient_user_id=patient_user_id).first()
+        profile = PatientProfile.query.filter_by(user_id=patient_user_id).first()
+        if not case_obj:
+            case_obj = PatientCase(professional_id=pro_id, patient_user_id=patient_user_id, is_anonymous=False)
+            db.session.add(case_obj)
+        if not profile:
+            u = User.query.get(patient_user_id)
+            profile = PatientProfile(
+                user_id=patient_user_id,
+                full_name=getattr(u, "full_name", None) or getattr(u, "username", None),
+                phone=getattr(u, "phone", None),
+                address=getattr(u, "address", None),
+                email=getattr(u, "email", None),
+            )
+            db.session.add(profile)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return case_obj, profile
+
+def _get_or_create_thread(pro_id: int, patient_user_id: int):
+    th = None
+    try:
+        if hasattr(MessageThread, "patient_id"):
+            th = MessageThread.query.filter_by(professional_id=pro_id, patient_id=patient_user_id).first()
+        if not th and hasattr(MessageThread, "patient_user_id"):
+            th = MessageThread.query.filter_by(professional_id=pro_id, patient_user_id=patient_user_id).first()
+        if not th:
+            kwargs = dict(professional_id=pro_id)
+            if hasattr(MessageThread, "patient_id"):
+                kwargs["patient_id"] = patient_user_id
+            else:
+                kwargs["patient_user_id"] = patient_user_id
+            th = MessageThread(**kwargs)
+            db.session.add(th); db.session.commit()
+    except Exception:
+        db.session.rollback()
+    return th
+
+def _notify_in_thread(thread, sender_user_id: int, text: str, attachment_url: str | None = None):
+    if not thread:
+        return
+    try:
+        msg = Message(thread_id=thread.id, sender_id=sender_user_id, body=text or None)
+        if attachment_url and hasattr(Message, "attachment_url"):
+            setattr(msg, "attachment_url", attachment_url)
+        db.session.add(msg); db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+def _email_or_pass(to_email: str | None, subject: str, body: str):
+    if to_email:
+        try:
+            safe_send_email(to_email, subject, body)
+        except Exception:
+            pass
+
+def _assign_exercise_to_patient(ex, pro_id: int, patient_user_id: int, due_date_str: str | None):
+    due = None
+    if due_date_str:
+        try: due = datetime.fromisoformat(due_date_str).date()
+        except Exception: pass
+    fields = dict(exercise_id=ex.id, professional_id=pro_id, status="assigned", due_date=due)
+    if hasattr(ExerciseAssignment, "patient_user_id"):
+        fields["patient_user_id"] = patient_user_id
+    else:
+        fields["patient_id"] = patient_user_id
+    assign = ExerciseAssignment(**fields)
+    db.session.add(assign); db.session.commit()
+    return assign
+# ============================================================================
 
 # -------------------------------------------------------------------
 # Environnement
@@ -1586,6 +1678,22 @@ def professional_appointment_action(appointment_id: int, action: str):
     db.session.commit()
     return redirect(request.referrer or url_for("professional_appointments"))
 
+# ===== Action RDV (confirmer/annuler) pour supporter professional_appointment_action
+@app.route("/professional/appointments/<int:appointment_id>/<action>", methods=["POST"], endpoint="professional_appointment_action")
+@login_required
+def professional_appointment_action(appointment_id: int, action: str):
+    pro = _current_professional_or_403()
+    ap = Appointment.query.get_or_404(appointment_id)
+    if ap.professional_id != pro.id:
+        abort(403)
+    action = (action or "").strip().lower()
+    if action in ("cancel", "annule", "annuler"):
+        ap.status = "annule"
+    elif action in ("confirm", "confirme", "valider"):
+        ap.status = "confirme"
+    db.session.commit()
+    flash("Rendez-vous mis à jour.", "success")
+    return redirect(url_for("professional_appointments"))
 
 # ====== Entrée "Dossier patient" (alias smart) ======
 @app.route("/pro/patient", methods=["GET"], endpoint="pro_patient_entry")
@@ -2421,6 +2529,211 @@ def pro_support():
     tickets = SupportTicket.query.filter_by(professional_id=pro.id).order_by(SupportTicket.created_at.desc()).all()
     guides = Guide.query.order_by(Guide.created_at.desc()).all()
     return render_or_text("pro/support.html", "Support & Guides", tickets=tickets, guides=guides, professional=pro)
+# ====== Dossier patient (auto-prérempli) =====================================
+@app.route("/pro/patients/<int:patient_id>/dossier", methods=["GET","POST"], endpoint="pro_patient_dossier")
+@login_required
+def pro_patient_dossier(patient_id: int):
+    pro = _current_professional_or_403()
+    user = User.query.get_or_404(patient_id)
+    if user.user_type != "patient": abort(404)
+
+    case, profile = _ensure_patient_case(pro.id, user.id)
+    medhist = None
+    try:
+        medhist = (MedicalHistory.query
+                   .filter_by(patient_id=user.id, professional_id=pro.id)
+                   .order_by(MedicalHistory.id.desc()).first())
+    except Exception:
+        pass
+
+    if request.method == "POST":
+        f = request.form
+        if profile:
+            profile.full_name = f.get("full_name") or profile.full_name
+            profile.email = f.get("email") or profile.email
+            profile.phone = f.get("phone") or profile.phone
+            profile.address = f.get("address") or profile.address
+        if case:
+            case.display_name = f.get("display_name") or case.display_name or None
+            case.is_anonymous = (f.get("is_anonymous") == "on")
+            if hasattr(case, "notes"): case.notes = f.get("notes") or case.notes
+        summary = (f.get("summary") or "").strip()
+        diagnostics = (f.get("diagnostics") or "").strip()
+        try:
+            if "MedicalHistory" in globals():
+                if not medhist:
+                    medhist = MedicalHistory(patient_id=user.id, professional_id=pro.id,
+                                             summary=summary or None, custom_fields=diagnostics or None)
+                    db.session.add(medhist)
+                else:
+                    if summary: medhist.summary = summary
+                    if diagnostics: medhist.custom_fields = diagnostics
+        except Exception:
+            pass
+        try:
+            db.session.commit(); flash("Dossier patient enregistré.", "success")
+        except Exception:
+            db.session.rollback(); flash("Impossible d'enregistrer le dossier.", "danger")
+        return redirect(url_for("pro_patient_dossier", patient_id=user.id))
+
+    sessions = []
+    try:
+        sessions = (TherapySession.query
+                    .filter_by(professional_id=pro.id, patient_id=user.id)
+                    .order_by(TherapySession.start_at.desc()).limit(10).all())
+    except Exception:
+        pass
+    thread = _get_or_create_thread(pro.id, user.id)
+
+    return render_or_text("pro/patient_dossier.html", "Dossier patient",
+                          professional=pro, patient=user, case=case, profile=profile,
+                          medhist=medhist, sessions=sessions, thread=thread)
+
+# ====== Exercices (côté PRO : créer/éditer/téléverser + envoyer) =============
+@app.route("/pro/patients/<int:patient_id>/exercises", methods=["GET","POST"], endpoint="pro_patient_exercises")
+@login_required
+def pro_patient_exercises(patient_id: int):
+    pro = _current_professional_or_403()
+    user = User.query.get_or_404(patient_id)
+    if user.user_type != "patient": abort(404)
+    _ensure_patient_case(pro.id, user.id)
+
+    if request.method == "POST":
+        f = request.form
+        title = (f.get("title") or "").strip()
+        text_content = (f.get("text_content") or "").strip() or None
+        fmt = (f.get("content_format") or "texte").strip().lower()
+        visibility = (f.get("visibility") or "my_patients").strip()
+        due_date = f.get("due_date")
+        technique = (f.get("technique") or "").strip() or None
+        family = (f.get("family") or "").strip() or None
+
+        # Nouveau ou existant
+        if title:
+            ex = Exercise(
+                owner_id=current_user.id, professional_id=pro.id,
+                title=title, description=(f.get("description") or None),
+                family=family, type=(f.get("type") or "exercice"), technique=technique,
+                content_format=fmt, text_content=text_content, visibility=visibility, is_approved=False
+            )
+            up = request.files.get("file")
+            if up and getattr(up, "filename", ""):
+                try:
+                    name = _save_attachment(up); ex.file_url = f"/u/attachments/{name}"
+                except Exception:
+                    flash("Fichier non accepté.", "warning")
+            db.session.add(ex); db.session.commit()
+        else:
+            ex_id = f.get("exercise_id", type=int)
+            if not ex_id:
+                flash("Indiquez un titre OU choisissez un exercice existant.", "warning")
+                return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+            ex = Exercise.query.get_or_404(ex_id)
+
+        _assign_exercise_to_patient(ex, pro.id, user.id, due_date)
+        thread = _get_or_create_thread(pro.id, user.id)
+        _notify_in_thread(thread, current_user.id, f"Un exercice vous a été assigné : {ex.title}.")
+        _email_or_pass(getattr(user, "email", None),
+                       f"{BRAND_NAME} — Nouvel exercice",
+                       f"Un nouvel exercice « {ex.title} » est disponible dans votre espace patient.")
+        flash("Exercice envoyé au patient.", "success")
+        return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+
+    assigns = []
+    try:
+        q = ExerciseAssignment.query.filter(ExerciseAssignment.professional_id == pro.id)
+        if hasattr(ExerciseAssignment, "patient_user_id"):
+            q = q.filter(ExerciseAssignment.patient_user_id == user.id)
+        else:
+            q = q.filter(ExerciseAssignment.patient_id == user.id)
+        assigns = q.order_by(ExerciseAssignment.created_at.desc().nullslast()).all()
+    except Exception:
+        pass
+
+    existing = []
+    try:
+        existing = (Exercise.query
+                    .filter(or_(Exercise.visibility.in_(("public","my_patients")),
+                                Exercise.owner_id == current_user.id,
+                                Exercise.professional_id == pro.id))
+                    .order_by(Exercise.created_at.desc())
+                    .limit(50).all())
+    except Exception:
+        pass
+
+    return render_or_text("pro/patient_exercises.html", "Exercices du patient",
+                          professional=pro, patient=user, assignments=assigns, library=existing)
+
+# ====== Côté patient : liste ================================================
+@app.route("/patient/exercises", methods=["GET"], endpoint="patient_exercises")
+@login_required
+def patient_exercises():
+    if getattr(current_user, "user_type", None) != "patient": abort(403)
+    q = ExerciseAssignment.query
+    if hasattr(ExerciseAssignment, "patient_user_id"):
+        q = q.filter_by(patient_user_id=current_user.id)
+    else:
+        q = q.filter_by(patient_id=current_user.id)
+    assigns = (q.order_by(ExerciseAssignment.created_at.desc().nullslast()).all()
+               if hasattr(ExerciseAssignment, "created_at") else q.all())
+    return render_or_text("patient/exercises.html", "Mes exercices", assignments=assigns)
+
+# ====== Côté patient : détail + remise ======================================
+@app.route("/patient/exercises/<int:assign_id>", methods=["GET","POST"], endpoint="patient_exercise_detail")
+@login_required
+def patient_exercise_detail(assign_id: int):
+    if getattr(current_user, "user_type", None) != "patient": abort(403)
+    a = ExerciseAssignment.query.get_or_404(assign_id)
+    ok = (a.patient_user_id == current_user.id) if hasattr(a, "patient_user_id") else (a.patient_id == current_user.id)
+    if not ok: abort(403)
+    ex = getattr(a, "exercise", None) or (Exercise.query.get(a.exercise_id) if hasattr(a, "exercise_id") else None)
+    pro = Professional.query.get(a.professional_id)
+
+    if request.method == "POST":
+        f = request.form
+        text_answer = (f.get("text_answer") or "").strip() or None
+        upload = request.files.get("file_answer")
+        file_url = None
+        if upload and getattr(upload, "filename", ""):
+            try:
+                name = _save_attachment(upload); file_url = f"/u/attachments/{name}"
+                try:
+                    pf = PatientFile(
+                        user_id=current_user.id, professional_id=a.professional_id,
+                        file_url=file_url, file_name=upload.filename, content_type=upload.mimetype,
+                        size_bytes=getattr(upload, "content_length", 0) or 0,
+                    )
+                    db.session.add(pf)
+                except Exception: pass
+            except Exception:
+                flash("Fichier non accepté.", "warning")
+        try:
+            if "ExerciseProgress" in globals():
+                ep = ExerciseProgress(
+                    exercise_id=getattr(ex, "id", None),
+                    assignment_id=getattr(a, "id", None) if hasattr(a, "id") else None,
+                    patient_user_id=current_user.id if hasattr(ExerciseProgress, "patient_user_id") else None,
+                    status="submitted", notes=text_answer or None
+                )
+                if file_url and hasattr(ep, "file_url"): ep.file_url = file_url
+                db.session.add(ep)
+        except Exception:
+            pass
+        thread = _get_or_create_thread(a.professional_id, current_user.id)
+        body = f"Le patient a rendu l'exercice : {getattr(ex,'title','Exercice')}."
+        if text_answer: body += f"\n\nRéponse :\n{text_answer[:2000]}"
+        _notify_in_thread(thread, current_user.id, body, file_url)
+        _email_or_pass(getattr(pro, "email", None),
+                       f"{BRAND_NAME} — Réponse d'exercice",
+                       f"Votre patient a rendu l'exercice « {getattr(ex,'title','Exercice')} ».")        
+        try:
+            db.session.commit(); flash("Réponse envoyée au professionnel.", "success")
+        except Exception:
+            db.session.rollback(); flash("Impossible d'enregistrer la réponse.", "danger")
+        return redirect(url_for("patient_exercise_detail", assign_id=a.id))
+
+    return render_or_text("patient/exercise_detail.html", "Exercice",
+                          assignment=a, exercise=ex, professional=pro)
 
 # =========================
 #   ESPACE PATIENT (CLEAN)
