@@ -203,6 +203,66 @@ if "_ensure_patient_case" not in globals():
         return case_obj, profile
 
 # -------------------------------------------------------------------
+# Helpers: exercises / assignments
+# -------------------------------------------------------------------
+from datetime import datetime
+
+def _assign_exercise_to_patient(exercise, professional_id, patient_user_id, due_date=None):
+    """
+    Assigne un exercice à un patient (idempotent).
+    - exercise: instance de Exercise (déjà chargée)
+    - professional_id: id du pro qui assigne
+    - patient_user_id: id du User (patient)
+    - due_date: date d’échéance (str 'YYYY-MM-DD', date ou None)
+    """
+    # Normaliser la date si elle arrive en string
+    if isinstance(due_date, str) and due_date.strip():
+        try:
+            due_date = datetime.strptime(due_date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            # Si format invalide, on ignore l’échéance au lieu de planter
+            due_date = None
+
+    # Rechercher un assignment existant pour éviter les doublons
+    assignment = ExerciseAssignment.query.filter_by(
+        exercise_id=getattr(exercise, "id", None),
+        patient_id=patient_user_id,
+        professional_id=professional_id,
+    ).first()
+
+    if assignment:
+        # Mettre à jour la due_date si fournie
+        if due_date is not None and hasattr(assignment, "due_date"):
+            assignment.due_date = due_date
+        # Tenter de mettre à jour les champs temporels si présents dans le modèle
+        if hasattr(assignment, "updated_at"):
+            assignment.updated_at = datetime.utcnow()
+    else:
+        # Créer un nouvel assignment
+        params = dict(
+            exercise_id=getattr(exercise, "id", None),
+            patient_id=patient_user_id,
+            professional_id=professional_id,
+        )
+        if due_date is not None:
+            params["due_date"] = due_date
+
+        assignment = ExerciseAssignment(**params)
+
+        # Champs optionnels (on ne les renseigne que s’ils existent sur le modèle)
+        if hasattr(assignment, "status") and getattr(assignment, "status", None) is None:
+            assignment.status = "active"
+        if hasattr(assignment, "created_at"):
+            assignment.created_at = datetime.utcnow()
+        if hasattr(assignment, "updated_at"):
+            assignment.updated_at = datetime.utcnow()
+
+        db.session.add(assignment)
+
+    db.session.commit()
+    return assignment
+
+# -------------------------------------------------------------------
 # Admin blueprint
 # -------------------------------------------------------------------
 from admin_server import admin_bp, ProfessionalOrder, _build_notif
