@@ -1982,10 +1982,13 @@ def _require_patient():
         abort(403)
 
 # ---------- Accueil ----------
+# ---------- Accueil ----------
 @app.route("/patient", endpoint="patient_home")
 @login_required
 def patient_home():
     _require_patient()
+
+    # --- Récup profils & blocs déjà en place ---
     profile = PatientProfile.query.filter_by(user_id=current_user.id).first()
     my_threads = (MessageThread.query
                   .filter_by(patient_id=current_user.id)
@@ -1999,10 +2002,57 @@ def patient_home():
                    .filter_by(patient_id=current_user.id)
                    .order_by(TherapySession.start_at.desc())
                    .limit(10).all())
+
+    # --- Champs et statuts RDV (robuste aux schémas différents) ---
+    from datetime import datetime
+    dt_field = None
+    if hasattr(Appointment, "appointment_date"):
+        dt_field = Appointment.appointment_date
+    elif hasattr(Appointment, "start_at"):
+        dt_field = Appointment.start_at
+
+    # Jeux de statuts (on couvre plusieurs variantes possibles)
+    PENDING_STATUSES = {"requested", "pending", "en_attente"}
+    CONFIRMED_STATUSES = {"confirmed", "accepted", "approved"}
+
+    now = datetime.utcnow()
+
+    next_appointment = None
+    pending_count = 0
+
+    try:
+        base_q = Appointment.query.filter(Appointment.patient_id == current_user.id)
+
+        # Comptage des "en attente"
+        if hasattr(Appointment, "status"):
+            pending_count = (base_q
+                             .filter(Appointment.status.in_(list(PENDING_STATUSES)))
+                             .count())
+        else:
+            pending_count = 0  # si pas de champ status, on considère 0 "en attente"
+
+        # Prochain rendez-vous confirmé à venir
+        if dt_field is not None:
+            q = base_q.filter(dt_field >= now)
+            if hasattr(Appointment, "status"):
+                q = q.filter(Appointment.status.in_(list(CONFIRMED_STATUSES)))
+            next_appointment = q.order_by(dt_field.asc()).first()
+        else:
+            next_appointment = None
+    except Exception:
+        # En cas d'anomalie DB, ne casse pas le dashboard
+        next_appointment = None
+        pending_count = 0
+
     return render_or_text(
-        "patient/home.html", "Espace patient",
-        profile=profile, threads=my_threads,
-        assignments=my_assignments, sessions=my_sessions
+        "patient/home.html",
+        "Espace patient",
+        profile=profile,
+        threads=my_threads,
+        assignments=my_assignments,
+        sessions=my_sessions,
+        next_appointment=next_appointment,
+        pending_count=pending_count
     )
 
 # ---------- Rendez-vous ----------
