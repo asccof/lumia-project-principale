@@ -1849,57 +1849,257 @@ def pro_desk():
 @app.route("/pro/patients", methods=["GET"], endpoint="pro_patients")
 @login_required
 def pro_patients():
+    """
+    Liste des patients du pro basée sur TOUT lien existant :
+    - Appointment.professional_id
+    - TherapySession.professional_id
+    - MessageThread.professional_id (supporte patient_id OU patient_user_id)
+    - ExerciseAssignment.professional_id (patient_id ou patient_user_id)
+    - PatientCase.professional_id (patient_user_id)
+    On renvoie rows = [(User, total_rdv, confirme_count, last_date), ...]
+    """
     from sqlalchemy import or_, func, case
-    if current_user.user_type != "professional":
+    from datetime import datetime
+
+    if getattr(current_user, "user_type", None) != "professional":
         flash("Accès réservé aux professionnels.", "warning")
         return redirect(url_for("index"))
 
-    pro = Professional.query.filter_by(name=current_user.username).first()
+    # Résoudre le pro de façon robuste (même logique que le reste de l'app)
+    pro = (
+        Professional.query
+        .filter(
+            (Professional.name == (getattr(current_user, "full_name", "") or "")) |
+            (Professional.name == (getattr(current_user, "username", "") or ""))
+        )
+        .first()
+    ) or Professional.query.filter_by(name=current_user.username).first()
+
     if not pro:
         flash("Profil professionnel non trouvé", "danger")
         return redirect(url_for("professional_dashboard"))
 
-    q = (request.args.get("q") or "").strip()
+    q_text = (request.args.get("q") or "").strip()
     page = max(1, request.args.get("page", type=int) or 1)
     per_page = 20
 
-    subq = (
-        db.session.query(
-            Appointment.patient_id.label("pid"),
-            func.count(Appointment.id).label("total_rdv"),
-            func.sum(case((Appointment.status == "confirme", 1), else_=0)).label("confirme_count"),
-            func.max(Appointment.appointment_date).label("last_date"),
+    # ---- 1) Collecte de tous les patient_ids liés au pro (set())
+    patient_ids = set()
+
+    # Appointments (source principale)
+    try:
+        ids = [pid for (pid,) in db.session.query(Appointment.patient_id)
+                                   .filter(Appointment.professional_id == pro.id,
+                                           Appointment.patient_id.isnot(None)).distinct().all()]
+        patient_ids.update(ids)
+    except Exception:
+        pass
+
+    # TherapySession
+    try:
+        ids = [pid for (pid,) in db.session.query(TherapySession.patient_id)
+                                   .filter(TherapySession.professional_id == pro.id,
+                                           TherapySession.patient_id.isnot(None)).distinct().all()]
+        patient_ids.update(ids)
+    except Exception:
+        pass
+
+    # MessageThread — compat champs (patient_id OU patient_user_id)
+    try:
+        if hasattr(MessageThread, "patient_id"):
+            ids = [pid for (pid,) in db.session.query(MessageThread.patient_id)
+                                       .filter(MessageThread.professional_id == pro.id,
+                                               MessageThread.patient_id.isnot(None)).distinct().all()]
+            patient_ids.update(ids)
+    except Exception:
+        pass
+    try:
+        if hasattr(MessageThread, "patient_user_id"):
+            ids = [pid for (pid,) in db.session.query(MessageThread.patient_user_id)
+                                       .filter(MessageThread.professional_id == pro.id,
+                                               MessageThread.patient_user_id.isnot(None)).distinct().all()]
+            patient_ids.update(ids)
+    except Exception:
+        pass
+
+    # ExerciseAssignment — compat (patient_id / patient_user_id)
+    try:
+        if hasattr(ExerciseAssignment, "patient_id"):
+            ids = [pid for (pid,) in db.session.query(ExerciseAssignment.patient_id)
+                                       .filter(ExerciseAssignment.professional_id == pro.id,
+                                               ExerciseAssignment.patient_id.isnot(None)).distinct().all()]
+            patient_ids.update(ids)
+    except Exception:
+        pass
+    try:
+        if hasattr(ExerciseAssignment, "patient_user_id"):
+            ids = [pid for (pid,) in db.session.query(ExerciseAssignment.patient_user_id)
+                                       .filter(ExerciseAssignment.professional_id == pro.id,
+                                               ExerciseAssignment.patient_user_id.isnot(None)).distinct().all()]
+            patient_ids.update(ids)
+    except Exception:
+        pass
+
+    # PatientCase (patient_user_id)
+    try:
+        if "PatientCase" in globals() and hasattr(PatientCase, "patient_user_id"):
+            ids = [pid for (pid,) in db.session.query(PatientCase.patient_user_id)
+                                       .filter(PatientCase.professional_id == pro.id,
+                                               PatientCase.patient_user_id.isnot(None)).distinct().all()]
+            patient_ids.update(ids)
+    except Exception:
+        pass
+
+    if not patient_ids:
+        # Vue vide, mais on garde la forme
+        return render_or_text(
+            "pro/patients.html", "Mes patients",
+            rows=[], q=q_text, page=page, per_page=per_page, total=0, professional=pro
         )
-        .filter(Appointment.professional_id == pro.id)
-        .group_by(Appointment.patient_id)
-        .subquery()
-    )
 
-    base = (
-        db.session.query(User, subq.c.total_rdv, subq.c.confirme_count, subq.c.last_date)
-        .join(subq, subq.c.pid == User.id)
-        .order_by(subq.c.last_date.desc().nullslast())
-    )
-
-    if q:
-        like = f"%{q}%"
-        base = base.filter(
-            or_(
-                User.username.ilike(like),
-                User.full_name.ilike(like),
-                User.email.ilike(like),
-                User.phone.ilike(like),
-            )
+    # ---- 2) Option de filtre texte q sur User
+    users_q = User.query.filter(User.id.in_(patient_ids), User.user_type == "patient")
+    if q_text:
+        like = f"%{q_text}%"
+        users_q = users_q.filter(or_(
+            User.username.ilike(like),
+            User.full_name.ilike(like),
+            User.email.ilike(like),
+            User.phone.ilike(like),
+        ))
+    users = users_q.all()
+    if not users:
+        return render_or_text(
+            "pro/patients.html", "Mes patients",
+            rows=[], q=q_text, page=page, per_page=per_page, total=0, professional=pro
         )
 
-    total = base.count()
-    rows = base.limit(per_page).offset((page - 1) * per_page).all()
+    filtered_ids = [u.id for u in users]
+
+    # ---- 3) Agrégations RDV (total, confirmés, dernière date RDV)
+    # Statuts confirmés compatibles (selon ta base)
+    CONF = {"confirme", "confirmé", "confirmed"}
+
+    # total_rdv & confirme_count & last_rdv_dt
+    ap_agg = {}
+    try:
+        # total
+        rows_total = db.session.query(
+            Appointment.patient_id,
+            func.count(Appointment.id)
+        ).filter(
+            Appointment.professional_id == pro.id,
+            Appointment.patient_id.in_(filtered_ids)
+        ).group_by(Appointment.patient_id).all()
+
+        for pid, cnt in rows_total:
+            ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
+            ap_agg[pid]["total"] = int(cnt or 0)
+
+        # confirmés
+        try:
+            rows_conf = db.session.query(
+                Appointment.patient_id,
+                func.count(Appointment.id)
+            ).filter(
+                Appointment.professional_id == pro.id,
+                Appointment.patient_id.in_(filtered_ids),
+                func.lower(func.coalesce(Appointment.status, "")).
+                    in_([s.lower() for s in CONF])
+            ).group_by(Appointment.patient_id).all()
+            for pid, cnt in rows_conf:
+                ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
+                ap_agg[pid]["conf"] = int(cnt or 0)
+        except Exception:
+            pass
+
+        # last_date à partir d'appointment_date
+        try:
+            rows_last = db.session.query(
+                Appointment.patient_id,
+                func.max(Appointment.appointment_date)
+            ).filter(
+                Appointment.professional_id == pro.id,
+                Appointment.patient_id.in_(filtered_ids)
+            ).group_by(Appointment.patient_id).all()
+            for pid, dtv in rows_last:
+                ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
+                ap_agg[pid]["last"] = dtv
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # ---- 4) Dernière interaction via Session / MessageThread
+    # TherapySession.start_at
+    try:
+        rows_last_sess = db.session.query(
+            TherapySession.patient_id,
+            func.max(TherapySession.start_at)
+        ).filter(
+            TherapySession.professional_id == pro.id,
+            TherapySession.patient_id.in_(filtered_ids)
+        ).group_by(TherapySession.patient_id).all()
+        for pid, dtv in rows_last_sess:
+            ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
+            if dtv and (ap_agg[pid]["last"] is None or (isinstance(ap_agg[pid]["last"], datetime) and dtv > ap_agg[pid]["last"])):
+                ap_agg[pid]["last"] = dtv
+    except Exception:
+        pass
+
+    # MessageThread.updated_at (support patient_id OU patient_user_id)
+    # patient_id
+    try:
+        if hasattr(MessageThread, "patient_id"):
+            rows_last_th = db.session.query(
+                MessageThread.patient_id,
+                func.max(MessageThread.updated_at)
+            ).filter(
+                MessageThread.professional_id == pro.id,
+                MessageThread.patient_id.in_(filtered_ids)
+            ).group_by(MessageThread.patient_id).all()
+            for pid, dtv in rows_last_th:
+                ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
+                if dtv and (ap_agg[pid]["last"] is None or (isinstance(ap_agg[pid]["last"], datetime) and dtv > ap_agg[pid]["last"])):
+                    ap_agg[pid]["last"] = dtv
+    except Exception:
+        pass
+    # patient_user_id
+    try:
+        if hasattr(MessageThread, "patient_user_id"):
+            rows_last_th2 = db.session.query(
+                MessageThread.patient_user_id,
+                func.max(MessageThread.updated_at)
+            ).filter(
+                MessageThread.professional_id == pro.id,
+                MessageThread.patient_user_id.in_(filtered_ids)
+            ).group_by(MessageThread.patient_user_id).all()
+            for pid, dtv in rows_last_th2:
+                ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
+                if dtv and (ap_agg[pid]["last"] is None or (isinstance(ap_agg[pid]["last"], datetime) and dtv > ap_agg[pid]["last"])):
+                    ap_agg[pid]["last"] = dtv
+    except Exception:
+        pass
+
+    # ---- 5) Construire rows et trier par dernière interaction desc
+    rows_py = []
+    for u in users:
+        agg = ap_agg.get(u.id, {"total": 0, "conf": 0, "last": None})
+        rows_py.append((u, int(agg.get("total", 0) or 0), int(agg.get("conf", 0) or 0), agg.get("last", None)))
+
+    rows_py.sort(key=lambda t: (t[3] is not None, t[3]), reverse=True)
+
+    # ---- 6) Pagination côté Python
+    total = len(rows_py)
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_rows = rows_py[start:end]
 
     return render_or_text(
         "pro/patients.html",
         "Mes patients",
-        rows=rows,
-        q=q,
+        rows=page_rows,
+        q=q_text,
         page=page,
         per_page=per_page,
         total=total,
