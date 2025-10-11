@@ -205,23 +205,40 @@ if "_ensure_patient_case" not in globals():
 # -------------------------------------------------------------------
 # Helpers: exercises / assignments
 # -------------------------------------------------------------------
-from datetime import datetime
+# -------------------------------------------------------------------
+# Helpers: exercises / assignments  (fix: due_date "" -> None)
+# -------------------------------------------------------------------
+from datetime import datetime, date
+
+def _normalize_due_date(value):
+    """
+    Convertit la valeur reçue en objet date ou None.
+    Accepte: None, '', 'YYYY-MM-DD', date, datetime.
+    Toute chaîne vide/blanche -> None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except ValueError:
+            # format invalide => on ignore plutôt que casser
+            return None
+    # type non géré
+    return None
 
 def _assign_exercise_to_patient(exercise, professional_id, patient_user_id, due_date=None):
     """
-    Assigne un exercice à un patient (idempotent).
-    - exercise: instance de Exercise (déjà chargée)
-    - professional_id: id du pro qui assigne
-    - patient_user_id: id du User (patient)
-    - due_date: date d’échéance (str 'YYYY-MM-DD', date ou None)
+    Assigne un exercice à un patient (idempotent) et gère correctement due_date.
     """
-    # Normaliser la date si elle arrive en string
-    if isinstance(due_date, str) and due_date.strip():
-        try:
-            due_date = datetime.strptime(due_date.strip(), "%Y-%m-%d").date()
-        except ValueError:
-            # Si format invalide, on ignore l’échéance au lieu de planter
-            due_date = None
+    normalized_due = _normalize_due_date(due_date)
 
     # Rechercher un assignment existant pour éviter les doublons
     assignment = ExerciseAssignment.query.filter_by(
@@ -231,29 +248,30 @@ def _assign_exercise_to_patient(exercise, professional_id, patient_user_id, due_
     ).first()
 
     if assignment:
-        # Mettre à jour la due_date si fournie
-        if due_date is not None and hasattr(assignment, "due_date"):
-            assignment.due_date = due_date
-        # Tenter de mettre à jour les champs temporels si présents dans le modèle
+        # Mettre à jour la due_date (y compris la vider si l'utilisateur a effacé le champ)
+        if hasattr(assignment, "due_date"):
+            assignment.due_date = normalized_due  # peut être None
         if hasattr(assignment, "updated_at"):
             assignment.updated_at = datetime.utcnow()
     else:
-        # Créer un nouvel assignment
+        # Construire les paramètres sans jamais passer "" pour due_date
         params = dict(
             exercise_id=getattr(exercise, "id", None),
             patient_id=patient_user_id,
             professional_id=professional_id,
+            status="active",
+            created_at=datetime.utcnow() if hasattr(ExerciseAssignment, "created_at") else None,
         )
-        if due_date is not None:
-            params["due_date"] = due_date
+        # Nettoyage des clés None inutiles
+        if params.get("created_at") is None:
+            params.pop("created_at", None)
+
+        if normalized_due is not None:
+            params["due_date"] = normalized_due  # type: date
+        # Surtout ne pas mettre due_date si None (sinon risque de passer "")
 
         assignment = ExerciseAssignment(**params)
 
-        # Champs optionnels (on ne les renseigne que s’ils existent sur le modèle)
-        if hasattr(assignment, "status") and getattr(assignment, "status", None) is None:
-            assignment.status = "active"
-        if hasattr(assignment, "created_at"):
-            assignment.created_at = datetime.utcnow()
         if hasattr(assignment, "updated_at"):
             assignment.updated_at = datetime.utcnow()
 
@@ -261,6 +279,7 @@ def _assign_exercise_to_patient(exercise, professional_id, patient_user_id, due_
 
     db.session.commit()
     return assignment
+
 
 # -------------------------------------------------------------------
 # Admin blueprint
