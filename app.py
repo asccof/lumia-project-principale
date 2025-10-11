@@ -2022,12 +2022,7 @@ if "patient_appointments" not in app.view_functions:
 @login_required
 def patient_book(professional_id):
     _require_patient()
-    pro = db.session.get(Professional, professional_id)
-    if not pro:
-        abort(404)
-    # Redirige vers la page de réservation PRÉ-FILTRÉE
-    return redirect(url_for("patient_booking", professional_id=pro.id, mode="all"))
-
+    return redirect(url_for("patient_availability", professional_id=professional_id))
 # ==== FILTRES PROFESSIONNELS (SANS TABS) ====
 from sqlalchemy import or_
 from datetime import datetime
@@ -2435,10 +2430,9 @@ def patient_thread(professional_id: int):
 # ---------- Alias public /book/<id> ----------
 @app.route("/book/<int:professional_id>", methods=["GET"], endpoint="book_alias")
 def book_alias(professional_id):
-    next_url = url_for("patient_book", professional_id=professional_id)
+    next_url = url_for("patient_availability", professional_id=professional_id)
     if current_user.is_authenticated and getattr(current_user, "user_type", None) == "patient":
         return redirect(next_url)
-    # Non connecté → login puis retour vers patient_book
     return redirect(url_for("login", next=next_url))
 
 # ---------- Liste publique de pros ----------
