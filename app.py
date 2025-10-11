@@ -10,8 +10,6 @@ import json
 from pathlib import Path
 from typing import Optional
 from datetime import datetime, date, time as dtime, timedelta
-from sqlalchemy import or_, and_
-
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 import requests
@@ -26,231 +24,10 @@ from flask_login import (
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from jinja2 import TemplateNotFound
-from sqlalchemy import or_, text, func, case
+from sqlalchemy import or_, and_, text, func, case
 
+# === Extensions (db) ===
 from extensions import db  # db.init_app(app) sera appelé après config
-# ===== Helpers robustes (compatibles avec ton schéma actuel) =================
-from datetime import datetime, date, time as _Time
-from flask import abort, flash, redirect, render_template, request, url_for, current_app
-from flask_login import current_user, login_required
-from sqlalchemy import or_, func, case
-
-def _current_professional_or_403():
-    if not getattr(current_user, "is_authenticated", False) or getattr(current_user, "user_type", None) != "professional":
-        abort(403)
-    pro = (Professional.query
-           .filter(
-               (Professional.name == (getattr(current_user, "full_name", "") or "")) |
-               (Professional.name == (getattr(current_user, "username", "") or ""))
-           ).first()) or Professional.query.filter_by(name=getattr(current_user, "username", None)).first()
-    if not pro:
-        abort(403)
-    return pro
-# =========================
-#   MESSAGERIE PRO — INBOX
-# =========================
-@app.route("/pro/messages", methods=["GET"], endpoint="pro_messages")
-@login_required
-def pro_messages():
-    if getattr(current_user, "user_type", None) != "professional":
-        abort(403)
-    pro = _current_professional_or_403()
-
-    # Recherche par nom / email / téléphone du patient
-    from sqlalchemy import or_
-    q = (request.args.get("q") or "").strip()
-
-    base = MessageThread.query.filter_by(professional_id=pro.id)
-
-    if q:
-        like = f"%{q}%"
-        base = (base.join(User, User.id == MessageThread.patient_id)
-                    .filter(or_(User.username.ilike(like),
-                                User.full_name.ilike(like),
-                                User.email.ilike(like),
-                                User.phone.ilike(like))))
-
-    threads = (base.order_by(MessageThread.updated_at.desc().nullslast(),
-                             MessageThread.id.desc())
-                    .all())
-
-    # Prépare les infos pour l’affichage
-    items = []
-    for th in threads:
-        patient = None
-        try:
-            patient = User.query.get(getattr(th, "patient_id", None))
-        except Exception:
-            patient = None
-
-        last_msg = (Message.query
-                         .filter_by(thread_id=getattr(th, "id", None))
-                         .order_by(Message.created_at.desc())
-                         .first())
-
-        last_at = getattr(last_msg, "created_at", None)
-        last_text = (getattr(last_msg, "body", None) or
-                     ("📎 Pièce jointe" if getattr(last_msg, "attachment_id", None) else None) or
-                     ("🔊 Message audio" if getattr(last_msg, "audio_url", None) else None) or
-                     "")
-
-        # Non lu = dernier message non envoyé par le pro
-        last_sender = getattr(last_msg, "sender_id", None) or getattr(last_msg, "sender_user_id", None)
-        unread = bool(last_msg) and (last_sender is not None) and (last_sender != current_user.id)
-
-        items.append({
-            "thread": th,
-            "patient": patient,
-            "last_at": last_at,
-            "last_text": last_text,
-            "unread": unread,
-        })
-
-    # Compteur de non lus (même logique que le dashboard)
-    unread_count = sum(1 for it in items if it["unread"])
-
-    return render_or_text("pro/messages_inbox.html", "Messagerie sécurisée",
-                          items=items, q=q, unread_count=unread_count, professional=pro)
-
-def _ensure_patient_case(pro_id: int, patient_user_id: int):
-    case_obj, profile = None, None
-    try:
-        case_obj = PatientCase.query.filter_by(professional_id=pro_id, patient_user_id=patient_user_id).first()
-        profile = PatientProfile.query.filter_by(user_id=patient_user_id).first()
-        if not case_obj:
-            case_obj = PatientCase(professional_id=pro_id, patient_user_id=patient_user_id, is_anonymous=False)
-            db.session.add(case_obj)
-        if not profile:
-            u = User.query.get(patient_user_id)
-            profile = PatientProfile(
-                user_id=patient_user_id,
-                full_name=getattr(u, "full_name", None) or getattr(u, "username", None),
-                phone=getattr(u, "phone", None),
-                address=getattr(u, "address", None),
-                email=getattr(u, "email", None),
-            )
-            db.session.add(profile)
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
-    return case_obj, profile
-
-def _get_or_create_thread(pro_id: int, patient_user_id: int):
-    th = None
-    try:
-        if hasattr(MessageThread, "patient_id"):
-            th = MessageThread.query.filter_by(professional_id=pro_id, patient_id=patient_user_id).first()
-        if not th and hasattr(MessageThread, "patient_user_id"):
-            th = MessageThread.query.filter_by(professional_id=pro_id, patient_user_id=patient_user_id).first()
-        if not th:
-            kwargs = dict(professional_id=pro_id)
-            if hasattr(MessageThread, "patient_id"):
-                kwargs["patient_id"] = patient_user_id
-            else:
-                kwargs["patient_user_id"] = patient_user_id
-            th = MessageThread(**kwargs)
-            db.session.add(th); db.session.commit()
-    except Exception:
-        db.session.rollback()
-    return th
-
-def _notify_in_thread(thread, sender_user_id: int, text: str, attachment_url: str | None = None):
-    if not thread:
-        return
-    try:
-        msg = Message(thread_id=thread.id, sender_id=sender_user_id, body=text or None)
-        if attachment_url and hasattr(Message, "attachment_url"):
-            setattr(msg, "attachment_url", attachment_url)
-        db.session.add(msg); db.session.commit()
-    except Exception:
-        db.session.rollback()
-
-def _email_or_pass(to_email: str | None, subject: str, body: str):
-    if to_email:
-        try:
-            safe_send_email(to_email, subject, body)
-        except Exception:
-            pass
-
-def _assign_exercise_to_patient(ex, pro_id: int, patient_user_id: int, due_date_str: str | None):
-    due = None
-    if due_date_str:
-        try: due = datetime.fromisoformat(due_date_str).date()
-        except Exception: pass
-    fields = dict(exercise_id=ex.id, professional_id=pro_id, status="assigned", due_date=due)
-    if hasattr(ExerciseAssignment, "patient_user_id"):
-        fields["patient_user_id"] = patient_user_id
-    else:
-        fields["patient_id"] = patient_user_id
-    assign = ExerciseAssignment(**fields)
-    db.session.add(assign); db.session.commit()
-    return assign
-# ============================================================================
-# =========================
-#   MESSAGERIE — PRO (INBOX)
-# =========================
-@app.route("/pro/messages", methods=["GET"], endpoint="pro_messages")
-@login_required
-def pro_messages():
-    # autorisation
-    if getattr(current_user, "user_type", None) != "professional":
-        abort(403)
-
-    # pro courant (même logique que le reste de ton app)
-    pro = (
-        Professional.query
-        .filter(
-            (Professional.name == (getattr(current_user, "full_name", "") or "")) |
-            (Professional.name == (getattr(current_user, "username", "") or ""))
-        )
-        .first()
-    )
-    if not pro:
-        abort(403)
-
-    # threads liés à ce pro (ordre: récent d'abord)
-    threads = (
-        MessageThread.query
-        .filter_by(professional_id=pro.id)
-        .order_by(MessageThread.updated_at.desc().nullslast(), MessageThread.id.desc())
-        .all()
-    )
-
-    rows = []
-    for th in threads:
-        # compat: patient_id OU patient_user_id
-        pid = getattr(th, "patient_id", None) or getattr(th, "patient_user_id", None)
-        patient = User.query.get(pid) if pid else None
-
-        last = (
-            Message.query
-            .filter_by(thread_id=getattr(th, "id", None))
-            .order_by(Message.created_at.desc(), Message.id.desc())
-            .first()
-        )
-
-        # compat: sender_user_id OU sender_id
-        sender_id = getattr(last, "sender_user_id", None)
-        if sender_id is None:
-            sender_id = getattr(last, "sender_id", None)
-
-        unread = bool(last and sender_id and sender_id != getattr(current_user, "id", None))
-
-        # petit aperçu texte
-        preview = ""
-        if last:
-            body = getattr(last, "body", None) or ""
-            preview = (body[:120] + "…") if len(body) > 120 else body
-
-        rows.append({
-            "thread": th,
-            "patient": patient,
-            "last": last,
-            "preview": preview,
-            "unread": unread,
-        })
-
-    return render_or_text("pro/inbox.html", "Messagerie", rows=rows, professional=pro)
 
 # -------------------------------------------------------------------
 # Environnement
@@ -381,7 +158,7 @@ from models import (
 )
 
 # -------------------------------------------------------------------
-# Admin blueprint (utilisé aussi dans index pour l’ordre)
+# Admin blueprint
 # -------------------------------------------------------------------
 from admin_server import admin_bp, ProfessionalOrder, _build_notif
 app.register_blueprint(admin_bp, url_prefix="/admin")
@@ -1438,6 +1215,85 @@ def reset_password(token: str):
         flash("Mot de passe réinitialisé. Vous pouvez vous connecter.", "success")
         return redirect(url_for("login"))
     return render_or_text("reset_password.html", "Réinitialiser le mot de passe")
+
+# =========================
+#  HELPER PRO (unique, sans doublon)
+# =========================
+def _current_professional_or_403():
+    if not getattr(current_user, "is_authenticated", False) or getattr(current_user, "user_type", None) != "professional":
+        abort(403)
+    pro = (
+        Professional.query
+        .filter(
+            (Professional.name == (getattr(current_user, "full_name", "") or "")) |
+            (Professional.name == (getattr(current_user, "username", "") or ""))
+        )
+        .first()
+    ) or Professional.query.filter_by(name=getattr(current_user, "username", None)).first()
+    if not pro:
+        abort(403)
+    return pro
+
+# =========================
+#   MESSAGERIE — PRO (INBOX)  ✅ unique, après app = Flask(...)
+# =========================
+@app.route("/pro/messages", methods=["GET"], endpoint="pro_messages")
+@login_required
+def pro_messages():
+    if getattr(current_user, "user_type", None) != "professional":
+        abort(403)
+    pro = _current_professional_or_403()
+
+    q = (request.args.get("q") or "").strip()
+    base = MessageThread.query.filter_by(professional_id=pro.id)
+
+    if q:
+        like = f"%{q}%"
+        # compat patient_id / patient_user_id
+        pid_col = MessageThread.patient_id if hasattr(MessageThread, "patient_id") else MessageThread.patient_user_id
+        base = (
+            base.join(User, User.id == pid_col)
+                .filter(or_(User.username.ilike(like),
+                            User.full_name.ilike(like),
+                            User.email.ilike(like),
+                            User.phone.ilike(like)))
+        )
+
+    threads = (base.order_by(MessageThread.updated_at.desc().nullslast(),
+                             MessageThread.id.desc()).all())
+
+    items = []
+    for th in threads:
+        pid = getattr(th, "patient_id", None) or getattr(th, "patient_user_id", None)
+        patient = User.query.get(pid) if pid else None
+
+        last_msg = (Message.query.filter_by(thread_id=getattr(th, "id", None))
+                              .order_by(Message.created_at.desc(), Message.id.desc())
+                              .first())
+
+        last_at = getattr(last_msg, "created_at", None)
+        last_text = (
+            getattr(last_msg, "body", None)
+            or ("📎 Pièce jointe" if getattr(last_msg, "attachment_id", None) else None)
+            or ("🔊 Message audio" if getattr(last_msg, "audio_url", None) else None)
+            or ""
+        )
+        sender_id = getattr(last_msg, "sender_user_id", None) or getattr(last_msg, "sender_id", None)
+        unread = bool(last_msg and sender_id and sender_id != getattr(current_user, "id", None))
+
+        items.append({
+            "thread": th,
+            "patient": patient,
+            "last_at": last_at,
+            "last_text": last_text,
+            "unread": unread,
+        })
+
+    unread_count = sum(1 for it in items if it["unread"])
+
+    return render_or_text("pro/messages_inbox.html", "Messagerie sécurisée",
+                          items=items, q=q, unread_count=unread_count, professional=pro)
+
 
 
 # =========================
