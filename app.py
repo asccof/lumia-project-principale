@@ -156,6 +156,51 @@ from models import (
     Specialty, City,
     ProfessionalReview,
 )
+# ---- Helper idempotent pour créer / récupérer le dossier patient ----------
+# (Placée ici pour être définie avant toute route qui l'appelle)
+if "_ensure_patient_case" not in globals():
+    def _ensure_patient_case(pro_id: int, patient_user_id: int):
+        """
+        Garantit l'existence d'un PatientCase (si le modèle existe)
+        et d'un PatientProfile pour ce patient. Renvoie (case_obj, profile).
+        Ne lève pas d'exception en cas d'absence de modèles optionnels : renvoie (None, profile).
+        """
+        case_obj, profile = None, None
+
+        # Profil patient (toujours utile)
+        try:
+            profile = PatientProfile.query.filter_by(user_id=patient_user_id).first() if "PatientProfile" in globals() else None
+            if not profile and "PatientProfile" in globals():
+                u = User.query.get(patient_user_id)
+                profile = PatientProfile(
+                    user_id=patient_user_id,
+                    full_name=getattr(u, "full_name", None) or getattr(u, "username", None),
+                    phone=getattr(u, "phone", None),
+                    address=getattr(u, "address", None),
+                    email=getattr(u, "email", None),
+                )
+                db.session.add(profile)
+                db.session.flush()
+        except Exception:
+            db.session.rollback()
+
+        # Dossier (PatientCase) si le modèle existe dans ton projet
+        try:
+            if "PatientCase" in globals():
+                case_obj = PatientCase.query.filter_by(
+                    professional_id=pro_id, patient_user_id=patient_user_id
+                ).first()
+                if not case_obj:
+                    case_obj = PatientCase(
+                        professional_id=pro_id, patient_user_id=patient_user_id, is_anonymous=False
+                    )
+                    db.session.add(case_obj)
+            # Commit global
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+        return case_obj, profile
 
 # -------------------------------------------------------------------
 # Admin blueprint
