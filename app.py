@@ -1219,8 +1219,29 @@ def reset_password(token: str):
 
 
 # =========================
+# =========================
 #   ESPACE PRO / RDV
 # =========================
+
+# Helper robuste : résout le pro courant ou 403 (disponible pour toutes les routes ci-dessous)
+def _current_professional_or_403():
+    from flask import abort
+    from flask_login import current_user
+    if not getattr(current_user, "is_authenticated", False) or getattr(current_user, "user_type", None) != "professional":
+        abort(403)
+    pro = (
+        Professional.query
+        .filter(
+            (Professional.name == (getattr(current_user, "full_name", "") or "")) |
+            (Professional.name == (getattr(current_user, "username", "") or ""))
+        )
+        .first()
+    )
+    if not pro:
+        abort(403)
+    return pro
+
+
 @app.route("/professional_dashboard", endpoint="professional_dashboard")
 @login_required
 def professional_dashboard():
@@ -1237,9 +1258,11 @@ def professional_dashboard():
                            "Tableau de bord pro",
                            professional=professional, appointments=appointments)
 
+
 @app.route("/professional/availability", methods=["GET","POST"], endpoint="professional_availability")
 @login_required
 def professional_availability():
+    from datetime import date, datetime
     if current_user.user_type != "professional":
         flash("Accès non autorisé"); return redirect(url_for("index"))
     professional = Professional.query.filter_by(name=current_user.username).first()
@@ -1279,9 +1302,11 @@ def professional_availability():
                            availabilities=availability_dict,
                            windows_by_day=windows_by_day)
 
+
 @app.route("/professional/unavailable-slots", methods=["GET","POST"], endpoint="professional_unavailable_slots")
 @login_required
 def professional_unavailable_slots():
+    from datetime import date, datetime
     if current_user.user_type != "professional":
         flash("Accès non autorisé"); return redirect(url_for("index"))
     professional = Professional.query.filter_by(name=current_user.username).first()
@@ -1315,6 +1340,7 @@ def professional_unavailable_slots():
     return render_or_text("professional_unavailable_slots.html",
                            "Créneaux indisponibles",
                            professional=professional, unavailable_slots=unavailable_slots)
+
 
 # Edition profil pro
 @app.route("/professional/profile", methods=["GET", "POST"], endpoint="professional_edit_profile")
@@ -1364,7 +1390,7 @@ def professional_edit_profile():
             if not existing:
                 existing = Specialty(name=new_name, category=(new_family or None))
                 db.session.add(existing)
-                db.session.flush()  # pour obtenir existing.id
+                db.session.flush()
             spec_ids.append(existing.id)
 
         # Déterminer la spécialité primaire si absente
@@ -1491,10 +1517,12 @@ def professional_edit_profile():
         specialties=specialties
     )
 
+
 # ===== RDV côté PRO : liste + filtres =====
 @app.route("/professional/appointments", methods=["GET"], endpoint="professional_appointments")
 @login_required
 def professional_appointments():
+    from datetime import datetime
     if current_user.user_type != "professional":
         flash("Accès non autorisé")
         return redirect(url_for("index"))
@@ -1515,6 +1543,7 @@ def professional_appointments():
     elif scope == "past":
         q = q.filter(Appointment.appointment_date < now)
 
+    # Statuts utilisés par tes filtres/templates : "en_attente" | "confirme" | "annule"
     if status in ("en_attente", "confirme", "annule"):
         q = q.filter_by(status=status)
 
@@ -1528,10 +1557,41 @@ def professional_appointments():
         scope=scope
     )
 
+
+# ==> Endpoint d’action utilisé par professional_appointments.html (confirm/cancel)
+@app.route("/professional/appointments/<int:appointment_id>/<action>", methods=["POST"], endpoint="professional_appointment_action")
+@login_required
+def professional_appointment_action(appointment_id: int, action: str):
+    if getattr(current_user, "user_type", None) != "professional":
+        abort(403)
+    pro = _current_professional_or_403()
+    ap = Appointment.query.get_or_404(appointment_id)
+    if ap.professional_id != pro.id:
+        abort(403)
+
+    act = (action or "").strip().lower()
+    # On aligne sur tes statuts côté pro :
+    if act in {"confirm", "confirmed", "accept", "accepted", "approve"}:
+        if hasattr(ap, "status"):
+            ap.status = "confirme"
+        flash("Rendez-vous confirmé.", "success")
+    elif act in {"cancel", "canceled", "annule", "annulé", "reject", "refuse"}:
+        if hasattr(ap, "status"):
+            ap.status = "annule"
+        flash("Rendez-vous annulé.", "warning")
+    else:
+        flash("Action inconnue.", "danger")
+        return redirect(request.referrer or url_for("professional_appointments"))
+
+    db.session.commit()
+    return redirect(request.referrer or url_for("professional_appointments"))
+
+
 # ====== Entrée "Dossier patient" (alias smart) ======
 @app.route("/pro/patient", methods=["GET"], endpoint="pro_patient_entry")
 @login_required
 def pro_patient_entry():
+    from sqlalchemy import or_
     if current_user.user_type != "professional":
         flash("Accès réservé aux professionnels.", "warning")
         return redirect(url_for("index"))
@@ -1587,16 +1647,17 @@ def pro_patient_entry():
 
     return redirect(url_for("pro_patients"))
 
+
 # =========================
 #   BUREAU VIRTUEL — PRO
 # =========================
 @app.route("/pro-office/", methods=["GET"], endpoint="pro_office_index")
 @login_required
 def pro_office_index():
+    from datetime import datetime, time as _Time
     if getattr(current_user, "user_type", None) != "professional":
         abort(403)
 
-    # Résolution du pro (fidèle à ton style)
     pro = (
         Professional.query
         .filter(
@@ -1608,19 +1669,15 @@ def pro_office_index():
     if not pro:
         abort(403)
 
-    # Valeurs par défaut (évite toute NameError au rendu)
     next_sessions = []
     upcoming_count = 0
     unread_messages = 0
     pending_payments = 0
 
-    from datetime import datetime, time as _Time
     now = datetime.utcnow()
-
-    # --- Helpers locaux (portée interne, pas de pollution globale)
     PENDING = {"requested", "pending", "en_attente", "planifie"}
     CANCELLED = {"cancelled", "canceled", "refused", "rejected", "declined", "annule", "annulé", "no_show"}
-    CONFIRMED = {"confirmed", "accepted", "approved", "valide", "validated", "confirmé"}
+    CONFIRMED = {"confirmed", "accepted", "approved", "valide", "validated", "confirmé", "confirme"}
 
     def _extract_dt(obj):
         for attr in ("start_at", "appointment_date", "scheduled_at", "start_time_dt"):
@@ -1633,13 +1690,15 @@ def pro_office_index():
             try:
                 if isinstance(t, str) and ":" in t:
                     hh, mm = t.split(":")[:2]
-                    t = _Time(int(hh), int(mm))
+                    from datetime import time as _T
+                    t = _T(int(hh), int(mm))
                 return datetime.combine(d, t)
             except Exception:
                 pass
         if d:
             try:
-                return datetime.combine(d, _Time(12, 0))
+                from datetime import time as _T
+                return datetime.combine(d, _T(12, 0))
             except Exception:
                 pass
         return None
@@ -1657,7 +1716,7 @@ def pro_office_index():
             return True
         return True
 
-    # --- Séances/RDV à venir (liste + compteur)
+    # Séances/RDV à venir
     try:
         fused = []
 
@@ -1736,7 +1795,7 @@ def pro_office_index():
         next_sessions = []
         upcoming_count = 0
 
-    # --- Messages non lus (dernier message du fil non envoyé par le pro)
+    # Messages non lus (dernier message du fil non envoyé par le pro)
     try:
         cnt = 0
         threads = (MessageThread.query
@@ -1750,16 +1809,14 @@ def pro_office_index():
                     .first())
             if not last:
                 continue
-            sender_id = getattr(last, "sender_user_id", None)
-            if sender_id is None:
-                sender_id = getattr(last, "sender_id", None)
+            sender_id = getattr(last, "sender_user_id", None) or getattr(last, "sender_id", None)
             if sender_id and sender_id != getattr(current_user, "id", None):
                 cnt += 1
         unread_messages = cnt
     except Exception:
         unread_messages = 0
 
-    # --- Paiements en attente
+    # Paiements en attente
     try:
         if "Invoice" in globals():
             q = Invoice.query.filter_by(professional_id=pro.id)
@@ -1788,9 +1845,11 @@ def pro_desk():
     return render_or_text("pro/desk.html", "Bureau virtuel",
                           professional=pro, threads=latest_threads, sessions=latest_sessions, invoices=latest_invoices)
 
+
 @app.route("/pro/patients", methods=["GET"], endpoint="pro_patients")
 @login_required
 def pro_patients():
+    from sqlalchemy import or_, func, case
     if current_user.user_type != "professional":
         flash("Accès réservé aux professionnels.", "warning")
         return redirect(url_for("index"))
@@ -1847,6 +1906,7 @@ def pro_patients():
         professional=pro
     )
 
+
 @app.route("/pro/patients/<int:patient_id>", methods=["GET","POST"], endpoint="pro_patient_detail")
 @login_required
 def pro_patient_detail(patient_id: int):
@@ -1874,6 +1934,7 @@ def pro_patient_detail(patient_id: int):
 
     return render_or_text("pro/patient_detail.html", "Dossier patient",
                           professional=pro, patient=patient, profile=profile, medhist=medhist, sessions=sessions, thread=thread)
+
 
 @app.route("/pro/threads/<int:patient_id>", methods=["GET","POST"], endpoint="pro_thread")
 @login_required
@@ -1930,6 +1991,8 @@ def pro_thread(patient_id: int):
     return render_or_text("pro/thread.html", "Messagerie sécurisée",
                           professional=pro, patient=patient, thread=thread, messages=messages)
 
+
+# Index messagerie existant
 @app.route("/messages", endpoint="messages_index")
 @login_required
 def messages_index():
@@ -1939,6 +2002,17 @@ def messages_index():
         threads = MessageThread.query.filter_by(patient_id=current_user.id)\
                                      .order_by(MessageThread.updated_at.desc().nullslast()).all()
         return render_or_text("patient/messages_index.html", "Messagerie", threads=threads)
+
+
+# Alias pour éviter le 404 quand un lien pointe sur /pro/messages
+@app.get("/pro/messages")
+@login_required
+def pro_messages_alias():
+    try:
+        return redirect(url_for("messages_index"))
+    except Exception:
+        return redirect("/messages")
+
 
 @app.route("/pro/billing", methods=["GET"], endpoint="pro_billing")
 @login_required
@@ -1972,10 +2046,12 @@ def pro_billing():
         invoices=invoices
     )
 
+
 # --- Sessions & notes
 @app.route("/pro/sessions", methods=["GET","POST"], endpoint="pro_sessions")
 @login_required
 def pro_sessions():
+    from datetime import datetime
     pro = _current_professional_or_403()
     if request.method == "POST":
         patient_id = request.form.get("patient_id", type=int)
@@ -1999,6 +2075,7 @@ def pro_sessions():
     patients = User.query.filter(User.user_type == "patient").order_by(User.username.asc()).all()
     return render_or_text("pro/sessions.html", "Séances", sessions=sessions, patients=patients, professional=pro)
 
+
 @app.route("/pro/sessions/<int:session_id>", methods=["GET","POST"], endpoint="pro_session_detail")
 @login_required
 def pro_session_detail(session_id: int):
@@ -2016,10 +2093,13 @@ def pro_session_detail(session_id: int):
     notes = SessionNote.query.filter_by(session_id=s.id).order_by(SessionNote.created_at.asc()).all()
     return render_or_text("pro/session_detail.html", "Détail séance", session=s, notes=notes, professional=pro)
 
+
 # --- Bibliothèque d’exercices
 @app.route("/pro/library", methods=["GET","POST"], endpoint="pro_library")
 @login_required
 def pro_library():
+    from sqlalchemy import or_
+    from datetime import datetime
     pro = _current_professional_or_403()
     if request.method == "POST":
         title = (request.form.get("title") or "").strip()
@@ -2053,10 +2133,12 @@ def pro_library():
     exercises = q.all()
     return render_or_text("pro/library.html", "Bibliothèque", exercises=exercises, professional=pro)
 
+
 # --- Assignations d’exercices aux patients
 @app.route("/pro/assign", methods=["POST"], endpoint="pro_assign_exercise")
 @login_required
 def pro_assign_exercise():
+    from datetime import datetime
     pro = _current_professional_or_403()
     exercise_id = request.form.get("exercise_id", type=int)
     patient_id = request.form.get("patient_id", type=int)
@@ -2072,10 +2154,12 @@ def pro_assign_exercise():
     flash("Exercice assigné au patient.", "success")
     return redirect(request.referrer or url_for("pro_library"))
 
+
 # --- Factures & paiements
 @app.route("/pro/invoices", methods=["GET","POST"], endpoint="pro_invoices")
 @login_required
 def pro_invoices():
+    from datetime import datetime
     pro = _current_professional_or_403()
     if request.method == "POST":
         patient_id = request.form.get("patient_id", type=int)
@@ -2089,9 +2173,11 @@ def pro_invoices():
     patients = User.query.filter(User.user_type == "patient").all()
     return render_or_text("pro/invoices.html", "Factures", invoices=invoices, patients=patients, professional=pro)
 
+
 @app.route("/pro/invoices/<int:invoice_id>/pay", methods=["POST"], endpoint="pro_invoice_pay")
 @login_required
 def pro_invoice_pay(invoice_id: int):
+    from datetime import datetime
     pro = _current_professional_or_403()
     inv = Invoice.query.get_or_404(invoice_id)
     if inv.professional_id != pro.id:
@@ -2103,6 +2189,7 @@ def pro_invoice_pay(invoice_id: int):
     db.session.add(p); db.session.commit()
     flash("Paiement enregistré.", "success")
     return redirect(url_for("pro_invoices"))
+
 
 @app.route("/pro/stats", endpoint="pro_stats")
 @login_required
@@ -2118,6 +2205,7 @@ def pro_stats():
     return render_or_text("pro/stats.html", "Statistiques",
                           stats={"sessions": total_sessions, "minutes": total_minutes, "invoices": total_invoices, "revenue": revenue},
                           professional=pro)
+
 
 @app.route("/pro/support", methods=["GET","POST"], endpoint="pro_support")
 @login_required
