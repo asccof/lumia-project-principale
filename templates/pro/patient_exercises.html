@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Exercices du patient — Tighri{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width:1100px">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h5 mb-0"><i class="fa-solid fa-dumbbell me-2"></i>Exercices — {{ patient.full_name or patient.username }}</h1>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('pro_patient_dossier', patient_id=patient.id) }}"><i class="fa-solid fa-folder-open me-1"></i>Dossier</a>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data" class="row g-2">
+        <div class="col-12 fw-semibold">Créer & envoyer un nouvel exercice</div>
+        <div class="col-md-4"><input name="title" class="form-control" placeholder="Titre (ou choisissez en bibliothèque)"></div>
+        <div class="col-md-3">
+          <select name="content_format" class="form-select">
+            <option value="texte">Texte</option>
+            <option value="audio">Audio</option>
+            <option value="video">Vidéo</option>
+            <option value="image">Image</option>
+            <option value="document">Document</option>
+          </select>
+        </div>
+        <div class="col-md-5"><input type="file" name="file" class="form-control"></div>
+        <div class="col-12"><textarea name="text_content" class="form-control" rows="3" placeholder="Consignes (si format texte)"></textarea></div>
+        <div class="col-md-3"><input type="date" name="due_date" class="form-control"></div>
+        <div class="col-md-3"><input name="family" class="form-control" placeholder="Famille"></div>
+        <div class="col-md-3"><input name="technique" class="form-control" placeholder="Technique"></div>
+        <div class="col-md-3">
+          <select name="visibility" class="form-select">
+            <option value="my_patients">Mes patients</option>
+            <option value="public">Public</option>
+            <option value="private">Privé</option>
+          </select>
+        </div>
+        <div class="col-12 d-flex align-items-center gap-2">
+          <button class="btn btn-primary"><i class="fa-solid fa-paper-plane me-1"></i>Envoyer</button>
+          <span class="text-muted small">ou depuis la bibliothèque :</span>
+          <select name="exercise_id" class="form-select" style="max-width:320px">
+            <option value="">— Bibliothèque —</option>
+            {% for e in library %}
+              <option value="{{ e.id }}">{{ e.title }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <h2 class="h6 mb-2">Assignations</h2>
+      {% if assignments %}
+        <ul class="list-group">
+          {% for a in assignments %}
+            {% set ex = a.exercise or None %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <div>
+                <div><strong>{{ ex.title if ex else 'Exercice' }}</strong>
+                  {% if a.due_date %}<span class="text-muted"> — dû {{ a.due_date }}</span>{% endif %}
+                </div>
+                <div class="small text-muted">{{ ex.content_format if ex else '' }}</div>
+                {% if ex and ex.file_url %}<div><a href="{{ ex.file_url }}" target="_blank">Télécharger la pièce</a></div>{% endif %}
+              </div>
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('patient_exercise_detail', assign_id=a.id) }}" target="_blank">
+                Voir côté patient
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted mb-0">Aucune assignation.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
