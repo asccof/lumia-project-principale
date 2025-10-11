@@ -1595,27 +1595,188 @@ def pro_patient_entry():
 def pro_office_index():
     if getattr(current_user, "user_type", None) != "professional":
         abort(403)
-    return render_or_text("pro/office.html", "Bureau virtuel",
-                          next_sessions=[],
-                          upcoming_count=0,
-                          unread_messages=0,
-                          pending_payments=0)
 
-def _current_professional_or_403():
-    if not getattr(current_user, "is_authenticated", False) or getattr(current_user, "user_type", None) != "professional":
-        abort(403)
-
+    # Résolution du pro (fidèle à ton style)
     pro = (
         Professional.query
         .filter(
-            (Professional.name == (current_user.full_name or "")) |
-            (Professional.name == (current_user.username or ""))
+            (Professional.name == (getattr(current_user, "full_name", "") or "")) |
+            (Professional.name == (getattr(current_user, "username", "") or ""))
         )
         .first()
     )
     if not pro:
         abort(403)
-    return pro
+
+    # Valeurs par défaut (évite toute NameError au rendu)
+    next_sessions = []
+    upcoming_count = 0
+    unread_messages = 0
+    pending_payments = 0
+
+    from datetime import datetime, time as _Time
+    now = datetime.utcnow()
+
+    # --- Helpers locaux (portée interne, pas de pollution globale)
+    PENDING = {"requested", "pending", "en_attente", "planifie"}
+    CANCELLED = {"cancelled", "canceled", "refused", "rejected", "declined", "annule", "annulé", "no_show"}
+    CONFIRMED = {"confirmed", "accepted", "approved", "valide", "validated", "confirmé"}
+
+    def _extract_dt(obj):
+        for attr in ("start_at", "appointment_date", "scheduled_at", "start_time_dt"):
+            v = getattr(obj, attr, None)
+            if isinstance(v, datetime):
+                return v
+        d = getattr(obj, "date", None) or getattr(obj, "appointment_day", None)
+        t = getattr(obj, "time", None) or getattr(obj, "appointment_time", None) or getattr(obj, "start_time", None)
+        if d and t:
+            try:
+                if isinstance(t, str) and ":" in t:
+                    hh, mm = t.split(":")[:2]
+                    t = _Time(int(hh), int(mm))
+                return datetime.combine(d, t)
+            except Exception:
+                pass
+        if d:
+            try:
+                return datetime.combine(d, _Time(12, 0))
+            except Exception:
+                pass
+        return None
+
+    def _is_confirmed(obj):
+        st = getattr(obj, "status", None)
+        if st is None:
+            return True
+        s = str(st).strip().lower()
+        if s in CANCELLED:
+            return False
+        if s in PENDING:
+            return False
+        if s in CONFIRMED:
+            return True
+        return True
+
+    # --- Séances/RDV à venir (liste + compteur)
+    try:
+        fused = []
+
+        # TherapySession
+        try:
+            q = TherapySession.query.filter(TherapySession.professional_id == pro.id)
+            if hasattr(TherapySession, "start_at"):
+                q = q.filter(TherapySession.start_at >= now).order_by(TherapySession.start_at.asc())
+            else:
+                q = q.order_by(TherapySession.id.desc())
+            for s in q.limit(100).all():
+                dtv = _extract_dt(s)
+                if not dtv or dtv < now or not _is_confirmed(s):
+                    continue
+                pname = "—"
+                try:
+                    pat = getattr(s, "patient", None)
+                    if not pat and getattr(s, "patient_id", None):
+                        pat = User.query.get(s.patient_id)
+                    pname = getattr(pat, "full_name", None) or getattr(pat, "name", None) or getattr(pat, "username", None) or "—"
+                except Exception:
+                    pass
+                fused.append({
+                    "when_dt": dtv,
+                    "when": dtv.strftime("%d/%m/%Y %H:%M"),
+                    "patient_name": pname,
+                    "where": getattr(s, "location", None) or getattr(s, "place", None) or getattr(s, "address", None),
+                    "meet_url": getattr(s, "meet_url", None),
+                    "link": getattr(s, "meet_url", None),
+                })
+        except Exception:
+            pass
+
+        # Appointment
+        try:
+            q = Appointment.query.filter(Appointment.professional_id == pro.id)
+            if hasattr(Appointment, "appointment_date"):
+                q = q.filter(Appointment.appointment_date >= now).order_by(Appointment.appointment_date.asc())
+            elif hasattr(Appointment, "start_at"):
+                q = q.filter(Appointment.start_at >= now).order_by(Appointment.start_at.asc())
+            else:
+                q = q.order_by(Appointment.id.desc())
+            for a in q.limit(100).all():
+                dtv = _extract_dt(a)
+                if not dtv or dtv < now or not _is_confirmed(a):
+                    continue
+                pname = "—"
+                try:
+                    pat = getattr(a, "patient", None)
+                    if not pat and getattr(a, "patient_id", None):
+                        pat = User.query.get(a.patient_id)
+                    pname = getattr(pat, "full_name", None) or getattr(pat, "name", None) or getattr(pat, "username", None) or "—"
+                except Exception:
+                    pass
+                meet_url = (
+                    getattr(a, "meet_url", None)
+                    or getattr(a, "video_link", None)
+                    or getattr(a, "meeting_link", None)
+                    or None
+                )
+                fused.append({
+                    "when_dt": dtv,
+                    "when": dtv.strftime("%d/%m/%Y %H:%M"),
+                    "patient_name": pname,
+                    "where": getattr(a, "location", None) or getattr(a, "place", None) or getattr(a, "address", None),
+                    "meet_url": meet_url,
+                    "link": meet_url,
+                })
+        except Exception:
+            pass
+
+        fused.sort(key=lambda x: x["when_dt"])
+        upcoming_count = len(fused)
+        next_sessions = fused[:5]
+    except Exception:
+        next_sessions = []
+        upcoming_count = 0
+
+    # --- Messages non lus (dernier message du fil non envoyé par le pro)
+    try:
+        cnt = 0
+        threads = (MessageThread.query
+                   .filter_by(professional_id=pro.id)
+                   .order_by(MessageThread.updated_at.desc().nullslast())
+                   .limit(50).all())
+        for th in threads:
+            last = (Message.query
+                    .filter_by(thread_id=getattr(th, "id", None))
+                    .order_by(Message.created_at.desc())
+                    .first())
+            if not last:
+                continue
+            sender_id = getattr(last, "sender_user_id", None)
+            if sender_id is None:
+                sender_id = getattr(last, "sender_id", None)
+            if sender_id and sender_id != getattr(current_user, "id", None):
+                cnt += 1
+        unread_messages = cnt
+    except Exception:
+        unread_messages = 0
+
+    # --- Paiements en attente
+    try:
+        if "Invoice" in globals():
+            q = Invoice.query.filter_by(professional_id=pro.id)
+            if hasattr(Invoice, "status"):
+                q = q.filter(Invoice.status.in_(["issued", "unpaid", "due"]))
+            pending_payments = q.count()
+        else:
+            pending_payments = 0
+    except Exception:
+        pending_payments = 0
+
+    return render_or_text("pro/office.html", "Bureau virtuel",
+                          next_sessions=next_sessions,
+                          upcoming_count=upcoming_count,
+                          unread_messages=unread_messages,
+                          pending_payments=pending_payments)
+
 
 @app.route("/pro/desk", endpoint="pro_desk")
 @login_required
