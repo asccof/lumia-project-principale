@@ -203,14 +203,11 @@ if "_ensure_patient_case" not in globals():
         return case_obj, profile
 
 # -------------------------------------------------------------------
-# Helpers: exercises / assignments
-# -------------------------------------------------------------------
-# -------------------------------------------------------------------
 # Helpers: exercises / assignments  (fix: due_date + patient_user_id)
 # -------------------------------------------------------------------
-from datetime import datetime, date
 
 def _normalize_due_date(value):
+    """Accepte '', None, str 'YYYY-MM-DD', datetime/date → retourne date ou None."""
     if value is None:
         return None
     if isinstance(value, date) and not isinstance(value, datetime):
@@ -227,20 +224,52 @@ def _normalize_due_date(value):
             return None
     return None
 
-def _assign_exercise_to_patient(exercise, professional_id, patient_user_id, due_date=None):
+
+def _resolve_patient_ids(patient_param):
     """
-    Assigne un exercice à un patient.
-    - patient_id : l'ID "patient" (p.ex. profil/dossier)
-    - patient_user_id : l'ID user du patient (colonne NOT NULL dans la table)
-    Ici on considère que patient_id == patient_user_id si tu n'as pas d'autre ID de profil.
-    Adapte si tu as un vrai patient_id différent.
+    Retourne (patient_id, patient_user_id) à partir de l'identifiant présent dans l'URL.
+
+    - Si PatientProfile existe et qu'il est lié à User via user_id :
+        patient_id = profile.id
+        patient_user_id = user.id
+    - Sinon, fallback : on met les deux au même ID (int(patient_param) ou user.id).
+    """
+    user = None
+    profile = None
+
+    # Essayer d'interpréter l'URL param comme un user_id
+    try:
+        uid = int(patient_param)
+        user = User.query.get(uid)
+    except Exception:
+        user = None
+
+    # Si PatientProfile existe, tenter de le retrouver
+    if user and 'PatientProfile' in globals():
+        try:
+            profile = PatientProfile.query.filter_by(user_id=user.id).first()
+        except Exception:
+            profile = None
+
+    if profile:
+        patient_id = profile.id
+        patient_user_id = user.id
+    else:
+        base_id = user.id if user else int(patient_param)
+        patient_id = base_id
+        patient_user_id = base_id
+
+    return patient_id, patient_user_id
+
+
+def _assign_exercise_to_patient(exercise, professional_id, patient_id, patient_user_id, due_date=None):
+    """
+    Crée/MàJ ExerciseAssignment en remplissant patient_id ET patient_user_id (NOT NULL).
+    Gère due_date vide → NULL.
     """
     normalized_due = _normalize_due_date(due_date)
 
-    # Si tu as un vrai "patient_id" distinct, remplace la ligne suivante par ce vrai ID.
-    patient_id = patient_user_id
-
-    # Rechercher un assignment existant (inclure patient_user_id pour éviter les doublons)
+    # Rechercher un assignment existant pour éviter les doublons
     q = ExerciseAssignment.query.filter_by(
         exercise_id=getattr(exercise, "id", None),
         patient_id=patient_id,
@@ -254,6 +283,8 @@ def _assign_exercise_to_patient(exercise, professional_id, patient_user_id, due_
     if assignment:
         if hasattr(assignment, "due_date"):
             assignment.due_date = normalized_due
+        if hasattr(assignment, "status") and not assignment.status:
+            assignment.status = "active"
         if hasattr(assignment, "updated_at"):
             assignment.updated_at = datetime.utcnow()
     else:
@@ -271,14 +302,13 @@ def _assign_exercise_to_patient(exercise, professional_id, patient_user_id, due_
             params["created_at"] = datetime.utcnow()
 
         assignment = ExerciseAssignment(**params)
-
         if hasattr(assignment, "updated_at"):
             assignment.updated_at = datetime.utcnow()
-
         db.session.add(assignment)
 
     db.session.commit()
     return assignment
+
 
 
 # -------------------------------------------------------------------
