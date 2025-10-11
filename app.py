@@ -46,6 +46,71 @@ def _current_professional_or_403():
     if not pro:
         abort(403)
     return pro
+# =========================
+#   MESSAGERIE PRO — INBOX
+# =========================
+@app.route("/pro/messages", methods=["GET"], endpoint="pro_messages")
+@login_required
+def pro_messages():
+    if getattr(current_user, "user_type", None) != "professional":
+        abort(403)
+    pro = _current_professional_or_403()
+
+    # Recherche par nom / email / téléphone du patient
+    from sqlalchemy import or_
+    q = (request.args.get("q") or "").strip()
+
+    base = MessageThread.query.filter_by(professional_id=pro.id)
+
+    if q:
+        like = f"%{q}%"
+        base = (base.join(User, User.id == MessageThread.patient_id)
+                    .filter(or_(User.username.ilike(like),
+                                User.full_name.ilike(like),
+                                User.email.ilike(like),
+                                User.phone.ilike(like))))
+
+    threads = (base.order_by(MessageThread.updated_at.desc().nullslast(),
+                             MessageThread.id.desc())
+                    .all())
+
+    # Prépare les infos pour l’affichage
+    items = []
+    for th in threads:
+        patient = None
+        try:
+            patient = User.query.get(getattr(th, "patient_id", None))
+        except Exception:
+            patient = None
+
+        last_msg = (Message.query
+                         .filter_by(thread_id=getattr(th, "id", None))
+                         .order_by(Message.created_at.desc())
+                         .first())
+
+        last_at = getattr(last_msg, "created_at", None)
+        last_text = (getattr(last_msg, "body", None) or
+                     ("📎 Pièce jointe" if getattr(last_msg, "attachment_id", None) else None) or
+                     ("🔊 Message audio" if getattr(last_msg, "audio_url", None) else None) or
+                     "")
+
+        # Non lu = dernier message non envoyé par le pro
+        last_sender = getattr(last_msg, "sender_id", None) or getattr(last_msg, "sender_user_id", None)
+        unread = bool(last_msg) and (last_sender is not None) and (last_sender != current_user.id)
+
+        items.append({
+            "thread": th,
+            "patient": patient,
+            "last_at": last_at,
+            "last_text": last_text,
+            "unread": unread,
+        })
+
+    # Compteur de non lus (même logique que le dashboard)
+    unread_count = sum(1 for it in items if it["unread"])
+
+    return render_or_text("pro/messages_inbox.html", "Messagerie sécurisée",
+                          items=items, q=q, unread_count=unread_count, professional=pro)
 
 def _ensure_patient_case(pro_id: int, patient_user_id: int):
     case_obj, profile = None, None
