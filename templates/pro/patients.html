@@ -40,68 +40,91 @@
   .po-tag { background: #f5f7fb; color: #374151; border-radius: 999px; padding: 2px 8px; font-size: .75rem; }
 
   .po-cta { display: flex; gap: 8px; }
+
   .po-empty {
     border: 2px dashed #e5e7eb; border-radius: 16px; padding: 24px; text-align: center; color: #6b7280;
     background: #fafafa;
   }
 
-  .po-link { text-decoration: none; }
+  /* Pagination */
+  .po-pagi { display:flex; gap:6px; align-items:center; justify-content:center; margin-top:16px; flex-wrap:wrap; }
+  .po-page { padding:8px 12px; border:1px solid #e5e7eb; border-radius:10px; text-decoration:none; color:#111; background:#fff; }
+  .po-page.active { background:#0f62fe; color:#fff; border-color:#0f62fe; }
 </style>
 
 <div class="po-wrapper">
   <div class="po-header">
     <h1>Mes patients</h1>
     <div class="po-actions">
-      <a class="po-btn po-btn-ghost po-link" href="{{ url_for('professional_dashboard') }}">← Retour tableau de bord</a>
+      <a class="po-btn po-btn-ghost" href="{{ url_for('professional_dashboard') }}">← Retour tableau de bord</a>
     </div>
   </div>
 
+  {# Meta : total #}
   <div class="po-meta">
-    Total : {{ patients|length }} patient{{ '' if (patients|length == 1) else 's' }}
+    Total : {{ total }} patient{{ '' if (total == 1) else 's' }}
   </div>
 
   <!-- Barre de recherche côté serveur (GET) -->
-  <form class="po-searchbar" method="get" action="{{ url_for('pro_office_index') }}">
-    <input class="po-input" type="search" name="q" value="{{ request.args.get('q','') }}" placeholder="Rechercher par nom, e-mail, téléphone…" />
+  <form class="po-searchbar" method="get" action="{{ url_for('pro_patients') }}">
+    <input class="po-input" type="search" name="q" value="{{ q or '' }}" placeholder="Rechercher par nom, e-mail, téléphone…" />
     <button class="po-btn po-btn-primary" type="submit">Rechercher</button>
   </form>
 
-  {% if patients and patients|length > 0 %}
+  {% if rows and rows|length > 0 %}
     <div class="po-grid">
-      {% for p in patients %}
-        {% set profile = (profiles[p.id] if profiles is defined and p.id in profiles else None) %}
-        {% set avatar = (profile.picture_url if profile and profile.picture_url else p.picture_url if p.picture_url is defined else None) %}
+      {# rows = liste de tuples (User, total_rdv, confirme_count, last_date) #}
+      {% for u, total_rdv, confirme_count, last_date in rows %}
         <div class="po-card">
           <div class="po-avatar">
-            {% if avatar %}
-              <img src="{{ avatar }}" alt="Photo de {{ p.full_name or p.username or ('ID ' ~ p.id) }}">
+            {% if u.picture_url %}
+              <img src="{{ u.picture_url }}" alt="Photo de {{ u.full_name or u.username or ('ID ' ~ u.id) }}">
             {% else %}
-              {{ (p.full_name or p.username or 'P')[:1] | upper }}
+              {{ (u.full_name or u.username or 'P')[:1] | upper }}
             {% endif %}
           </div>
 
           <div class="po-info">
             <div class="po-name">
-              {{ p.full_name or p.username or 'Patient' }}
+              {{ u.full_name or u.username or 'Patient' }}
             </div>
-            <div class="po-id">#{{ p.id }}{% if p.email %} • {{ p.email }}{% endif %}{% if p.phone %} • {{ p.phone }}{% endif %}</div>
+            <div class="po-id">
+              #{{ u.id }}
+              {% if u.email %} • {{ u.email }}{% endif %}
+              {% if u.phone %} • {{ u.phone }}{% endif %}
+            </div>
 
             <div class="po-tags">
-              {% if profile and profile.city %}<span class="po-tag">{{ profile.city }}</span>{% endif %}
-              {% if profile and profile.age %}<span class="po-tag">{{ profile.age }} ans</span>{% endif %}
-              {% if profile and profile.gender %}<span class="po-tag">{{ profile.gender }}</span>{% endif %}
+              <span class="po-tag">RDV: {{ total_rdv or 0 }}</span>
+              <span class="po-tag">Confirmés: {{ confirme_count or 0 }}</span>
+              {% if last_date %}<span class="po-tag">Dernier: {{ last_date.strftime("%d/%m/%Y") if last_date.__class__.__name__ in ["datetime","date"] else last_date }}</span>{% endif %}
             </div>
           </div>
 
           <div class="po-cta">
-            {# Remplace cette ligne par: url_for('pro_office_patient', patient_id=p.id) quand la route existera #}
-            <a class="po-btn po-btn-ghost po-link" href="{{ url_for('pro_office_index') }}?selected={{ p.id }}" title="Ouvrir le dossier">
-              Ouvrir
+            <a class="po-btn po-btn-ghost" href="{{ url_for('pro_patient_dossier', patient_id=u.id) }}" title="Ouvrir le dossier">
+              <i class="fa-solid fa-folder-open me-1"></i> Dossier
+            </a>
+            <a class="po-btn po-btn-primary" href="{{ url_for('pro_patient_exercises', patient_id=u.id) }}" title="Exercices">
+              <i class="fa-solid fa-dumbbell me-1"></i> Exercices
             </a>
           </div>
         </div>
       {% endfor %}
     </div>
+
+    {# Pagination #}
+    {% set total_pages = (total // per_page) + (1 if (total % per_page) else 0) %}
+    {% if total_pages > 1 %}
+      <div class="po-pagi">
+        {% set qparam = q or '' %}
+        {% for p in range(1, total_pages + 1) %}
+          <a class="po-page {% if p == page %}active{% endif %}"
+             href="{{ url_for('pro_patients', q=qparam, page=p) }}">{{ p }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+
   {% else %}
     <div class="po-empty">
       <strong>Aucun patient lié.</strong><br>
