@@ -29,7 +29,9 @@
     <h1 class="h4 mb-0">Mes rendez-vous</h1>
     <div class="d-flex gap-2">
       <a class="btn btn-outline-secondary" href="{{ url_for('professional_dashboard') }}">← Tableau de bord</a>
+      {% if logout is defined %}
       <a class="btn btn-outline-dark" href="{{ url_for('logout') }}">Déconnexion</a>
+      {% endif %}
     </div>
   </div>
 
@@ -37,10 +39,10 @@
     <div class="tools">
       <!-- Filtres -->
       <ul class="nav nav-pills filter-tabs" id="filterTabs">
-        <li class="nav-item"><button class="nav-link active" data-filter="all">Tous</button></li>
-        <li class="nav-item"><button class="nav-link" data-filter="upcoming">À venir</button></li>
-        <li class="nav-item"><button class="nav-link" data-filter="pending">En attente</button></li>
-        <li class="nav-item"><button class="nav-link" data-filter="past">Passés</button></li>
+        <li class="nav-item"><button class="nav-link active" data-filter="all" type="button">Tous</button></li>
+        <li class="nav-item"><button class="nav-link" data-filter="upcoming" type="button">À venir</button></li>
+        <li class="nav-item"><button class="nav-link" data-filter="pending" type="button">En attente</button></li>
+        <li class="nav-item"><button class="nav-link" data-filter="past" type="button">Passés</button></li>
       </ul>
 
       <!-- Tri -->
@@ -59,7 +61,7 @@
       <table class="table align-middle bg-white shadow-sm rounded-3 overflow-hidden">
         <thead class="table-light">
           <tr>
-            <th style="min-width:160px">Date & heure</th>
+            <th style="min-width:160px">Date &amp; heure</th>
             <th>Patient</th>
             <th>Type</th>
             <th>Tarif</th>
@@ -69,30 +71,31 @@
         </thead>
         <tbody id="apptTbody">
         {% for ap in appointments %}
-          {# Prépare les data-attributes pour filtrage/tri #}
+          {% set p = ap.patient %}
+          {% set patient_name = (p.full_name or p.username or ('Patient ' ~ p.id)) if p else 'Patient' %}
+          {% set patient_phone = p.phone if p else '' %}
+          {% set patient_email = p.email if p else '' %}
           {% set ts = ap.appointment_date.timestamp() if ap.appointment_date else 0 %}
           {% set status = ap.status or 'en_attente' %}
+
           <tr
             class="appt-row"
             data-ts="{{ (ts * 1000) | int }}"
             data-status="{{ status }}"
-            data-text="{{ (ap.patient.username ~ ' ' ~ (ap.patient.phone or '') ~ ' ' ~ (ap.patient.email or '')) | lower }}"
+            data-text="{{ (patient_name ~ ' ' ~ (patient_phone or '') ~ ' ' ~ (patient_email or '')) | lower }}"
           >
             <td>
               <div>{{ ap.appointment_date.strftime('%d/%m/%Y %H:%M') if ap.appointment_date else '' }}</div>
               <div class="small text-muted">
-                {% set now = namespace(val=namespace()) %} {# dummy to avoid unused #}
-                {% if ap.appointment_date %}
-                  {{ ap.appointment_date.strftime('%A') | capitalize }}
-                {% endif %}
+                {% if ap.appointment_date %}{{ ap.appointment_date.strftime('%A') | capitalize }}{% endif %}
               </div>
             </td>
 
             <td>
-              <div class="fw-semibold">{{ ap.patient.username }}</div>
+              <div class="fw-semibold">{{ patient_name }}</div>
               <div class="small-muted">
-                {% if ap.patient.phone %}📞 {{ ap.patient.phone }}{% endif %}
-                {% if ap.patient.email %}{% if ap.patient.phone %} · {% endif %}✉️ {{ ap.patient.email }}{% endif %}
+                {% if patient_phone %}📞 {{ patient_phone }}{% endif %}
+                {% if patient_email %}{% if patient_phone %} · {% endif %}✉️ {{ patient_email }}{% endif %}
               </div>
               <button class="btn btn-link p-0 small" type="button" data-bs-toggle="collapse" data-bs-target="#det{{ ap.id }}">
                 Détails
@@ -115,7 +118,6 @@
             </td>
 
             <td class="text-end">
-              {# CSRF token rendu dans chaque form si dispo #}
               {% set csrf = csrf_token() if csrf_token is defined else '' %}
 
               {% if status == 'en_attente' %}
@@ -131,16 +133,8 @@
                   data-action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='reject') }}"
                   data-title="Refuser ce rendez-vous"
                   data-label="Motif (optionnel)"
+                  type="button"
                 >Refuser</button>
-
-                <button
-                  class="btn btn-sm btn-outline-warning"
-                  data-bs-toggle="modal"
-                  data-bs-target="#modalReason"
-                  data-action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='request_reschedule') }}"
-                  data-title="Demander un report"
-                  data-label="Proposition / message au patient"
-                >Demander un report</button>
 
               {% elif status == 'confirme' %}
                 <button
@@ -150,16 +144,8 @@
                   data-action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='cancel') }}"
                   data-title="Annuler ce rendez-vous"
                   data-label="Motif d'annulation (optionnel)"
+                  type="button"
                 >Annuler</button>
-
-                <button
-                  class="btn btn-sm btn-outline-warning"
-                  data-bs-toggle="modal"
-                  data-bs-target="#modalReason"
-                  data-action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='request_reschedule') }}"
-                  data-title="Demander un report"
-                  data-label="Proposition / message au patient"
-                >Demander un report</button>
 
               {% else %}
                 <span class="text-muted small">—</span>
@@ -172,9 +158,9 @@
               <div class="row g-3">
                 <div class="col-md-3">
                   <div class="fw-semibold mb-1">Patient</div>
-                  <div>{{ ap.patient.username }}</div>
-                  {% if ap.patient.phone %}<div class="small-muted">📞 {{ ap.patient.phone }}</div>{% endif %}
-                  {% if ap.patient.email %}<div class="small-muted">✉️ {{ ap.patient.email }}</div>{% endif %}
+                  <div>{{ patient_name }}</div>
+                  {% if patient_phone %}<div class="small-muted">📞 {{ patient_phone }}</div>{% endif %}
+                  {% if patient_email %}<div class="small-muted">✉️ {{ patient_email }}</div>{% endif %}
                 </div>
                 <div class="col-md-3">
                   <div class="fw-semibold mb-1">RDV</div>
@@ -185,12 +171,12 @@
                 <div class="col-md-6">
                   <div class="fw-semibold mb-1">Contact rapide</div>
                   <div class="d-flex flex-wrap gap-2">
-                    {% if ap.patient.phone %}
-                      <a class="btn btn-sm btn-outline-primary" href="tel:{{ ap.patient.phone }}">Appeler</a>
-                      <a class="btn btn-sm btn-outline-success" target="_blank" rel="noopener" href="https://wa.me/{{ ap.patient.phone|replace(' ','')|replace('+','') }}">WhatsApp</a>
+                    {% if patient_phone %}
+                      <a class="btn btn-sm btn-outline-primary" href="tel:{{ patient_phone }}">Appeler</a>
+                      <a class="btn btn-sm btn-outline-success" target="_blank" rel="noopener" href="https://wa.me/{{ patient_phone|replace(' ','')|replace('+','') }}">WhatsApp</a>
                     {% endif %}
-                    {% if ap.patient.email %}
-                      <a class="btn btn-sm btn-outline-dark" href="mailto:{{ ap.patient.email }}?subject=À propos de votre RDV">E-mail</a>
+                    {% if patient_email %}
+                      <a class="btn btn-sm btn-outline-dark" href="mailto:{{ patient_email }}?subject=À propos de votre RDV">E-mail</a>
                     {% endif %}
                   </div>
                 </div>
@@ -206,7 +192,7 @@
   {% endif %}
 </div>
 
-{# Modal raison / message pour refuser, annuler, demander un report #}
+<!-- Modal raison / message -->
 <div class="modal fade" id="modalReason" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <form id="reasonForm" method="post" class="modal-content">
@@ -243,7 +229,7 @@
     document.getElementById('reasonInput').value = '';
   });
 
-  // --------- Filtre / Tri / Recherche côté client (pas de changement backend)
+  // --------- Filtre / Tri / Recherche côté client
   const rows = Array.from(document.querySelectorAll('tr.appt-row'));
   const tbody = document.getElementById('apptTbody');
   const tabs = document.querySelectorAll('#filterTabs .nav-link');
@@ -274,28 +260,36 @@
   }
   function applyFilterSort(){
     const order = sortSel.value; // 'desc' or 'asc'
-    // Filter visibility
+
+    // Filtrer visibilité
     rows.forEach(r => {
-      r.style.display = (matchFilter(r) && matchSearch(r)) ? '' : 'none';
-      // also hide its details row if hidden
-      const det = document.getElementById('det' + r.querySelector('[data-bs-target]')?.getAttribute('data-bs-target')?.replace('#','') || '');
-      if (r.style.display === 'none' && det) det.classList.remove('show');
+      const visible = (matchFilter(r) && matchSearch(r));
+      r.style.display = visible ? '' : 'none';
+      // cacher la ligne détail si la principale est cachée
+      const btn = r.querySelector('button[data-bs-target]');
+      const detId = btn ? btn.getAttribute('data-bs-target').replace('#','') : null;
+      const det = detId ? document.getElementById(detId) : null;
+      if (!visible && det) det.classList.remove('show');
     });
-    // Sort visible rows by ts
+
+    // Trier les lignes visibles par timestamp
     const vis = rows.filter(r => r.style.display !== 'none');
     vis.sort((a,b) => {
       const ta = Number(a.getAttribute('data-ts')||'0');
       const tb = Number(b.getAttribute('data-ts')||'0');
       return order === 'asc' ? ta - tb : tb - ta;
     });
-    // Re-append in sorted order, and keep each detail row adjacent
+
+    // ré-attacher dans l'ordre + maintenir la ligne détail adjacente
     vis.forEach(r => {
-      const id = r.querySelector('button[data-bs-target]')?.getAttribute('data-bs-target')?.slice(1);
-      const det = id ? document.getElementById(id) : null;
+      const btn = r.querySelector('button[data-bs-target]');
+      const detId = btn ? btn.getAttribute('data-bs-target').replace('#','') : null;
+      const det = detId ? document.getElementById(detId) : null;
       tbody.appendChild(r);
       if (det) tbody.appendChild(det);
     });
   }
+
   tabs.forEach(t => t.addEventListener('click', () => {
     tabs.forEach(x => x.classList.remove('active'));
     t.classList.add('active');
