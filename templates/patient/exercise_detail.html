@@ -1,18 +1,44 @@
 {% extends "base.html" %}
+{% block title %}Exercice — Tighri{% endblock %}
 {% block content %}
-<h2>{{ assign.exercise.title }}</h2>
-<p class="text-muted">{{ assign.exercise.description }}</p>
+<div class="container py-4" style="max-width:820px">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h1 class="h5 mb-0">{{ exercise.title }}</h1>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('patient_exercises') }}">Retour</a>
+  </div>
 
-{% if assign.exercise.content_text %}
-<pre class="p-3 bg-light border rounded">{{ assign.exercise.content_text }}</pre>
-{% endif %}
-{% if assign.exercise.content_url %}
-<p><a href="{{ assign.exercise.content_url }}" target="_blank" rel="noopener">Ouvrir la ressource ➜</a></p>
-{% endif %}
+  <div class="card mb-3">
+    <div class="card-body">
+      {% if exercise.file_url %}
+        <p class="mb-2"><a class="btn btn-outline-secondary btn-sm" href="{{ exercise.file_url }}" target="_blank">
+          <i class="fa-solid fa-download me-1"></i>Télécharger le document
+        </a></p>
+      {% endif %}
+      {% if exercise.text_content %}
+        <div class="small text-muted mb-1">Consignes</div>
+        <div>{{ exercise.text_content }}</div>
+      {% else %}
+        <div class="text-muted small">Aucune consigne texte.</div>
+      {% endif %}
+    </div>
+  </div>
 
-<form method="post" class="mt-4">
-  <label class="form-label">Votre réponse</label>
-  <textarea name="response_text" class="form-control" rows="5"></textarea>
-  <button class="btn btn-primary mt-3">Envoyer</button>
-</form>
+  <div class="card">
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data" class="row g-2">
+        <div class="col-12">
+          <label class="form-label">Votre réponse (texte)</label>
+          <textarea name="text_answer" class="form-control" rows="4" placeholder="Saisissez votre réponse..."></textarea>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Joindre un fichier (audio / vidéo / image / PDF / doc...)</label>
+          <input type="file" name="file_answer" class="form-control">
+        </div>
+        <div class="col-12 d-flex gap-2">
+          <button class="btn btn-primary"><i class="fa-solid fa-paper-plane me-1"></i>Envoyer au professionnel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
