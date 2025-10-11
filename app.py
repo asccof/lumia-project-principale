@@ -206,16 +206,11 @@ if "_ensure_patient_case" not in globals():
 # Helpers: exercises / assignments
 # -------------------------------------------------------------------
 # -------------------------------------------------------------------
-# Helpers: exercises / assignments  (fix: due_date "" -> None)
+# Helpers: exercises / assignments  (fix: due_date + patient_user_id)
 # -------------------------------------------------------------------
 from datetime import datetime, date
 
 def _normalize_due_date(value):
-    """
-    Convertit la valeur reçue en objet date ou None.
-    Accepte: None, '', 'YYYY-MM-DD', date, datetime.
-    Toute chaîne vide/blanche -> None.
-    """
     if value is None:
         return None
     if isinstance(value, date) and not isinstance(value, datetime):
@@ -229,46 +224,51 @@ def _normalize_due_date(value):
         try:
             return datetime.strptime(s, "%Y-%m-%d").date()
         except ValueError:
-            # format invalide => on ignore plutôt que casser
             return None
-    # type non géré
     return None
 
 def _assign_exercise_to_patient(exercise, professional_id, patient_user_id, due_date=None):
     """
-    Assigne un exercice à un patient (idempotent) et gère correctement due_date.
+    Assigne un exercice à un patient.
+    - patient_id : l'ID "patient" (p.ex. profil/dossier)
+    - patient_user_id : l'ID user du patient (colonne NOT NULL dans la table)
+    Ici on considère que patient_id == patient_user_id si tu n'as pas d'autre ID de profil.
+    Adapte si tu as un vrai patient_id différent.
     """
     normalized_due = _normalize_due_date(due_date)
 
-    # Rechercher un assignment existant pour éviter les doublons
-    assignment = ExerciseAssignment.query.filter_by(
+    # Si tu as un vrai "patient_id" distinct, remplace la ligne suivante par ce vrai ID.
+    patient_id = patient_user_id
+
+    # Rechercher un assignment existant (inclure patient_user_id pour éviter les doublons)
+    q = ExerciseAssignment.query.filter_by(
         exercise_id=getattr(exercise, "id", None),
-        patient_id=patient_user_id,
+        patient_id=patient_id,
         professional_id=professional_id,
-    ).first()
+    )
+    if hasattr(ExerciseAssignment, "patient_user_id"):
+        q = q.filter(ExerciseAssignment.patient_user_id == patient_user_id)
+
+    assignment = q.first()
 
     if assignment:
-        # Mettre à jour la due_date (y compris la vider si l'utilisateur a effacé le champ)
         if hasattr(assignment, "due_date"):
-            assignment.due_date = normalized_due  # peut être None
+            assignment.due_date = normalized_due
         if hasattr(assignment, "updated_at"):
             assignment.updated_at = datetime.utcnow()
     else:
-        # Construire les paramètres sans jamais passer "" pour due_date
         params = dict(
             exercise_id=getattr(exercise, "id", None),
-            patient_id=patient_user_id,
+            patient_id=patient_id,
             professional_id=professional_id,
             status="active",
-            created_at=datetime.utcnow() if hasattr(ExerciseAssignment, "created_at") else None,
         )
-        # Nettoyage des clés None inutiles
-        if params.get("created_at") is None:
-            params.pop("created_at", None)
-
+        if hasattr(ExerciseAssignment, "patient_user_id"):
+            params["patient_user_id"] = patient_user_id
         if normalized_due is not None:
-            params["due_date"] = normalized_due  # type: date
-        # Surtout ne pas mettre due_date si None (sinon risque de passer "")
+            params["due_date"] = normalized_due
+        if hasattr(ExerciseAssignment, "created_at"):
+            params["created_at"] = datetime.utcnow()
 
         assignment = ExerciseAssignment(**params)
 
