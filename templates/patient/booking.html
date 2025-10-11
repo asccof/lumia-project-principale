@@ -1,9 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Tighri — Réserver{% endblock %}
+
+{% block title %}
+  {% if t is defined %}{{ t('patient.booking.page_title','Tighri — Réserver') }}{% else %}Tighri — Réserver{% endif %}
+{% endblock %}
 
 {% block extra_css %}
 <style>
-  /* mêmes styles que la home pour la zone de recherche */
   :root{--primary:#8B5CF6;--primary-dark:#6D28D9;--ink:#2d1a47;--muted:#4B3869;--bg:#f7f5fa;--card:#fff;--shadow:0 2px 12px rgba(139,92,246,.1);--radius:18px}
   header.page{background:linear-gradient(90deg,var(--primary) 0%,var(--primary-dark) 100%);color:#fff;padding:6rem 0 2rem;text-align:center}
   header.page h1{margin:0 0 .5rem;font-size:2.2rem;font-weight:700}
@@ -20,7 +22,6 @@
   .btn-icon{display:inline-flex;align-items:center;gap:.4rem}
   .btn-icon svg{width:16px;height:16px}
 
-  /* panneau avancé mobile (identique home) */
   @media (max-width:640px){
     .search-bar{grid-template-columns:1fr;gap:.5rem}
     .desktop-only{display:none !important}
@@ -38,92 +39,133 @@
     #mobile-advanced-filters{display:contents}
     .mobile-only{display:none !important}
   }
+
+  /* cards */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem}
+  .card{background:#fff;border-radius:16px;box-shadow:var(--shadow);padding:1rem}
+  .card h3{margin:0 0 .25rem;font-size:1.05rem}
+  .muted{font-size:.9rem;opacity:.85}
+  .muted2{font-size:.9rem;opacity:.75}
+  .row-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem}
 </style>
 {% endblock %}
 
 {% block content %}
   <header class="page">
-    <h1>{{ t('patient.booking.title','Trouver un professionnel') }}</h1>
-    <p>{{ t('patient.booking.lead','Recherchez par mot-clé, ville, famille, spécialité ou mode de consultation.') }}</p>
-   <p><a href="{{ url_for('patient_home') }}" class="btn btn-light btn-sm">{{ t('nav.back_patient','↩ Retour à mon espace patient') }}</a></p>
+    <h1>
+      {% if t is defined %}{{ t('patient.booking.title','Trouver un professionnel') }}{% else %}Trouver un professionnel{% endif %}
+    </h1>
+    <p>
+      {% if t is defined %}
+        {{ t('patient.booking.lead','Recherchez par mot-clé, ville, famille, spécialité ou mode de consultation.') }}
+      {% else %}
+        Recherchez par mot-clé, ville, famille, spécialité ou mode de consultation.
+      {% endif %}
+    </p>
+    <p>
+      <a href="{{ url_for('patient_home') }}" class="btn btn-light btn-sm">
+        {% if t is defined %}{{ t('nav.back_patient','↩ Retour à mon espace patient') }}{% else %}↩ Retour à mon espace patient{% endif %}
+      </a>
+    </p>
   </header>
-<a class="btn btn-light btn-sm"
-   href="{{ url_for('professional_detail', professional_id=pro.id) }}">
-  Voir le profil
-</a>
-<a class="btn btn-primary btn-sm"
-   href="{{ url_for('patient_book', professional_id=pro.id) }}">
-  Réserver un RDV
-</a>
+
+  {# Boutons contextuels (seulement si "pro" existe) #}
+  {% if pro is defined and pro and pro.id %}
+    <div style="max-width:1100px;margin:0 auto 1rem;padding:0 1rem;display:flex;gap:.5rem;justify-content:center;">
+      <a class="btn btn-light btn-sm" href="{{ url_for('professional_detail', professional_id=pro.id) }}">
+        {% if t is defined %}{{ t('cta.view_profile','Voir le profil') }}{% else %}Voir le profil{% endif %}
+      </a>
+      <a class="btn btn-primary btn-sm" href="{{ url_for('patient_book', professional_id=pro.id) }}">
+        {% if t is defined %}{{ t('cta.book','Réserver un RDV') }}{% else %}Réserver un RDV{% endif %}
+      </a>
+    </div>
+  {% endif %}
 
   <div class="search-wrap">
-    <!-- *** Formulaire identique à la home, seule l'action change *** -->
     <form id="tighri-search-form" class="search-bar" method="get" action="{{ url_for('patient_resources') }}">
+      {# si on arrive avec ?professional_id=... on le conserve #}
+      {% if request.args.get('professional_id') %}
+        <input type="hidden" name="professional_id" value="{{ request.args.get('professional_id') }}">
+      {% endif %}
+
       <!-- q (desktop) -->
       <input class="desktop-only" type="text" name="q" id="q-desktop"
-             placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}"
+             placeholder="{% if t is defined %}{{ t('search.q','Nom, mot-clé...') }}{% else %}Nom, mot-clé...{% endif %}"
+             aria-label="{% if t is defined %}{{ t('search.q','Nom, mot-clé...') }}{% else %}Nom, mot-clé...{% endif %}"
              value="{{ request.args.get('q','') }}">
 
-      <!-- Panneau avancé : q + ville + famille + spécialité + mode -->
+      <!-- Panneau avancé -->
       <div id="mobile-advanced-filters" aria-hidden="true">
-        <div class="adv-head"><button type="button" class="adv-close" id="advClose" aria-label="Fermer">✕</button></div>
+        <div class="adv-head">
+          <button type="button" class="adv-close" id="advClose" aria-label="Fermer">✕</button>
+        </div>
         <div class="adv-stack">
           <!-- q (mobile) -->
           <input class="mobile-only" type="text" name="q" id="q-mobile"
-                 placeholder="{{ t('search.q','Nom, mot-clé...') }}" aria-label="{{ t('search.q','Nom, mot-clé...') }}"
+                 placeholder="{% if t is defined %}{{ t('search.q','Nom, mot-clé...') }}{% else %}Nom, mot-clé...{% endif %}"
+                 aria-label="{% if t is defined %}{{ t('search.q','Nom, mot-clé...') }}{% else %}Nom, mot-clé...{% endif %}"
                  value="{{ request.args.get('q','') }}">
 
           <!-- Ville -->
           {% if cities is defined and cities %}
-            <select name="city_id" aria-label="{{ t('search.city','Ville') }}">
-              <option value="">{{ t('search.city','Ville') }}</option>
+            <select name="city_id" aria-label="{% if t is defined %}{{ t('search.city','Ville') }}{% else %}Ville{% endif %}">
+              <option value="">{% if t is defined %}{{ t('search.city','Ville') }}{% else %}Ville{% endif %}</option>
               {% for c in cities %}
                 <option value="{{ c.id }}" {% if request.args.get('city_id')==c.id|string %}selected{% endif %}>{{ c.name }}</option>
               {% endfor %}
             </select>
           {% else %}
-            <input type="text" name="city" placeholder="{{ t('search.city','Ville') }}" aria-label="{{ t('search.city','Ville') }}" value="{{ request.args.get('city','') }}">
+            <input type="text" name="city"
+                   placeholder="{% if t is defined %}{{ t('search.city','Ville') }}{% else %}Ville{% endif %}"
+                   aria-label="{% if t is defined %}{{ t('search.city','Ville') }}{% else %}Ville{% endif %}"
+                   value="{{ request.args.get('city','') }}">
           {% endif %}
 
           <!-- Famille -->
           {% if families is defined and families %}
-            <select name="family" aria-label="{{ t('search.family','Famille') }}">
-              <option value="">{{ t('search.family','Famille') }}</option>
+            <select name="family" aria-label="{% if t is defined %}{{ t('search.family','Famille') }}{% else %}Famille{% endif %}">
+              <option value="">{% if t is defined %}{{ t('search.family','Famille') }}{% else %}Famille{% endif %}</option>
               {% for f in families %}
                 <option value="{{ f.name }}" {% if request.args.get('family','')==f.name %}selected{% endif %}>{{ f.name }}</option>
               {% endfor %}
             </select>
           {% else %}
-            <input type="text" name="family" placeholder="{{ t('search.family','Famille') }}" aria-label="{{ t('search.family','Famille') }}" value="{{ request.args.get('family','') }}">
+            <input type="text" name="family"
+                   placeholder="{% if t is defined %}{{ t('search.family','Famille') }}{% else %}Famille{% endif %}"
+                   aria-label="{% if t is defined %}{{ t('search.family','Famille') }}{% else %}Famille{% endif %}"
+                   value="{{ request.args.get('family','') }}">
           {% endif %}
 
           <!-- Spécialité -->
           {% if specialties is defined and specialties %}
-            <select name="specialty_id" aria-label="{{ t('search.specialty','Spécialité') }}">
-              <option value="">{{ t('search.specialty','Spécialité') }}</option>
+            <select name="specialty_id" aria-label="{% if t is defined %}{{ t('search.specialty','Spécialité') }}{% else %}Spécialité{% endif %}">
+              <option value="">{% if t is defined %}{{ t('search.specialty','Spécialité') }}{% else %}Spécialité{% endif %}</option>
               {% for s in specialties %}
                 <option value="{{ s.id }}" {% if request.args.get('specialty_id')==s.id|string %}selected{% endif %}>{{ s.name }}</option>
               {% endfor %}
             </select>
           {% else %}
-            <input type="text" name="specialty" placeholder="{{ t('search.specialty','Spécialité') }}" aria-label="{{ t('search.specialty','Spécialité') }}" value="{{ request.args.get('specialty','') }}">
+            <input type="text" name="specialty"
+                   placeholder="{% if t is defined %}{{ t('search.specialty','Spécialité') }}{% else %}Spécialité{% endif %}"
+                   aria-label="{% if t is defined %}{{ t('search.specialty','Spécialité') }}{% else %}Spécialité{% endif %}"
+                   value="{{ request.args.get('specialty','') }}">
           {% endif %}
 
           <!-- Mode -->
-          <select name="mode" aria-label="{{ t('search.mode','Mode') }}">
-            <option value="">{{ t('search.mode','Mode') }}</option>
-            <option value="cabinet"  {% if request.args.get('mode')=='cabinet' %}selected{% endif %}>{{ t('mode.cabinet','Cabinet') }}</option>
-            <option value="visio"    {% if request.args.get('mode')=='visio' %}selected{% endif %}>{{ t('mode.visio','Visio') }}</option>
-            <option value="domicile" {% if request.args.get('mode')=='domicile' %}selected{% endif %}>{{ t('mode.domicile','Domicile') }}</option>
+          <select name="mode" aria-label="{% if t is defined %}{{ t('search.mode','Mode') }}{% else %}Mode{% endif %}">
+            <option value="">{% if t is defined %}{{ t('search.mode','Mode') }}{% else %}Mode{% endif %}</option>
+            <option value="cabinet"  {% if request.args.get('mode')=='cabinet' %}selected{% endif %}>
+              {% if t is defined %}{{ t('mode.cabinet','Cabinet') }}{% else %}Cabinet{% endif %}
+            </option>
+            <option value="visio"    {% if request.args.get('mode')=='visio' %}selected{% endif %}>
+              {% if t is defined %}{{ t('mode.visio','Visio') }}{% else %}Visio{% endif %}
+            </option>
+            <option value="domicile" {% if request.args.get('mode')=='domicile' %}selected{% endif %}>
+              {% if t is defined %}{{ t('mode.domicile','Domicile') }}{% else %}Domicile{% endif %}
+            </option>
           </select>
         </div>
       </div>
-      
-      <a class="btn btn-outline-primary btn-sm"
-   href="{{ url_for('patient_resources', mode='all') }}">
-  Voir tous les professionnels
-</a>
-
 
       <!-- Actions -->
       <div class="search-actions">
@@ -131,7 +173,7 @@
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.415l-3.867-3.833zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0"/>
           </svg>
-          <span>{{ t('search.cta','Rechercher') }}</span>
+          <span>{% if t is defined %}{{ t('search.cta','Rechercher') }}{% else %}Rechercher{% endif %}</span>
         </button>
 
         <div class="form-check form-switch" style="margin:0 .25rem;">
@@ -144,8 +186,51 @@
     </form>
   </div>
 
+  <!-- Lien “Voir tous les professionnels” (hors formulaire pour éviter tout effet de bord) -->
+  <div style="max-width:1100px;margin:.5rem auto 1rem;padding:0 1rem;text-align:right;">
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('patient_resources', mode='all') }}">
+      {% if t is defined %}{{ t('cta.view_all_pros','Voir tous les professionnels') }}{% else %}Voir tous les professionnels{% endif %}
+    </a>
+  </div>
+
+  <!-- Résultats -->
+  {% set items = pros if pros is defined else [] %}
+  <div style="max-width:1100px;margin:1rem auto 3rem;padding:0 1rem;">
+    {% if items %}
+      <div class="grid">
+        {% for p in items %}
+          <div class="card">
+            <h3>{{ p.name or p.full_name or ('#' ~ p.id) }}</h3>
+            <div class="muted">
+              {{ (p.primary_specialty.name if p.primary_specialty else p.specialty) or (t is defined and t('label.specialty','Spécialité inconnue') or 'Spécialité inconnue') }}
+            </div>
+            <div class="muted2">
+              {{ (p.city.name if p.city and p.city.name else p.location) or '' }}
+            </div>
+            <div class="row-actions">
+              <a class="btn btn-light btn-sm" href="{{ url_for('professional_detail', professional_id=p.id) }}">
+                {% if t is defined %}{{ t('cta.view_profile','Voir le profil') }}{% else %}Voir le profil{% endif %}
+              </a>
+              <a class="btn btn-primary btn-sm" href="{{ url_for('patient_book', professional_id=p.id) }}">
+                {% if t is defined %}{{ t('cta.book','Réserver') }}{% else %}Réserver{% endif %}
+              </a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card">
+        <p style="margin:0;">
+          {% if t is defined %}{{ t('search.no_results','Aucun professionnel trouvé avec ces filtres.') }}{% else %}Aucun professionnel trouvé avec ces filtres.{% endif %}
+          <a href="{{ url_for('patient_resources', mode='all') }}">
+            {% if t is defined %}{{ t('cta.view_all_pros','Voir tous les professionnels') }}{% else %}Voir tous les professionnels{% endif %}
+          </a>
+        </p>
+      </div>
+    {% endif %}
+  </div>
+
   <script>
-    /* === Script mobile identique à la home === */
     (function(){
       const panel  = document.getElementById('mobile-advanced-filters');
       const btn    = document.getElementById('btn-search-submit');
@@ -162,14 +247,17 @@
       const closePanel = () => { panel.classList.remove('is-open'); panel.setAttribute('aria-hidden','true'); btn.setAttribute('aria-expanded','false'); sw && (sw.checked = false); };
 
       const qs = new URLSearchParams(window.location.search);
-      const hasFilters = ['q','city','city_id','family','specialty','specialty_id','mode'].some(k=>qs.get(k));
+      const hasFilters = ['q','city','city_id','family','specialty','specialty_id','mode','professional_id'].some(k=>qs.get(k));
       if (isMobile() && hasFilters) openPanel(); else closePanel();
       syncQState();
 
       sw && sw.addEventListener('change', function(){ if (!isMobile()) return; this.checked ? openPanel() : closePanel(); });
       btn && btn.addEventListener('click', function(e){ if (!isMobile()) return; if (!panel.classList.contains('is-open')){ e.preventDefault(); openPanel(); setTimeout(()=>{ qMob && qMob.focus(); }, 0); }});
       document.getElementById('advClose')?.addEventListener('click', ()=>{ if (isMobile()) closePanel(); });
-      document.addEventListener('click', (e)=>{ if (!isMobile() || !panel.classList.contains('is-open')) return; const inside = e.target.closest('#mobile-advanced-filters') || e.target.closest('#btn-search-submit') || e.target.closest('#switch-advanced'); if (!inside) closePanel(); });
+      document.addEventListener('click', (e)=>{ if (!isMobile() || !panel.classList.contains('is-open')) return;
+        const inside = e.target.closest('#mobile-advanced-filters') || e.target.closest('#btn-search-submit') || e.target.closest('#switch-advanced');
+        if (!inside) closePanel();
+      });
       document.addEventListener('keydown', (e)=>{ if (isMobile() && e.key === 'Escape' && panel.classList.contains('is-open')) closePanel(); });
       window.addEventListener('resize', ()=>{ syncQState(); if (!isMobile()){ panel.setAttribute('aria-hidden','false'); }else{ sw && (sw.checked ? openPanel() : closePanel()); }});
     })();
