@@ -309,6 +309,25 @@ def _assign_exercise_to_patient(exercise, professional_id, patient_id, patient_u
     db.session.commit()
     return assignment
 
+def _get_or_create_thread(pro_id: int, patient_id: int):
+    thread = MessageThread.query.filter_by(
+        professional_id=pro_id,
+        patient_id=patient_id
+    ).first()
+    if not thread:
+        thread = MessageThread(
+            professional_id=pro_id,
+            patient_id=patient_id,
+            is_anonymous=False,
+        )
+        db.session.add(thread)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            # On laisse None remonter si tu préfères gérer côté appelant
+            return None
+    return thread
 
 
 # -------------------------------------------------------------------
