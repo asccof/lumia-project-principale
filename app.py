@@ -2920,55 +2920,124 @@ def _notify_in_thread(thread: MessageThread, sender_user_id: int, body: str):
 
 
 # ====== Exercices (côté PRO : créer/éditer/téléverser + envoyer) =============
+from datetime import datetime
+from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
+
 @app.route("/pro/patients/<int:patient_id>/exercises", methods=["GET","POST"], endpoint="pro_patient_exercises")
 @login_required
 def pro_patient_exercises(patient_id: int):
     pro = _current_professional_or_403()
     user = User.query.get_or_404(patient_id)
-    if user.user_type != "patient": abort(404)
-    _ensure_patient_case(pro.id, user.id)
+    if user.user_type != "patient":
+        abort(404)
 
+    # S'assure que le "case" existe (ne plante pas si erreur)
+    try:
+        _ensure_patient_case(pro.id, user.id)
+    except Exception:
+        try: db.session.rollback()
+        except Exception: pass
+
+    # -------- POST: création/assignation ----------
     if request.method == "POST":
         f = request.form
         title = (f.get("title") or "").strip()
         text_content = (f.get("text_content") or "").strip() or None
         fmt = (f.get("content_format") or "texte").strip().lower()
         visibility = (f.get("visibility") or "my_patients").strip()
-        due_date = f.get("due_date")
         technique = (f.get("technique") or "").strip() or None
         family = (f.get("family") or "").strip() or None
 
-        # Nouveau ou existant
-        if title:
-            ex = Exercise(
-                owner_id=current_user.id, professional_id=pro.id,
-                title=title, description=(f.get("description") or None),
-                family=family, type=(f.get("type") or "exercice"), technique=technique,
-                content_format=fmt, text_content=text_content, visibility=visibility, is_approved=False
-            )
-            up = request.files.get("file")
-            if up and getattr(up, "filename", ""):
-                try:
-                    name = _save_attachment(up); ex.file_url = f"/u/attachments/{name}"
-                except Exception:
-                    flash("Fichier non accepté.", "warning")
-            db.session.add(ex); db.session.commit()
-        else:
-            ex_id = f.get("exercise_id", type=int)
-            if not ex_id:
-                flash("Indiquez un titre OU choisissez un exercice existant.", "warning")
-                return redirect(url_for("pro_patient_exercises", patient_id=user.id))
-            ex = Exercise.query.get_or_404(ex_id)
+        # due_date (optionnelle)
+        due_date_val = None
+        due_date_raw = (f.get("due_date") or "").strip()
+        if due_date_raw:
+            try:
+                due_date_val = datetime.strptime(due_date_raw, "%Y-%m-%d").date()
+            except Exception:
+                # On n'échoue pas l'opération pour une date mal formée
+                flash("Date d'échéance invalide, ignorée.", "warning")
 
-        _assign_exercise_to_patient(ex, pro.id, user.id, due_date)
-        thread = _get_or_create_thread(pro.id, user.id)
-        _notify_in_thread(thread, current_user.id, f"Un exercice vous a été assigné : {ex.title}.")
-        _email_or_pass(getattr(user, "email", None),
-                       f"{BRAND_NAME} — Nouvel exercice",
-                       f"Un nouvel exercice « {ex.title} » est disponible dans votre espace patient.")
-        flash("Exercice envoyé au patient.", "success")
-        return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+        try:
+            # 1) Nouveau ou existant
+            if title:
+                ex = Exercise(
+                    owner_id=current_user.id, professional_id=pro.id,
+                    title=title,
+                    description=(f.get("description") or None),
+                    family=family,
+                    type=(f.get("type") or "exercice"),
+                    technique=technique,
+                    content_format=fmt,
+                    text_content=text_content,
+                    visibility=visibility,
+                    is_approved=False,
+                )
+                up = request.files.get("file")
+                if up and getattr(up, "filename", ""):
+                    try:
+                        name = _save_attachment(up)
+                        ex.file_url = f"/u/attachments/{name}"
+                    except Exception:
+                        flash("Fichier non accepté.", "warning")
+                db.session.add(ex)
+                db.session.commit()
+            else:
+                ex_id = f.get("exercise_id", type=int)
+                if not ex_id:
+                    flash("Indiquez un titre OU choisissez un exercice existant.", "warning")
+                    return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+                ex = Exercise.query.get_or_404(ex_id)
 
+            # 2) Assignation (respecte patient_user_id si présent en modèle)
+            if hasattr(ExerciseAssignment, "patient_user_id"):
+                ea = ExerciseAssignment(
+                    exercise_id=ex.id,
+                    professional_id=pro.id,
+                    patient_id=user.id,
+                    patient_user_id=user.id,   # <<< indispensable dans ta base
+                    status="active",
+                    due_date=due_date_val,
+                )
+                db.session.add(ea)
+                db.session.commit()
+            else:
+                # fallback : tu gardes le helper si l'ancien schéma est actif
+                _assign_exercise_to_patient(ex, pro.id, user.id, due_date_raw)
+                # Si le helper commit déjà OK; sinon:
+                try: db.session.commit()
+                except Exception: db.session.rollback()
+
+            # 3) Notifications (thread + email)
+            try:
+                thread = _get_or_create_thread(pro.id, user.id)
+                _notify_in_thread(thread, current_user.id, f"Un exercice vous a été assigné : {ex.title}.")
+            except Exception:
+                try: db.session.rollback()
+                except Exception: pass
+
+            try:
+                _email_or_pass(getattr(user, "email", None),
+                               f"{BRAND_NAME} — Nouvel exercice",
+                               f"Un nouvel exercice « {ex.title} » est disponible dans votre espace patient.")
+            except Exception:
+                # email best-effort, ne casse pas la page
+                pass
+
+            flash("Exercice envoyé au patient.", "success")
+            return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+
+        except SQLAlchemyError:
+            # Toute erreur SQL → rollback immédiat pour éviter l'état "aborted"
+            db.session.rollback()
+            flash("Impossible d’assigner l’exercice.", "danger")
+        except Exception:
+            try: db.session.rollback()
+            except Exception: pass
+            flash("Une erreur est survenue pendant l’assignation.", "danger")
+
+    # -------- GET: listes pour l'affichage ----------
     assigns = []
     try:
         q = ExerciseAssignment.query.filter(ExerciseAssignment.professional_id == pro.id)
@@ -2978,18 +3047,29 @@ def pro_patient_exercises(patient_id: int):
             q = q.filter(ExerciseAssignment.patient_id == user.id)
         assigns = q.order_by(ExerciseAssignment.created_at.desc().nullslast()).all()
     except Exception:
-        pass
+        try: db.session.rollback()
+        except Exception: pass
+        assigns = []
 
     existing = []
     try:
         existing = (Exercise.query
-                    .filter(or_(Exercise.visibility.in_(("public","my_patients")),
-                                Exercise.owner_id == current_user.id,
-                                Exercise.professional_id == pro.id))
+                    .filter(or_(
+                        Exercise.visibility.in_(("public", "my_patients")),
+                        Exercise.owner_id == current_user.id,
+                        Exercise.professional_id == pro.id
+                    ))
                     .order_by(Exercise.created_at.desc())
-                    .limit(50).all())
+                    .limit(50)
+                    .all())
     except Exception:
-        pass
+        try: db.session.rollback()
+        except Exception: pass
+        existing = []
+
+    # Sécurité: s'assurer qu'aucune transaction "aborted" ne traîne avant le rendu Jinja
+    try: db.session.rollback()
+    except Exception: pass
 
     return render_or_text("pro/patient_exercises.html", "Exercices du patient",
                           professional=pro, patient=user, assignments=assigns, library=existing)
