@@ -733,6 +733,12 @@ def inject_taxonomies_for_forms():
 # -------------------------------------------------------------------
 # Routes techniques
 # -------------------------------------------------------------------
+from pathlib import Path
+import os
+from jinja2 import TemplateNotFound
+from sqlalchemy.exc import SQLAlchemyError
+from extensions import db
+
 @app.route("/robots.txt")
 def robots():
     txt_path = Path(app.static_folder or (BASE_DIR / "static")) / "robots.txt"
@@ -741,12 +747,43 @@ def robots():
     return ("User-agent: *\nDisallow:\n", 200, {"Content-Type": "text/plain"})
 
 def render_or_text(template_name: str, fallback_title: str, **kwargs):
+    # Nettoie toute transaction "aborted" avant de rendre le template
+    try:
+        db.session.rollback()
+    except Exception:
+        pass
+
     try:
         return render_template(template_name, **kwargs)
+
     except TemplateNotFound:
-        body = f"<h1 style='font-family:system-ui,Segoe UI,Arial'>Tighri — {fallback_title}</h1>"
-        body += "<p>Template manquant : <code>{}</code>. Cette page fonctionne en mode fallback sans casser l'app.</p>".format(template_name)
+        body = (
+            f"<h1 style='font-family:system-ui,Segoe UI,Arial'>Tighri — {fallback_title}</h1>"
+            f"<p>Template manquant : <code>{template_name}</code>. "
+            "Cette page fonctionne en mode fallback sans casser l'app.</p>"
+        )
         return body, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+    except SQLAlchemyError:
+        # Si un accès DB (lazy load Jinja, etc.) casse la transaction pendant le rendu
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        body = (
+            f"<h1 style='font-family:system-ui,Segoe UI,Arial'>Tighri — {fallback_title}</h1>"
+            "<p>Un incident de base de données est survenu pendant l'affichage. "
+            "La page est affichée en mode dégradé.</p>"
+        )
+        return body, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+    except Exception:
+        # Autres erreurs → rollback par sécurité puis on relance pour logging / 500
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        raise
 
 @app.get("/favicon.ico", endpoint="favicon_ico")
 def favicon_ico():
@@ -757,6 +794,15 @@ def favicon_ico():
 def favicon_png():
     static_dir = os.path.join(app.root_path, "static")
     return send_from_directory(static_dir, "favicon.png", mimetype="image/png")
+
+# Filet de sécurité global : rollback si une exception survient dans la requête
+@app.teardown_request
+def _rollback_on_teardown(exc):
+    if exc is not None:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
 # -------------------------------------------------------------------
 # Pages publiques (index / listings)
