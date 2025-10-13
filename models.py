@@ -588,29 +588,41 @@ class ExerciseAssignment(db.Model):
     __tablename__ = "exercise_assignments"
 
     id = db.Column(db.Integer, primary_key=True)
+
+    # Liens
     exercise_id = db.Column(
         db.Integer, db.ForeignKey("exercises.id", ondelete="CASCADE"), nullable=False
-    )
-    patient_id = db.Column(
-        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     professional_id = db.Column(
         db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL")
     )
 
-    status = db.Column(db.String(20), default="assigned")  # assigned | done | cancelled
-    due_date = db.Column(db.Date)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # Dans ta base, il y a patient_id (vers users) ET patient_user_id NOT NULL
+    patient_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    patient_user_id = db.Column(
+        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
 
+    # Métadonnées
+    status = db.Column(db.String(20), nullable=False, default="active")  # "active" pour matcher tes inserts
+    due_date = db.Column(db.Date, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relations (facultatives mais pratiques)
     exercise = db.relationship("Exercise", lazy="joined", foreign_keys=[exercise_id])
     patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
     professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
 
     __table_args__ = (
         db.Index("ix_ex_assign_patient", "patient_id"),
+        db.Index("ix_ex_assign_patient_user", "patient_user_id"),
         db.Index("ix_ex_assign_professional", "professional_id"),
         db.Index("ix_ex_assign_status", "status"),
     )
+
 
 
 # ======================
