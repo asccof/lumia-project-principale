@@ -156,6 +156,36 @@ from models import (
     Specialty, City,
     ProfessionalReview,
 )
+
+def _get_or_create_thread(professional_id: int, patient_user_id: int):
+    thr = MessageThread.query.filter_by(
+        professional_id=professional_id,
+        patient_id=patient_user_id
+    ).first()
+    if not thr:
+        thr = MessageThread(
+            professional_id=professional_id,
+            patient_id=patient_user_id,
+            is_anonymous=False,
+        )
+        db.session.add(thr)
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
+    return thr
+
+def _notify_in_thread(thread: MessageThread, sender_user_id: int, body: str):
+    msg = Message(thread_id=thread.id, sender_id=sender_user_id, body=body or "")
+    db.session.add(msg)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
+    return msg
+
 # ---- Helper idempotent pour créer / récupérer le dossier patient ----------
 # (Placée ici pour être définie avant toute route qui l'appelle)
 if "_ensure_patient_case" not in globals():
