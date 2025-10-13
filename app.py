@@ -2685,64 +2685,183 @@ def pro_support():
     guides = Guide.query.order_by(Guide.created_at.desc()).all()
     return render_or_text("pro/support.html", "Support & Guides", tickets=tickets, guides=guides, professional=pro)
 # ====== Dossier patient (auto-prérempli) =====================================
-@app.route("/pro/patients/<int:patient_id>/dossier", methods=["GET","POST"], endpoint="pro_patient_dossier")
+# ====== Dossier patient (auto-prérempli) =====================================
+@app.route("/pro/patients/<int:patient_id>/dossier", methods=["GET", "POST"], endpoint="pro_patient_dossier")
 @login_required
 def pro_patient_dossier(patient_id: int):
-    pro = _current_professional_or_403()
-    user = User.query.get_or_404(patient_id)
-    if user.user_type != "patient": abort(404)
-
-    case, profile = _ensure_patient_case(pro.id, user.id)
-    medhist = None
+    # Si une requête précédente a laissé la session en erreur, on purifie tout de suite
     try:
-        medhist = (MedicalHistory.query
-                   .filter_by(patient_id=user.id, professional_id=pro.id)
-                   .order_by(MedicalHistory.id.desc()).first())
+        db.session.rollback()
     except Exception:
         pass
 
+    pro = _current_professional_or_403()
+    user = User.query.get_or_404(patient_id)
+    if user.user_type != "patient":
+        abort(404)
+
+    # Dossier + profil patient (idempotent)
+    case, profile = _ensure_patient_case(pro.id, user.id)
+
+    # Dernier historique médical (si existant)
+    medhist = None
+    try:
+        medhist = (
+            MedicalHistory.query
+            .filter_by(patient_id=user.id, professional_id=pro.id)
+            .order_by(MedicalHistory.id.desc())
+            .first()
+        )
+    except Exception:
+        # Important : rollback si une requête a échoué, pour éviter "current transaction is aborted"
+        db.session.rollback()
+
     if request.method == "POST":
         f = request.form
-        if profile:
-            profile.full_name = f.get("full_name") or profile.full_name
-            profile.email = f.get("email") or profile.email
-            profile.phone = f.get("phone") or profile.phone
-            profile.address = f.get("address") or profile.address
-        if case:
-            case.display_name = f.get("display_name") or case.display_name or None
-            case.is_anonymous = (f.get("is_anonymous") == "on")
-            if hasattr(case, "notes"): case.notes = f.get("notes") or case.notes
+
+        # Maj du profil
+        try:
+            if profile:
+                profile.full_name = f.get("full_name") or profile.full_name
+                profile.email = f.get("email") or profile.email
+                profile.phone = f.get("phone") or profile.phone
+                profile.address = f.get("address") or profile.address
+        except Exception:
+            db.session.rollback()
+
+        # Maj du "case" (si ce modèle existe dans ton projet)
+        try:
+            if case:
+                case.display_name = f.get("display_name") or case.display_name or None
+                case.is_anonymous = (f.get("is_anonymous") == "on")
+                if hasattr(case, "notes"):
+                    case.notes = f.get("notes") or case.notes
+        except Exception:
+            db.session.rollback()
+
+        # Maj / création MedicalHistory
         summary = (f.get("summary") or "").strip()
         diagnostics = (f.get("diagnostics") or "").strip()
         try:
             if "MedicalHistory" in globals():
                 if not medhist:
-                    medhist = MedicalHistory(patient_id=user.id, professional_id=pro.id,
-                                             summary=summary or None, custom_fields=diagnostics or None)
+                    medhist = MedicalHistory(
+                        patient_id=user.id,
+                        professional_id=pro.id,
+                        summary=summary or None,
+                        custom_fields=diagnostics or None,
+                    )
                     db.session.add(medhist)
                 else:
-                    if summary: medhist.summary = summary
-                    if diagnostics: medhist.custom_fields = diagnostics
+                    if summary:
+                        medhist.summary = summary
+                    if diagnostics:
+                        medhist.custom_fields = diagnostics
         except Exception:
-            pass
+            db.session.rollback()
+
+        # Commit global formulaire
         try:
-            db.session.commit(); flash("Dossier patient enregistré.", "success")
+            db.session.commit()
+            flash("Dossier patient enregistré.", "success")
         except Exception:
-            db.session.rollback(); flash("Impossible d'enregistrer le dossier.", "danger")
+            db.session.rollback()
+            flash("Impossible d'enregistrer le dossier.", "danger")
+
         return redirect(url_for("pro_patient_dossier", patient_id=user.id))
 
+    # Liste des dernières séances
     sessions = []
     try:
-        sessions = (TherapySession.query
-                    .filter_by(professional_id=pro.id, patient_id=user.id)
-                    .order_by(TherapySession.start_at.desc()).limit(10).all())
+        sessions = (
+            TherapySession.query
+            .filter_by(professional_id=pro.id, patient_id=user.id)
+            .order_by(TherapySession.start_at.desc())
+            .limit(10)
+            .all()
+        )
     except Exception:
-        pass
-    thread = _get_or_create_thread(pro.id, user.id)
+        db.session.rollback()
 
-    return render_or_text("pro/patient_dossier.html", "Dossier patient",
-                          professional=pro, patient=user, case=case, profile=profile,
-                          medhist=medhist, sessions=sessions, thread=thread)
+    # Thread de messagerie patient<->pro (créé si besoin, sinon None si échec)
+    try:
+        thread = _get_or_create_thread(pro.id, user.id)
+    except Exception:
+        db.session.rollback()
+        thread = None
+
+    return render_or_text(
+        "pro/patient_dossier.html",
+        "Dossier patient",
+        professional=pro,
+        patient=user,
+        case=case,
+        profile=profile,
+        medhist=medhist,
+        sessions=sessions,
+        thread=thread,
+    )
+# ---- Helpers messagerie : thread + message -----------------------------------
+from sqlalchemy.exc import IntegrityError
+
+def _get_or_create_thread(professional_id: int, patient_user_id: int):
+    """
+    Récupère le thread patient<->pro, le crée si absent.
+    Tolère les races (double création concurrente) via IntegrityError.
+    """
+    # Tenter de trouver d'abord
+    thread = (
+        MessageThread.query
+        .filter_by(professional_id=professional_id, patient_id=patient_user_id)
+        .first()
+    )
+    if thread:
+        return thread
+
+    # Sinon créer
+    thread = MessageThread(
+        professional_id=professional_id,
+        patient_id=patient_user_id,
+        is_anonymous=False,
+    )
+    db.session.add(thread)
+    try:
+        db.session.commit()
+        return thread
+    except IntegrityError:
+        # Quelqu'un l'a créé entre-temps -> rollback et relire
+        db.session.rollback()
+        return (
+            MessageThread.query
+            .filter_by(professional_id=professional_id, patient_id=patient_user_id)
+            .first()
+        )
+    except Exception:
+        db.session.rollback()
+        # On laisse le caller gérer un éventuel None
+        return None
+
+
+def _notify_in_thread(thread: MessageThread, sender_user_id: int, body: str):
+    """
+    Ajoute un message texte simple dans le thread donné.
+    N'échoue pas l'appelant : rollback si erreur.
+    """
+    if not thread:
+        return False
+    try:
+        msg = Message(
+            thread_id=thread.id,
+            sender_id=sender_user_id,
+            body=body.strip() if body else "",
+        )
+        db.session.add(msg)
+        db.session.commit()
+        return True
+    except Exception:
+        db.session.rollback()
+        return False
+
 
 # ====== Exercices (côté PRO : créer/éditer/téléverser + envoyer) =============
 @app.route("/pro/patients/<int:patient_id>/exercises", methods=["GET","POST"], endpoint="pro_patient_exercises")
