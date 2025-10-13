@@ -292,52 +292,42 @@ def _resolve_patient_ids(patient_param):
     return patient_id, patient_user_id
 
 
-def _assign_exercise_to_patient(exercise, professional_id, patient_id, patient_user_id, due_date=None):
+def _assign_exercise_to_patient(ex: Exercise, professional_id: int, patient_user_id: int, due_date_str=None):
     """
-    Crée/MàJ ExerciseAssignment en remplissant patient_id ET patient_user_id (NOT NULL).
-    Gère due_date vide → NULL.
+    Crée une assignation d'exercice pour un patient.
+    Aligne avec le schéma actuel: exercise_assignments(patient_id, patient_user_id NOT NULL, professional_id, ...)
+    - Remplit patient_id ET patient_user_id avec le même user.id
+    - Parse due_date si fournie (YYYY-MM-DD ou DD/MM/YYYY)
+    - Status par défaut: 'active' (conforme à ta base & historiques)
     """
-    normalized_due = _normalize_due_date(due_date)
+    from datetime import datetime
+    due_date = None
+    if due_date_str:
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                due_date = datetime.strptime(due_date_str.strip(), fmt).date()
+                break
+            except Exception:
+                continue
 
-    # Rechercher un assignment existant pour éviter les doublons
-    q = ExerciseAssignment.query.filter_by(
-        exercise_id=getattr(exercise, "id", None),
-        patient_id=patient_id,
-        professional_id=professional_id,
-    )
-    if hasattr(ExerciseAssignment, "patient_user_id"):
-        q = q.filter(ExerciseAssignment.patient_user_id == patient_user_id)
-
-    assignment = q.first()
-
-    if assignment:
-        if hasattr(assignment, "due_date"):
-            assignment.due_date = normalized_due
-        if hasattr(assignment, "status") and not assignment.status:
-            assignment.status = "active"
-        if hasattr(assignment, "updated_at"):
-            assignment.updated_at = datetime.utcnow()
-    else:
-        params = dict(
-            exercise_id=getattr(exercise, "id", None),
-            patient_id=patient_id,
+    try:
+        ea = ExerciseAssignment(
+            exercise_id=ex.id,
             professional_id=professional_id,
+            # IMPORTANT: ta base exige patient_user_id NOT NULL => on remplit les deux
+            patient_id=patient_user_id,
+            patient_user_id=patient_user_id,
             status="active",
+            due_date=due_date,
         )
-        if hasattr(ExerciseAssignment, "patient_user_id"):
-            params["patient_user_id"] = patient_user_id
-        if normalized_due is not None:
-            params["due_date"] = normalized_due
-        if hasattr(ExerciseAssignment, "created_at"):
-            params["created_at"] = datetime.utcnow()
-
-        assignment = ExerciseAssignment(**params)
-        if hasattr(assignment, "updated_at"):
-            assignment.updated_at = datetime.utcnow()
-        db.session.add(assignment)
-
-    db.session.commit()
-    return assignment
+        db.session.add(ea)
+        db.session.commit()
+        return ea
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Impossible de créer l'assignation d'exercice")
+        flash("Impossible d'assigner l'exercice au patient.", "danger")
+        return None
 
 def _get_or_create_thread(pro_id: int, patient_id: int):
     thread = MessageThread.query.filter_by(
