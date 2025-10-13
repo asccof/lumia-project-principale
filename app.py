@@ -356,6 +356,91 @@ def _rollback_on_error(exc=None):
             db.session.rollback()
         except Exception:
             pass
+def create_or_update_patient_case_from_appointment(appt):
+    """
+    appt: instance Appointment avec au minimum:
+      - professional_id
+      - patient_user_id
+      - start_time / scheduled_at (date du rdv)
+    """
+    pro_id = appt.professional_id
+    user_id = appt.patient_user_id
+
+    # Récupérer infos patient
+    user = User.query.get(user_id)
+
+    filters = [PatientCase.professional_id == pro_id]
+    if hasattr(PatientCase, "patient_user_id"):
+        filters.append(PatientCase.patient_user_id == user_id)
+    else:
+        filters.append(PatientCase.patient_id == user_id)
+
+    pc = PatientCase.query.filter(*filters).first()
+    created = False
+    if not pc:
+        kwargs = {"professional_id": pro_id}
+        if hasattr(PatientCase, "patient_user_id"):
+            kwargs["patient_user_id"] = user_id
+        else:
+            kwargs["patient_id"] = user_id
+        pc = PatientCase(**kwargs)
+        created = True
+
+    # Hydrater les champs “fiche”
+    pc.first_name = getattr(user, "first_name", None) or getattr(user, "prenom", None) or pc.first_name
+    pc.last_name  = getattr(user, "last_name", None)  or getattr(user, "nom", None)     or pc.last_name
+    pc.email      = getattr(user, "email", None)      or pc.email
+    pc.phone      = getattr(user, "phone", None)      or getattr(user, "tel", None) or pc.phone
+
+    # Dernier RDV
+    appt_dt = getattr(appt, "start_time", None) or getattr(appt, "scheduled_at", None)
+    if appt_dt:
+        pc.last_appointment_at = appt_dt
+
+    db.session.add(pc)
+    db.session.flush()  # pour obtenir pc.id avant de lier le RDV
+
+    # Lier le RDV au dossier (si colonne présente)
+    if hasattr(appt, "patient_case_id"):
+        appt.patient_case_id = pc.id
+        db.session.add(appt)
+
+    db.session.commit()
+
+    # Log timeline
+    try:
+        _log_case_event(
+            patient_case_id=pc.id,
+            event_type="appointment_confirmed",
+            ref_table="appointments",
+            ref_id=getattr(appt, "id", None),
+            title="Rendez-vous confirmé",
+            details=f"RDV le {appt_dt} — {pc.first_name or ''} {pc.last_name or ''}",
+            created_by_user_id=getattr(current_user, "id", None)
+        )
+    except Exception:
+        db.session.rollback()  # le log ne doit pas casser la transaction principale
+        # silencieux
+
+    app.logger.info("[CASE] %s patient_case_id=%s (pro=%s patient=%s)",
+                    "created" if created else "updated", pc.id, pro_id, user_id)
+    return pc
+def _log_case_event(patient_case_id: int, event_type: str, ref_table: str = None,
+                    ref_id: int = None, title: str = None, details: str = None,
+                    created_by_user_id: int = None, when: datetime = None):
+    ev = PatientCaseEvent(
+        patient_case_id=patient_case_id,
+        event_type=event_type,
+        ref_table=ref_table,
+        ref_id=ref_id,
+        title=title,
+        details=details,
+        occurred_at=when or datetime.utcnow(),
+        created_by_user_id=created_by_user_id
+    )
+    db.session.add(ev)
+    db.session.commit()
+    return ev
 
 # -------------------------------------------------------------------
 # Admin blueprint
