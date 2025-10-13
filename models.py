@@ -380,8 +380,9 @@ class Appointment(db.Model):
     patient_id = db.Column(
         db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # >>> alignement : nullable + SET NULL pour éviter la FK violation à la suppression du pro
     professional_id = db.Column(
-        db.Integer, db.ForeignKey("professionals.id", ondelete="CASCADE"), nullable=False
+        db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL"), nullable=True
     )
 
     appointment_date = db.Column(db.DateTime, nullable=False)
@@ -602,16 +603,16 @@ class ExerciseAssignment(db.Model):
         db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     patient_user_id = db.Column(
-        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
 
     # Métadonnées
-    status = db.Column(db.String(20), nullable=False, default="active")  # "active" pour matcher tes inserts
+    status = db.Column(db.String(20), nullable=False, default="active")  # "active" pour matcher les inserts existants
     due_date = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=True, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relations (facultatives mais pratiques)
+    # Relations pratiques
     exercise = db.relationship("Exercise", lazy="joined", foreign_keys=[exercise_id])
     patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
     professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
@@ -619,39 +620,6 @@ class ExerciseAssignment(db.Model):
     __table_args__ = (
         db.Index("ix_ex_assign_patient", "patient_id"),
         db.Index("ix_ex_assign_patient_user", "patient_user_id"),
-        db.Index("ix_ex_assign_professional", "professional_id"),
-        db.Index("ix_ex_assign_status", "status"),
-    )
-
-class ExerciseAssignment(db.Model):
-    __tablename__ = "exercise_assignments"
-
-    id = db.Column(db.Integer, primary_key=True)
-    exercise_id = db.Column(
-        db.Integer, db.ForeignKey("exercises.id", ondelete="CASCADE"), nullable=False
-    )
-    patient_id = db.Column(
-        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    professional_id = db.Column(
-        db.Integer, db.ForeignKey("professionals.id", ondelete="SET NULL")
-    )
-
-    # >>> AJOUTER CETTE LIGNE (aligne avec la base) <<<
-    patient_user_id = db.Column(
-        db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-
-    status = db.Column(db.String(20), default="assigned")  # assigned | done | cancelled
-    due_date = db.Column(db.Date)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-    exercise = db.relationship("Exercise", lazy="joined", foreign_keys=[exercise_id])
-    patient = db.relationship("User", lazy="joined", foreign_keys=[patient_id])
-    professional = db.relationship("Professional", lazy="joined", foreign_keys=[professional_id])
-
-    __table_args__ = (
-        db.Index("ix_ex_assign_patient", "patient_id"),
         db.Index("ix_ex_assign_professional", "professional_id"),
         db.Index("ix_ex_assign_status", "status"),
     )
