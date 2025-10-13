@@ -329,6 +329,13 @@ def _get_or_create_thread(pro_id: int, patient_id: int):
             return None
     return thread
 
+@app.teardown_request
+def _rollback_on_error(exc=None):
+    if exc is not None:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
 # -------------------------------------------------------------------
 # Admin blueprint
