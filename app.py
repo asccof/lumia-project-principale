@@ -2926,122 +2926,81 @@ def pro_support():
     guides = Guide.query.order_by(Guide.created_at.desc()).all()
     return render_or_text("pro/support.html", "Support & Guides", tickets=tickets, guides=guides, professional=pro)
 # ====== Dossier patient (auto-prérempli) =====================================
-# ====== Dossier patient (auto-prérempli) =====================================
-@app.route("/pro/patients/<int:patient_id>/dossier", methods=["GET", "POST"], endpoint="pro_patient_dossier")
+# --- Dossier patient (côté PRO) : affichage + mise à jour compatibles avec models.py ---
+@app.route("/pro/patients/<int:user_id>/dossier", methods=["GET", "POST"], endpoint="pro_patient_dossier")
 @login_required
-def pro_patient_dossier(patient_id: int):
-    # Si une requête précédente a laissé la session en erreur, on purifie tout de suite
-    try:
-        db.session.rollback()
-    except Exception:
-        pass
-
+def pro_patient_dossier(user_id: int):
+    # Autorisation pro (garde ton helper existant si tu l'as déjà)
     pro = _current_professional_or_403()
-    user = User.query.get_or_404(patient_id)
-    if user.user_type != "patient":
-        abort(404)
 
-    # Dossier + profil patient (idempotent)
-    case, profile = _ensure_patient_case(pro.id, user.id)
+    from datetime import datetime
 
-    # Dernier historique médical (si existant)
-    medhist = None
-    try:
-        medhist = (
-            MedicalHistory.query
-            .filter_by(patient_id=user.id, professional_id=pro.id)
-            .order_by(MedicalHistory.id.desc())
-            .first()
-        )
-    except Exception:
-        # Important : rollback si une requête a échoué, pour éviter "current transaction is aborted"
-        db.session.rollback()
+    # Charge/Crée proprement le user, son profil et (sans doublon) son dernier historique
+    data = _ensure_patient_case(user_id)
+    user = data["user"]
+    profile = data["profile"]
+    history = data["history"]  # peut être None si aucun historique existe
 
     if request.method == "POST":
         f = request.form
 
-        # Maj du profil
-        try:
-            if profile:
-                profile.full_name = f.get("full_name") or profile.full_name
-                profile.email = f.get("email") or profile.email
-                profile.phone = f.get("phone") or profile.phone
-                profile.address = f.get("address") or profile.address
-        except Exception:
-            db.session.rollback()
+        # === Mise à jour du PatientProfile (uniquement colonnes EXISTANTES) ===
+        profile.first_name = f.get("first_name") or profile.first_name
+        profile.last_name = f.get("last_name") or profile.last_name
+        profile.language = f.get("language") or profile.language
+        profile.preferred_contact = f.get("preferred_contact") or profile.preferred_contact
+        profile.emergency_contact = f.get("emergency_contact") or profile.emergency_contact
+        profile.notes_public = f.get("notes_public") or profile.notes_public
 
-        # Maj du "case" (si ce modèle existe dans ton projet)
-        try:
-            if case:
-                case.display_name = f.get("display_name") or case.display_name or None
-                case.is_anonymous = (f.get("is_anonymous") == "on")
-                if hasattr(case, "notes"):
-                    case.notes = f.get("notes") or case.notes
-        except Exception:
-            db.session.rollback()
+        # Date de naissance (YYYY-MM-DD)
+        birth_date_raw = (f.get("birth_date") or "").strip()
+        if birth_date_raw:
+            try:
+                profile.birth_date = datetime.strptime(birth_date_raw, "%Y-%m-%d").date()
+            except ValueError:
+                flash("Date de naissance invalide (format attendu : YYYY-MM-DD).", "warning")
 
-        # Maj / création MedicalHistory
-        summary = (f.get("summary") or "").strip()
-        diagnostics = (f.get("diagnostics") or "").strip()
-        try:
-            if "MedicalHistory" in globals():
-                if not medhist:
-                    medhist = MedicalHistory(
-                        patient_id=user.id,
-                        professional_id=pro.id,
-                        summary=summary or None,
-                        custom_fields=diagnostics or None,
-                    )
-                    db.session.add(medhist)
-                else:
-                    if summary:
-                        medhist.summary = summary
-                    if diagnostics:
-                        medhist.custom_fields = diagnostics
-        except Exception:
-            db.session.rollback()
+        # === Historique médical (on ne crée pas de doublon ici ; on met à jour s'il existe) ===
+        # Champs permis par ton modèle: title, details, summary, custom_fields
+        if history:
+            # Mise à jour douce : on n'écrase pas par des vides
+            title = f.get("mh_title")
+            details = f.get("mh_details")
+            summary = f.get("mh_summary")
+            custom = f.get("mh_custom_fields")
 
-        # Commit global formulaire
+            if title is not None and title != "":
+                history.title = title
+            if details is not None and details != "":
+                history.details = details
+            if summary is not None and summary != "":
+                history.summary = summary
+            if custom is not None and custom != "":
+                history.custom_fields = custom
+
+            db.session.add(history)
+
+        # Commit global (profil + éventuelle maj historique)
+        db.session.add(profile)
         try:
             db.session.commit()
-            flash("Dossier patient enregistré.", "success")
+            flash("Dossier patient mis à jour.", "success")
         except Exception:
             db.session.rollback()
-            flash("Impossible d'enregistrer le dossier.", "danger")
+            flash("Échec de l'enregistrement du dossier (vérifier les champs).", "danger")
 
-        return redirect(url_for("pro_patient_dossier", patient_id=user.id))
+        return redirect(url_for("pro_patient_dossier", user_id=user.id))
 
-    # Liste des dernières séances
-    sessions = []
-    try:
-        sessions = (
-            TherapySession.query
-            .filter_by(professional_id=pro.id, patient_id=user.id)
-            .order_by(TherapySession.start_at.desc())
-            .limit(10)
-            .all()
-        )
-    except Exception:
-        db.session.rollback()
-
-    # Thread de messagerie patient<->pro (créé si besoin, sinon None si échec)
-    try:
-        thread = _get_or_create_thread(pro.id, user.id)
-    except Exception:
-        db.session.rollback()
-        thread = None
-
-    return render_or_text(
+    # --- GET : simplement afficher ---
+    # Garde ton template existant si son nom diffère.
+    return render_template(
         "pro/patient_dossier.html",
-        "Dossier patient",
-        professional=pro,
-        patient=user,
-        case=case,
+        user=user,
         profile=profile,
-        medhist=medhist,
-        sessions=sessions,
-        thread=thread,
+        history=history,
+        professional=pro,
     )
+
 # ---- Helpers messagerie : thread + message -----------------------------------
 from sqlalchemy.exc import IntegrityError
 
