@@ -189,57 +189,61 @@ def _notify_in_thread(thread: MessageThread, sender_user_id: int, body: str):
 # ---- Helper idempotent pour créer / récupérer le dossier patient ----------
 # (Placée ici pour être définie avant toute route qui l'appelle)
 if "_ensure_patient_case" not in globals():
+
     # === Helper dossier patient (contrat-fix) : crée/charge un PatientProfile VALIDE ===
-def _ensure_patient_case(patient_user_id: int):
-    """
-    Retourne un dict {"user": User, "profile": PatientProfile, "history": MedicalHistory|None}
-    - Crée le PatientProfile si absent en n'utilisant que les colonnes EXISTANTES du modèle :
-      first_name, last_name, birth_date, language, preferred_contact, emergency_contact, notes_public
-    - Ne touche JAMAIS à des attributs inexistants (full_name, email, phone, address, etc.)
-    - Laisse MedicalHistory tel quel : si tu as déjà une création ailleurs on ne double pas.
-    """
-    user = User.query.get_or_404(patient_user_id)
+    def _ensure_patient_case(patient_user_id: int):
+        """
+        Retourne un dict {"user": User, "profile": PatientProfile, "history": MedicalHistory|None}
+        - Crée le PatientProfile si absent en n'utilisant que les colonnes EXISTANTES du modèle :
+          first_name, last_name, birth_date, language, preferred_contact, emergency_contact, notes_public
+        - Ne touche JAMAIS à des attributs inexistants (full_name, email, phone, address, etc.)
+        - Laisse MedicalHistory tel quel : si tu as déjà une création ailleurs on ne double pas.
+        """
+        user = User.query.get_or_404(patient_user_id)
 
-    # Charger ou créer un profil patient conforme à models.py
-    profile = PatientProfile.query.filter_by(user_id=user.id).first()
-    if not profile:
-        # Déduire prénom/nom à partir de full_name ou username, sans forcer
-        raw_name = (user.full_name or user.username or "").strip()
-        first_name, last_name = None, None
-        if raw_name:
-            parts = raw_name.split()
-            if len(parts) == 1:
-                first_name = parts[0]
-            else:
-                first_name = " ".join(parts[:-1])
-                last_name = parts[-1]
+        # Charger ou créer un profil patient conforme à models.py
+        profile = PatientProfile.query.filter_by(user_id=user.id).first()
+        if not profile:
+            # Déduire prénom/nom à partir de full_name ou username, sans forcer
+            raw_name = (user.full_name or user.username or "").strip()
+            first_name, last_name = None, None
+            if raw_name:
+                parts = raw_name.split()
+                if len(parts) == 1:
+                    first_name = parts[0]
+                else:
+                    first_name = " ".join(parts[:-1])
+                    last_name = parts[-1]
 
-        profile = PatientProfile(
-            user_id=user.id,
-            first_name=first_name,
-            last_name=last_name,
-            language="fr",  # défaut raisonnable
-            preferred_contact=("phone" if (user.phone or "").strip() else "email"),
-            # birth_date / emergency_contact / notes_public resteront None tant que non saisis
-        )
-        db.session.add(profile)
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            # on tente un flush minimal si autre contrainte s'applique
+            profile = PatientProfile(
+                user_id=user.id,
+                first_name=first_name,
+                last_name=last_name,
+                language="fr",  # défaut raisonnable
+                preferred_contact=("phone" if (user.phone or "").strip() else "email"),
+                # birth_date / emergency_contact / notes_public resteront None tant que non saisis
+            )
+            db.session.add(profile)
             try:
-                db.session.flush()
                 db.session.commit()
             except Exception:
                 db.session.rollback()
-                # on ne lève pas d'erreur ici pour ne rien casser
-                profile = PatientProfile.query.filter_by(user_id=user.id).first()
+                # on tente un flush minimal si autre contrainte s'applique
+                try:
+                    db.session.flush()
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+                    # on ne lève pas d'erreur ici pour ne rien casser
+                    profile = PatientProfile.query.filter_by(user_id=user.id).first()
 
-    # Historique médical : on ne crée rien ici pour éviter doublons — on se contente de charger s'il existe
-    history = MedicalHistory.query.filter_by(patient_id=user.id).order_by(MedicalHistory.id.desc()).first()
+        # Historique médical : on ne crée rien ici pour éviter doublons — on se contente de charger s'il existe
+        history = (MedicalHistory.query
+                   .filter_by(patient_id=user.id)
+                   .order_by(MedicalHistory.id.desc())
+                   .first())
 
-    return {"user": user, "profile": profile, "history": history}
+        return {"user": user, "profile": profile, "history": history}
 
 
 # -------------------------------------------------------------------
