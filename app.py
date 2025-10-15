@@ -2775,24 +2775,78 @@ def pro_library():
 
 
 # --- Assignations d’exercices aux patients
+# --- Assignations d’exercices aux patients (fix contrat) ---
 @app.route("/pro/assign", methods=["POST"], endpoint="pro_assign_exercise")
 @login_required
 def pro_assign_exercise():
     from datetime import datetime
     pro = _current_professional_or_403()
+
     exercise_id = request.form.get("exercise_id", type=int)
-    patient_id = request.form.get("patient_id", type=int)
-    due_date = request.form.get("due_date")
-    if not (exercise_id and patient_id):
+    patient_param = request.form.get("patient_id")  # peut être un user_id
+    due_raw = request.form.get("due_date")
+
+    if not (exercise_id and patient_param):
         abort(400)
-    ex = Exercise.query.get_or_404(exercise_id)
-    if ex.visibility not in ("public", "my_patients") and ex.owner_id != current_user.id and ex.professional_id != pro.id:
-        abort(403)
-    assign = ExerciseAssignment(exercise_id=exercise_id, patient_id=patient_id, professional_id=pro.id,
-                                status="assigned", due_date=datetime.fromisoformat(due_date).date() if due_date else None)
-    db.session.add(assign); db.session.commit()
-    flash("Exercice assigné au patient.", "success")
-    return redirect(request.referrer or url_for("pro_library"))
+
+    # normaliser la due_date en date (ou None)
+    def _norm_due_date(s):
+        try:
+            return datetime.fromisoformat(s).date() if s else None
+        except Exception:
+            return None
+    due_date = _norm_due_date(due_raw)
+
+    # Résoudre patient_user_id (et patient_id si 2 colonnes existent)
+    try:
+        uid = int(patient_param)
+    except Exception:
+        abort(400)
+
+    user = User.query.get_or_404(uid)
+
+    # Construire l’assignement en couvrant les 2 colonnes possibles
+    assign_fields = dict(
+        exercise_id=exercise_id,
+        professional_id=pro.id,
+        status="active",
+        due_date=due_date
+    )
+    # Remplir patient_user_id si la colonne existe
+    if hasattr(ExerciseAssignment, "patient_user_id"):
+        assign_fields["patient_user_id"] = user.id
+    # Remplir patient_id si présent (compat)
+    if hasattr(ExerciseAssignment, "patient_id"):
+        assign_fields["patient_id"] = user.id
+
+    # Anti-doublon: même exercice, même patient, même pro, même échéance
+    q = ExerciseAssignment.query.filter_by(
+        exercise_id=exercise_id,
+        professional_id=pro.id,
+        **({ "patient_user_id": user.id } if hasattr(ExerciseAssignment, "patient_user_id") else {}),
+        **({ "patient_id": user.id } if hasattr(ExerciseAssignment, "patient_id") else {}),
+    )
+    if due_date is None:
+        q = q.filter(ExerciseAssignment.due_date.is_(None))
+    else:
+        q = q.filter(ExerciseAssignment.due_date == due_date)
+
+    existing = q.first()
+    if existing:
+        flash("Exercice déjà assigné à ce patient pour cette échéance.", "warning")
+        return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+
+    assign = ExerciseAssignment(**assign_fields)
+    db.session.add(assign)
+    try:
+        db.session.commit()
+        flash("Exercice assigné au patient.", "success")
+    except Exception:
+        db.session.rollback()
+        flash("Une erreur est survenue pendant l’assignation.", "danger")
+
+    return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+
 
 
 # --- Factures & paiements
