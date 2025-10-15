@@ -189,48 +189,58 @@ def _notify_in_thread(thread: MessageThread, sender_user_id: int, body: str):
 # ---- Helper idempotent pour créer / récupérer le dossier patient ----------
 # (Placée ici pour être définie avant toute route qui l'appelle)
 if "_ensure_patient_case" not in globals():
-    def _ensure_patient_case(pro_id: int, patient_user_id: int):
-        """
-        Garantit l'existence d'un PatientCase (si le modèle existe)
-        et d'un PatientProfile pour ce patient. Renvoie (case_obj, profile).
-        Ne lève pas d'exception en cas d'absence de modèles optionnels : renvoie (None, profile).
-        """
-        case_obj, profile = None, None
+    # === Helper dossier patient (contrat-fix) : crée/charge un PatientProfile VALIDE ===
+def _ensure_patient_case(patient_user_id: int):
+    """
+    Retourne un dict {"user": User, "profile": PatientProfile, "history": MedicalHistory|None}
+    - Crée le PatientProfile si absent en n'utilisant que les colonnes EXISTANTES du modèle :
+      first_name, last_name, birth_date, language, preferred_contact, emergency_contact, notes_public
+    - Ne touche JAMAIS à des attributs inexistants (full_name, email, phone, address, etc.)
+    - Laisse MedicalHistory tel quel : si tu as déjà une création ailleurs on ne double pas.
+    """
+    user = User.query.get_or_404(patient_user_id)
 
-        # Profil patient (toujours utile)
-        try:
-            profile = PatientProfile.query.filter_by(user_id=patient_user_id).first() if "PatientProfile" in globals() else None
-            if not profile and "PatientProfile" in globals():
-                u = User.query.get(patient_user_id)
-                profile = PatientProfile(
-                    user_id=patient_user_id,
-                    full_name=getattr(u, "full_name", None) or getattr(u, "username", None),
-                    phone=getattr(u, "phone", None),
-                    address=getattr(u, "address", None),
-                    email=getattr(u, "email", None),
-                )
-                db.session.add(profile)
-                db.session.flush()
-        except Exception:
-            db.session.rollback()
+    # Charger ou créer un profil patient conforme à models.py
+    profile = PatientProfile.query.filter_by(user_id=user.id).first()
+    if not profile:
+        # Déduire prénom/nom à partir de full_name ou username, sans forcer
+        raw_name = (user.full_name or user.username or "").strip()
+        first_name, last_name = None, None
+        if raw_name:
+            parts = raw_name.split()
+            if len(parts) == 1:
+                first_name = parts[0]
+            else:
+                first_name = " ".join(parts[:-1])
+                last_name = parts[-1]
 
-        # Dossier (PatientCase) si le modèle existe dans ton projet
+        profile = PatientProfile(
+            user_id=user.id,
+            first_name=first_name,
+            last_name=last_name,
+            language="fr",  # défaut raisonnable
+            preferred_contact=("phone" if (user.phone or "").strip() else "email"),
+            # birth_date / emergency_contact / notes_public resteront None tant que non saisis
+        )
+        db.session.add(profile)
         try:
-            if "PatientCase" in globals():
-                case_obj = PatientCase.query.filter_by(
-                    professional_id=pro_id, patient_user_id=patient_user_id
-                ).first()
-                if not case_obj:
-                    case_obj = PatientCase(
-                        professional_id=pro_id, patient_user_id=patient_user_id, is_anonymous=False
-                    )
-                    db.session.add(case_obj)
-            # Commit global
             db.session.commit()
         except Exception:
             db.session.rollback()
+            # on tente un flush minimal si autre contrainte s'applique
+            try:
+                db.session.flush()
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                # on ne lève pas d'erreur ici pour ne rien casser
+                profile = PatientProfile.query.filter_by(user_id=user.id).first()
 
-        return case_obj, profile
+    # Historique médical : on ne crée rien ici pour éviter doublons — on se contente de charger s'il existe
+    history = MedicalHistory.query.filter_by(patient_id=user.id).order_by(MedicalHistory.id.desc()).first()
+
+    return {"user": user, "profile": profile, "history": history}
+
 
 # -------------------------------------------------------------------
 # Helpers: exercises / assignments  (fix: due_date + patient_user_id)
