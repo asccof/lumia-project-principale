@@ -4073,11 +4073,53 @@ def patient_messages():
     _require_patient()
     return render_or_text("patient/messages_inbox.html", "Messagerie")
 
-@app.get("/patient/profile")
+# --- Dossier patient (côté PATIENT) : création auto + mise à jour sûres ---
+@app.route("/patient/profile", methods=["GET", "POST"], endpoint="patient_profile")
 @login_required
 def patient_profile():
     _require_patient()
-    return render_or_text("patient/profile.html", "Mon profil")
+    from datetime import datetime
+
+    # Crée/charge proprement le profil sans rien casser
+    data = _ensure_patient_case(current_user.id)
+    user = data["user"]
+    profile = data["profile"]
+
+    if request.method == "POST":
+        f = request.form
+
+        # Champs existants dans PatientProfile (rien d'autre)
+        profile.first_name = f.get("first_name") or profile.first_name
+        profile.last_name = f.get("last_name") or profile.last_name
+        profile.language = f.get("language") or profile.language
+        profile.preferred_contact = f.get("preferred_contact") or profile.preferred_contact
+        profile.emergency_contact = f.get("emergency_contact") or profile.emergency_contact
+        profile.notes_public = f.get("notes_public") or profile.notes_public
+
+        # birth_date: YYYY-MM-DD
+        birth_date_raw = (f.get("birth_date") or "").strip()
+        if birth_date_raw:
+            try:
+                profile.birth_date = datetime.strptime(birth_date_raw, "%Y-%m-%d").date()
+            except ValueError:
+                flash("Date de naissance invalide (format attendu : YYYY-MM-DD).", "warning")
+
+        db.session.add(profile)
+        try:
+            db.session.commit()
+            flash("Votre dossier a été enregistré.", "success")
+        except Exception:
+            db.session.rollback()
+            flash("Erreur lors de l'enregistrement du dossier.", "danger")
+
+        return redirect(url_for("patient_profile"))
+
+    # GET : affichage simple
+    return render_or_text(
+        "patient/profile.html", "Mon profil",
+        user=user, profile=profile
+    )
+
 
 @app.get("/patient/help")
 @login_required
