@@ -3030,6 +3030,15 @@ def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
         return redirect(url_for("pro_patient_dossier", patient_id=user.id))
 
     # --- GET : affichage ---
+
+    # ✅ Fournir 'case.display_name' attendu par le template
+    display_name = (
+        ("{} {}".format(profile.first_name or "", profile.last_name or "")).strip()
+        or (user.full_name or "")
+        or (user.username or "")
+    )
+    case = {"display_name": display_name}
+
     return render_or_text(
         "pro/patient_dossier.html",
         "Dossier patient",          # fallback_title OBLIGATOIRE
@@ -3038,6 +3047,7 @@ def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
         profile=profile,
         history=history,
         professional=pro,
+        case=case,                  # <<---- important pour éviter 'case is undefined'
     )
 
 
