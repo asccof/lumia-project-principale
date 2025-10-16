@@ -2138,20 +2138,9 @@ def pro_patient_entry():
 @app.route("/pro-office/", methods=["GET"], endpoint="pro_office_index")
 @login_required
 def pro_office_index():
-    from datetime import datetime, time as _Time
-    if getattr(current_user, "user_type", None) != "professional":
-        abort(403)
-
-    pro = (
-        Professional.query
-        .filter(
-            (Professional.name == (getattr(current_user, "full_name", "") or "")) |
-            (Professional.name == (getattr(current_user, "username", "") or ""))
-        )
-        .first()
-    )
-    if not pro:
-        abort(403)
+    from datetime import datetime, time as _Time, date as _Date
+    # Utilise le helper standard pour l'authz pro
+    pro = _current_professional_or_403()
 
     next_sessions = []
     upcoming_count = 0
@@ -2159,6 +2148,7 @@ def pro_office_index():
     pending_payments = 0
 
     now = datetime.utcnow()
+    today = now.date()
     PENDING = {"requested", "pending", "en_attente", "planifie"}
     CANCELLED = {"cancelled", "canceled", "refused", "rejected", "declined", "annule", "annulé", "no_show"}
     CONFIRMED = {"confirmed", "accepted", "approved", "valide", "validated", "confirmé", "confirme"}
@@ -2166,6 +2156,12 @@ def pro_office_index():
     def _extract_dt(obj):
         for attr in ("start_at", "appointment_date", "scheduled_at", "start_time_dt"):
             v = getattr(obj, attr, None)
+            # if appointment_date is a date, combine to midday
+            if attr == "appointment_date" and v and isinstance(v, _Date):
+                try:
+                    return datetime.combine(v, _Time(12, 0))
+                except Exception:
+                    pass
             if isinstance(v, datetime):
                 return v
         d = getattr(obj, "date", None) or getattr(obj, "appointment_day", None)
@@ -2217,9 +2213,7 @@ def pro_office_index():
                     continue
                 pname = "—"
                 try:
-                    pat = getattr(s, "patient", None)
-                    if not pat and getattr(s, "patient_id", None):
-                        pat = User.query.get(s.patient_id)
+                    pat = getattr(s, "patient", None) or (User.query.get(s.patient_id) if getattr(s, "patient_id", None) else None)
                     pname = getattr(pat, "full_name", None) or getattr(pat, "name", None) or getattr(pat, "username", None) or "—"
                 except Exception:
                     pass
@@ -2238,7 +2232,8 @@ def pro_office_index():
         try:
             q = Appointment.query.filter(Appointment.professional_id == pro.id)
             if hasattr(Appointment, "appointment_date"):
-                q = q.filter(Appointment.appointment_date >= now).order_by(Appointment.appointment_date.asc())
+                # si c'est un champ Date, compare à today, sinon start_at/created_at
+                q = q.filter(Appointment.appointment_date >= today).order_by(Appointment.appointment_date.asc())
             elif hasattr(Appointment, "start_at"):
                 q = q.filter(Appointment.start_at >= now).order_by(Appointment.start_at.asc())
             else:
@@ -2249,9 +2244,7 @@ def pro_office_index():
                     continue
                 pname = "—"
                 try:
-                    pat = getattr(a, "patient", None)
-                    if not pat and getattr(a, "patient_id", None):
-                        pat = User.query.get(a.patient_id)
+                    pat = getattr(a, "patient", None) or (User.query.get(a.patient_id) if getattr(a, "patient_id", None) else None)
                     pname = getattr(pat, "full_name", None) or getattr(pat, "name", None) or getattr(pat, "username", None) or "—"
                 except Exception:
                     pass
@@ -2312,6 +2305,10 @@ def pro_office_index():
     except Exception:
         pending_payments = 0
 
+    # rollback défensif avant rendu
+    try: db.session.rollback()
+    except Exception: pass
+
     return render_or_text("pro/office.html", "Bureau virtuel",
                           next_sessions=next_sessions,
                           upcoming_count=upcoming_count,
@@ -2326,6 +2323,8 @@ def pro_desk():
     latest_threads = MessageThread.query.filter_by(professional_id=pro.id).order_by(MessageThread.id.desc()).limit(10).all()
     latest_sessions = TherapySession.query.filter_by(professional_id=pro.id).order_by(TherapySession.start_at.desc()).limit(10).all()
     latest_invoices = Invoice.query.filter_by(professional_id=pro.id).order_by(Invoice.issued_at.desc()).limit(10).all()
+    try: db.session.rollback()
+    except Exception: pass
     return render_or_text("pro/desk.html", "Bureau virtuel",
                           professional=pro, threads=latest_threads, sessions=latest_sessions, invoices=latest_invoices)
 
@@ -2345,23 +2344,7 @@ def pro_patients():
     from sqlalchemy import or_, func, case
     from datetime import datetime
 
-    if getattr(current_user, "user_type", None) != "professional":
-        flash("Accès réservé aux professionnels.", "warning")
-        return redirect(url_for("index"))
-
-    # Résoudre le pro de façon robuste (même logique que le reste de l'app)
-    pro = (
-        Professional.query
-        .filter(
-            (Professional.name == (getattr(current_user, "full_name", "") or "")) |
-            (Professional.name == (getattr(current_user, "username", "") or ""))
-        )
-        .first()
-    ) or Professional.query.filter_by(name=current_user.username).first()
-
-    if not pro:
-        flash("Profil professionnel non trouvé", "danger")
-        return redirect(url_for("professional_dashboard"))
+    pro = _current_professional_or_403()
 
     q_text = (request.args.get("q") or "").strip()
     page = max(1, request.args.get("page", type=int) or 1)
@@ -2370,7 +2353,7 @@ def pro_patients():
     # ---- 1) Collecte de tous les patient_ids liés au pro (set())
     patient_ids = set()
 
-    # Appointments (source principale)
+    # Appointments
     try:
         ids = [pid for (pid,) in db.session.query(Appointment.patient_id)
                                    .filter(Appointment.professional_id == pro.id,
@@ -2388,7 +2371,7 @@ def pro_patients():
     except Exception:
         pass
 
-    # MessageThread — compat champs (patient_id OU patient_user_id)
+    # MessageThread
     try:
         if hasattr(MessageThread, "patient_id"):
             ids = [pid for (pid,) in db.session.query(MessageThread.patient_id)
@@ -2406,7 +2389,7 @@ def pro_patients():
     except Exception:
         pass
 
-    # ExerciseAssignment — compat (patient_id / patient_user_id)
+    # ExerciseAssignment
     try:
         if hasattr(ExerciseAssignment, "patient_id"):
             ids = [pid for (pid,) in db.session.query(ExerciseAssignment.patient_id)
@@ -2424,7 +2407,7 @@ def pro_patients():
     except Exception:
         pass
 
-    # PatientCase (patient_user_id)
+    # PatientCase
     try:
         if "PatientCase" in globals() and hasattr(PatientCase, "patient_user_id"):
             ids = [pid for (pid,) in db.session.query(PatientCase.patient_user_id)
@@ -2435,13 +2418,10 @@ def pro_patients():
         pass
 
     if not patient_ids:
-        # Vue vide, mais on garde la forme
-        return render_or_text(
-            "pro/patients.html", "Mes patients",
-            rows=[], q=q_text, page=page, per_page=per_page, total=0, professional=pro
-        )
+        return render_or_text("pro/patients.html", "Mes patients",
+                              rows=[], q=q_text, page=page, per_page=per_page, total=0, professional=pro)
 
-    # ---- 2) Option de filtre texte q sur User
+    # ---- 2) Filtre texte
     users_q = User.query.filter(User.id.in_(patient_ids), User.user_type == "patient")
     if q_text:
         like = f"%{q_text}%"
@@ -2453,21 +2433,15 @@ def pro_patients():
         ))
     users = users_q.all()
     if not users:
-        return render_or_text(
-            "pro/patients.html", "Mes patients",
-            rows=[], q=q_text, page=page, per_page=per_page, total=0, professional=pro
-        )
+        return render_or_text("pro/patients.html", "Mes patients",
+                              rows=[], q=q_text, page=page, per_page=per_page, total=0, professional=pro)
 
     filtered_ids = [u.id for u in users]
 
-    # ---- 3) Agrégations RDV (total, confirmés, dernière date RDV)
-    # Statuts confirmés compatibles (selon ta base)
+    # ---- 3) Agrégations RDV
     CONF = {"confirme", "confirmé", "confirmed"}
-
-    # total_rdv & confirme_count & last_rdv_dt
     ap_agg = {}
     try:
-        # total
         rows_total = db.session.query(
             Appointment.patient_id,
             func.count(Appointment.id)
@@ -2475,47 +2449,37 @@ def pro_patients():
             Appointment.professional_id == pro.id,
             Appointment.patient_id.in_(filtered_ids)
         ).group_by(Appointment.patient_id).all()
-
         for pid, cnt in rows_total:
             ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
             ap_agg[pid]["total"] = int(cnt or 0)
 
-        # confirmés
-        try:
-            rows_conf = db.session.query(
-                Appointment.patient_id,
-                func.count(Appointment.id)
-            ).filter(
-                Appointment.professional_id == pro.id,
-                Appointment.patient_id.in_(filtered_ids),
-                func.lower(func.coalesce(Appointment.status, "")).
-                    in_([s.lower() for s in CONF])
-            ).group_by(Appointment.patient_id).all()
-            for pid, cnt in rows_conf:
-                ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
-                ap_agg[pid]["conf"] = int(cnt or 0)
-        except Exception:
-            pass
+        rows_conf = db.session.query(
+            Appointment.patient_id,
+            func.count(Appointment.id)
+        ).filter(
+            Appointment.professional_id == pro.id,
+            Appointment.patient_id.in_(filtered_ids),
+            func.lower(func.coalesce(Appointment.status, "")).
+                in_([s.lower() for s in CONF])
+        ).group_by(Appointment.patient_id).all()
+        for pid, cnt in rows_conf:
+            ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
+            ap_agg[pid]["conf"] = int(cnt or 0)
 
-        # last_date à partir d'appointment_date
-        try:
-            rows_last = db.session.query(
-                Appointment.patient_id,
-                func.max(Appointment.appointment_date)
-            ).filter(
-                Appointment.professional_id == pro.id,
-                Appointment.patient_id.in_(filtered_ids)
-            ).group_by(Appointment.patient_id).all()
-            for pid, dtv in rows_last:
-                ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
-                ap_agg[pid]["last"] = dtv
-        except Exception:
-            pass
+        rows_last = db.session.query(
+            Appointment.patient_id,
+            func.max(Appointment.appointment_date)
+        ).filter(
+            Appointment.professional_id == pro.id,
+            Appointment.patient_id.in_(filtered_ids)
+        ).group_by(Appointment.patient_id).all()
+        for pid, dtv in rows_last:
+            ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
+            ap_agg[pid]["last"] = dtv
     except Exception:
         pass
 
-    # ---- 4) Dernière interaction via Session / MessageThread
-    # TherapySession.start_at
+    # ---- 4) Dernières interactions
     try:
         rows_last_sess = db.session.query(
             TherapySession.patient_id,
@@ -2526,13 +2490,11 @@ def pro_patients():
         ).group_by(TherapySession.patient_id).all()
         for pid, dtv in rows_last_sess:
             ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
-            if dtv and (ap_agg[pid]["last"] is None or (isinstance(ap_agg[pid]["last"], datetime) and dtv > ap_agg[pid]["last"])):
+            if dtv and (ap_agg[pid]["last"] is None or dtv > ap_agg[pid]["last"]):
                 ap_agg[pid]["last"] = dtv
     except Exception:
         pass
 
-    # MessageThread.updated_at (support patient_id OU patient_user_id)
-    # patient_id
     try:
         if hasattr(MessageThread, "patient_id"):
             rows_last_th = db.session.query(
@@ -2544,11 +2506,10 @@ def pro_patients():
             ).group_by(MessageThread.patient_id).all()
             for pid, dtv in rows_last_th:
                 ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
-                if dtv and (ap_agg[pid]["last"] is None or (isinstance(ap_agg[pid]["last"], datetime) and dtv > ap_agg[pid]["last"])):
+                if dtv and (ap_agg[pid]["last"] is None or dtv > ap_agg[pid]["last"]):
                     ap_agg[pid]["last"] = dtv
     except Exception:
         pass
-    # patient_user_id
     try:
         if hasattr(MessageThread, "patient_user_id"):
             rows_last_th2 = db.session.query(
@@ -2560,24 +2521,25 @@ def pro_patients():
             ).group_by(MessageThread.patient_user_id).all()
             for pid, dtv in rows_last_th2:
                 ap_agg.setdefault(pid, {"total": 0, "conf": 0, "last": None})
-                if dtv and (ap_agg[pid]["last"] is None or (isinstance(ap_agg[pid]["last"], datetime) and dtv > ap_agg[pid]["last"])):
+                if dtv and (ap_agg[pid]["last"] is None or dtv > ap_agg[pid]["last"]):
                     ap_agg[pid]["last"] = dtv
     except Exception:
         pass
 
-    # ---- 5) Construire rows et trier par dernière interaction desc
+    # ---- 5) Rows triés + pagination
     rows_py = []
     for u in users:
         agg = ap_agg.get(u.id, {"total": 0, "conf": 0, "last": None})
         rows_py.append((u, int(agg.get("total", 0) or 0), int(agg.get("conf", 0) or 0), agg.get("last", None)))
-
     rows_py.sort(key=lambda t: (t[3] is not None, t[3]), reverse=True)
 
-    # ---- 6) Pagination côté Python
     total = len(rows_py)
     start = (page - 1) * per_page
     end = start + per_page
     page_rows = rows_py[start:end]
+
+    try: db.session.rollback()
+    except Exception: pass
 
     return render_or_text(
         "pro/patients.html",
@@ -2615,6 +2577,9 @@ def pro_patient_detail(patient_id: int):
         db.session.commit()
         flash("Dossier patient mis à jour.", "success")
         return redirect(url_for("pro_patient_detail", patient_id=patient.id))
+
+    try: db.session.rollback()
+    except Exception: pass
 
     return render_or_text("pro/patient_detail.html", "Dossier patient",
                           professional=pro, patient=patient, profile=profile, medhist=medhist, sessions=sessions, thread=thread)
@@ -2672,6 +2637,8 @@ def pro_thread(patient_id: int):
         return redirect(url_for("pro_thread", patient_id=patient.id))
 
     messages = Message.query.filter_by(thread_id=thread.id).order_by(Message.created_at.asc()).all()
+    try: db.session.rollback()
+    except Exception: pass
     return render_or_text("pro/thread.html", "Messagerie sécurisée",
                           professional=pro, patient=patient, thread=thread, messages=messages)
 
@@ -2685,6 +2652,8 @@ def messages_index():
     else:
         threads = MessageThread.query.filter_by(patient_id=current_user.id)\
                                      .order_by(MessageThread.updated_at.desc().nullslast()).all()
+        try: db.session.rollback()
+        except Exception: pass
         return render_or_text("patient/messages_index.html", "Messagerie", threads=threads)
 
 
@@ -2701,8 +2670,7 @@ def pro_messages_alias():
 @app.route("/pro/billing", methods=["GET"], endpoint="pro_billing")
 @login_required
 def pro_billing():
-    if getattr(current_user, "user_type", None) != "professional":
-        abort(403)
+    _ = _current_professional_or_403()
 
     current_plan = {
         "name": "Essentiel",
@@ -2721,6 +2689,8 @@ def pro_billing():
     }
 
     invoices = []
+    try: db.session.rollback()
+    except Exception: pass
 
     return render_or_text(
         "pro_billing.html",
@@ -2757,6 +2727,8 @@ def pro_sessions():
 
     sessions = TherapySession.query.filter_by(professional_id=pro.id).order_by(TherapySession.start_at.desc()).all()
     patients = User.query.filter(User.user_type == "patient").order_by(User.username.asc()).all()
+    try: db.session.rollback()
+    except Exception: pass
     return render_or_text("pro/sessions.html", "Séances", sessions=sessions, patients=patients, professional=pro)
 
 
@@ -2775,6 +2747,8 @@ def pro_session_detail(session_id: int):
         flash("Note ajoutée.", "success")
         return redirect(url_for("pro_session_detail", session_id=s.id))
     notes = SessionNote.query.filter_by(session_id=s.id).order_by(SessionNote.created_at.asc()).all()
+    try: db.session.rollback()
+    except Exception: pass
     return render_or_text("pro/session_detail.html", "Détail séance", session=s, notes=notes, professional=pro)
 
 
@@ -2783,7 +2757,6 @@ def pro_session_detail(session_id: int):
 @login_required
 def pro_library():
     from sqlalchemy import or_
-    from datetime import datetime
     pro = _current_professional_or_403()
     if request.method == "POST":
         title = (request.form.get("title") or "").strip()
@@ -2815,270 +2788,9 @@ def pro_library():
         or_(Exercise.visibility == "public", Exercise.owner_id == current_user.id, Exercise.professional_id == pro.id)
     ).order_by(Exercise.created_at.desc())
     exercises = q.all()
+    try: db.session.rollback()
+    except Exception: pass
     return render_or_text("pro/library.html", "Bibliothèque", exercises=exercises, professional=pro)
-
-
-# --- Assignations d’exercices aux patients
-# --- Assignations d’exercices aux patients (fix contrat) ---
-# --- Exercices (côté PRO) : liste + assignation ---
-@app.route("/pro/patients/<int:user_id>/exercises", methods=["GET", "POST"], endpoint="pro_patient_exercises")
-@app.route("/pro/patients/<int:patient_id>/exercises", methods=["GET", "POST"])
-@login_required
-def pro_patient_exercises(user_id=None, patient_id=None):
-    pro = _current_professional_or_403()
-
-    # Tolérance paramètre
-    uid = user_id if user_id is not None else patient_id
-    if uid is None:
-        abort(404)
-
-    # Charger l'utilisateur (patient)
-    user = User.query.get_or_404(uid)
-
-    # === POST : créer une assignation ===
-    if request.method == "POST":
-        f = request.form
-        ex_id_raw = (f.get("exercise_id") or "").strip()
-        due_raw   = (f.get("due_date") or "").strip()  # optionnel (YYYY-MM-DD)
-
-        # validations de base
-        if not ex_id_raw.isdigit():
-            flash("Exercise ID invalide.", "warning")
-            return redirect(url_for("pro_patient_exercises", patient_id=user.id))
-
-        exercise = Exercise.query.get(int(ex_id_raw))
-        if not exercise:
-            flash("Exercice introuvable.", "warning")
-            return redirect(url_for("pro_patient_exercises", patient_id=user.id))
-
-        # due_date optionnelle
-        due_date = None
-        if due_raw:
-            try:
-                due_date = datetime.strptime(due_raw, "%Y-%m-%d").date()
-            except Exception:
-                flash("Date d'échéance invalide (format YYYY-MM-DD).", "warning")
-
-        # (anti-doublon) : même exo, même pro, même patient encore 'active'
-        existing = ExerciseAssignment.query.filter(
-            ExerciseAssignment.professional_id == pro.id,
-            or_(
-                ExerciseAssignment.patient_user_id == user.id,
-                ExerciseAssignment.patient_id == user.id,  # compat legacy
-            ),
-            ExerciseAssignment.exercise_id == exercise.id,
-            ExerciseAssignment.status == "active",
-        ).first()
-        if existing:
-            flash("Cet exercice est déjà assigné (actif) pour ce patient.", "info")
-            return redirect(url_for("pro_patient_exercises", patient_id=user.id))
-
-        # ✅ IMPORTANT : RENSEIGNER LES 2 COLONNES (patient_id + patient_user_id)
-        ea = ExerciseAssignment(
-            exercise_id=exercise.id,
-            professional_id=pro.id,
-            patient_id=user.id,          # <= legacy / anciennes vues
-            patient_user_id=user.id,     # <= nouvelle logique
-            status="active",
-            due_date=due_date,
-        )
-        db.session.add(ea)
-        try:
-            db.session.commit()
-            flash("Exercice assigné.", "success")
-        except Exception:
-            db.session.rollback()
-            flash("Échec de l’assignation (conflit ou erreur DB).", "danger")
-
-        return redirect(url_for("pro_patient_exercises", patient_id=user.id))
-
-    # === GET : lister les assignations du patient ===
-    assignments = ExerciseAssignment.query.filter(
-        ExerciseAssignment.professional_id == pro.id,
-        or_(
-            ExerciseAssignment.patient_user_id == uid,
-            ExerciseAssignment.patient_id == uid,  # compat legacy
-        ),
-    ).order_by(ExerciseAssignment.created_at.desc()).all()
-
-    # Si tu affiches aussi le catalogue d'exercices
-    exercises = Exercise.query.filter(
-        or_(
-            Exercise.visibility == "public",
-            Exercise.owner_id == current_user.id,
-            Exercise.professional_id == pro.id,
-        )
-    ).order_by(Exercise.created_at.desc()).all()
-
-    return render_or_text(
-        "pro/patient_exercises.html",
-        "Exercices du patient",
-        user=user,
-        professional=pro,
-        assignments=assignments,
-        exercises=exercises,
-    )
-
-
-# --- Factures & paiements
-@app.route("/pro/invoices", methods=["GET","POST"], endpoint="pro_invoices")
-@login_required
-def pro_invoices():
-    from datetime import datetime
-    pro = _current_professional_or_403()
-    if request.method == "POST":
-        patient_id = request.form.get("patient_id", type=int)
-        amount = request.form.get("amount", type=float)
-        desc = (request.form.get("description") or "").strip() or None
-        inv = Invoice(patient_id=patient_id, professional_id=pro.id, amount=amount, description=desc, status="issued", issued_at=datetime.utcnow())
-        db.session.add(inv); db.session.commit()
-        flash("Facture émise.", "success")
-        return redirect(url_for("pro_invoices"))
-    invoices = Invoice.query.filter_by(professional_id=pro.id).order_by(Invoice.issued_at.desc()).all()
-    patients = User.query.filter(User.user_type == "patient").all()
-    return render_or_text("pro/invoices.html", "Factures", invoices=invoices, patients=patients, professional=pro)
-
-
-@app.route("/pro/invoices/<int:invoice_id>/pay", methods=["POST"], endpoint="pro_invoice_pay")
-@login_required
-def pro_invoice_pay(invoice_id: int):
-    from datetime import datetime
-    pro = _current_professional_or_403()
-    inv = Invoice.query.get_or_404(invoice_id)
-    if inv.professional_id != pro.id:
-        abort(403)
-    method = (request.form.get("method") or "cash").strip()
-    amount = float(request.form.get("amount") or inv.amount)
-    p = Payment(invoice_id=inv.id, method=method, amount=amount, status="succeeded", paid_at=datetime.utcnow())
-    inv.status = "paid"
-    db.session.add(p); db.session.commit()
-    flash("Paiement enregistré.", "success")
-    return redirect(url_for("pro_invoices"))
-
-
-@app.route("/pro/stats", endpoint="pro_stats")
-@login_required
-def pro_stats():
-    pro = _current_professional_or_403()
-    total_sessions = TherapySession.query.filter_by(professional_id=pro.id).count()
-    total_minutes = 0
-    for s in TherapySession.query.filter_by(professional_id=pro.id).all():
-        if s.end_at and s.start_at:
-            total_minutes += int((s.end_at - s.start_at).total_seconds() // 60)
-    total_invoices = Invoice.query.filter_by(professional_id=pro.id).count()
-    revenue = db.session.query(db.func.coalesce(db.func.sum(Invoice.amount), 0.0)).filter_by(professional_id=pro.id, status="paid").scalar()
-    return render_or_text("pro/stats.html", "Statistiques",
-                          stats={"sessions": total_sessions, "minutes": total_minutes, "invoices": total_invoices, "revenue": revenue},
-                          professional=pro)
-
-
-@app.route("/pro/support", methods=["GET","POST"], endpoint="pro_support")
-@login_required
-def pro_support():
-    pro = _current_professional_or_403()
-    if request.method == "POST":
-        subj = (request.form.get("subject") or "").strip()
-        body = (request.form.get("body") or "").strip()
-        st = SupportTicket(user_id=current_user.id, professional_id=pro.id, subject=subj, body=body, status="open", priority="normal")
-        db.session.add(st); db.session.commit()
-        flash("Ticket créé.", "success")
-        return redirect(url_for("pro_support"))
-    tickets = SupportTicket.query.filter_by(professional_id=pro.id).order_by(SupportTicket.created_at.desc()).all()
-    guides = Guide.query.order_by(Guide.created_at.desc()).all()
-    return render_or_text("pro/support.html", "Support & Guides", tickets=tickets, guides=guides, professional=pro)
-# ====== Dossier patient (auto-prérempli) =====================================
-# --- Dossier patient (côté PRO) : affichage + mise à jour compatibles avec models.py ---
-# ➜ Accepte /pro/patients/<user_id>/dossier ET /pro/patients/<patient_id>/dossier
-@app.route("/pro/patients/<int:user_id>/dossier", methods=["GET", "POST"], endpoint="pro_patient_dossier")
-@app.route("/pro/patients/<int:patient_id>/dossier", methods=["GET", "POST"])
-@login_required
-def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
-    # Autorisation pro (ton helper existant)
-    pro = _current_professional_or_403()
-
-    # Tolérance : certains templates passent patient_id, d'autres user_id
-    uid = user_id if user_id is not None else patient_id
-    if uid is None:
-        abort(404)
-
-    # Charge/Crée proprement le user, son profil et (sans doublon) son dernier historique
-    data = _ensure_patient_case(uid)
-    user = data["user"]
-    profile = data["profile"]
-    history = data["history"]  # peut être None
-
-    if request.method == "POST":
-        f = request.form
-
-        # === Mise à jour du PatientProfile (colonnes existantes) ===
-        profile.first_name = f.get("first_name") or profile.first_name
-        profile.last_name = f.get("last_name") or profile.last_name
-        profile.language = f.get("language") or profile.language
-        profile.preferred_contact = f.get("preferred_contact") or profile.preferred_contact
-        profile.emergency_contact = f.get("emergency_contact") or profile.emergency_contact
-        profile.notes_public = f.get("notes_public") or profile.notes_public
-
-        # Date de naissance (YYYY-MM-DD)
-        birth_date_raw = (f.get("birth_date") or "").strip()
-        if birth_date_raw:
-            try:
-                from datetime import datetime as _dt
-                profile.birth_date = _dt.strptime(birth_date_raw, "%Y-%m-%d").date()
-            except ValueError:
-                flash("Date de naissance invalide (format attendu : YYYY-MM-DD).", "warning")
-
-        # === Historique médical : mise à jour douce si présent (éviter doublons) ===
-        if history:
-            title = f.get("mh_title")
-            details = f.get("mh_details")
-            summary = f.get("mh_summary")
-            custom = f.get("mh_custom_fields")
-
-            if title is not None and title != "":
-                history.title = title
-            if details is not None and details != "":
-                history.details = details
-            if summary is not None and summary != "":
-                history.summary = summary
-            if custom is not None and custom != "":
-                history.custom_fields = custom
-            db.session.add(history)
-
-        # Commit global (profil + éventuelle MAJ historique)
-        db.session.add(profile)
-        try:
-            db.session.commit()
-            flash("Dossier patient mis à jour.", "success")
-        except Exception:
-            db.session.rollback()
-            flash("Échec de l'enregistrement du dossier (vérifier les champs).", "danger")
-
-        # Compat : certains liens utilisent patient_id
-        return redirect(url_for("pro_patient_dossier", patient_id=user.id))
-
-    # --- GET : affichage ---
-
-    # ✅ Fournir 'case.display_name' attendu par le template
-    display_name = (
-        ("{} {}".format(profile.first_name or "", profile.last_name or "")).strip()
-        or (user.full_name or "")
-        or (user.username or "")
-    )
-    case = {"display_name": display_name}
-
-    return render_or_text(
-        "pro/patient_dossier.html",
-        "Dossier patient",          # fallback_title OBLIGATOIRE
-        user=user,
-        patient=user,               # alias pour compat des templates
-        profile=profile,
-        history=history,
-        professional=pro,
-        case=case,                  # <<---- important pour éviter 'case is undefined'
-    )
-
-
-
 
 
 # ---- Helpers messagerie : thread + message -----------------------------------
@@ -3089,7 +2801,6 @@ def _get_or_create_thread(professional_id: int, patient_user_id: int):
     Récupère le thread patient<->pro, le crée si absent.
     Tolère les races (double création concurrente) via IntegrityError.
     """
-    # Tenter de trouver d'abord
     thread = (
         MessageThread.query
         .filter_by(professional_id=professional_id, patient_id=patient_user_id)
@@ -3098,7 +2809,6 @@ def _get_or_create_thread(professional_id: int, patient_user_id: int):
     if thread:
         return thread
 
-    # Sinon créer
     thread = MessageThread(
         professional_id=professional_id,
         patient_id=patient_user_id,
@@ -3109,7 +2819,6 @@ def _get_or_create_thread(professional_id: int, patient_user_id: int):
         db.session.commit()
         return thread
     except IntegrityError:
-        # Quelqu'un l'a créé entre-temps -> rollback et relire
         db.session.rollback()
         return (
             MessageThread.query
@@ -3118,15 +2827,11 @@ def _get_or_create_thread(professional_id: int, patient_user_id: int):
         )
     except Exception:
         db.session.rollback()
-        # On laisse le caller gérer un éventuel None
         return None
 
 
 def _notify_in_thread(thread: MessageThread, sender_user_id: int, body: str):
-    """
-    Ajoute un message texte simple dans le thread donné.
-    N'échoue pas l'appelant : rollback si erreur.
-    """
+    """Ajoute un message texte simple dans le thread donné (best-effort)."""
     if not thread:
         return False
     try:
@@ -3148,17 +2853,24 @@ from datetime import datetime
 from sqlalchemy import or_
 from sqlalchemy.exc import SQLAlchemyError
 
-@app.route("/pro/patients/<int:patient_id>/exercises", methods=["GET","POST"], endpoint="pro_patient_exercises")
+@app.route("/pro/patients/<int:user_id>/exercises", methods=["GET","POST"], endpoint="pro_patient_exercises")
+@app.route("/pro/patients/<int:patient_id>/exercises", methods=["GET","POST"])
 @login_required
-def pro_patient_exercises(patient_id: int):
+def pro_patient_exercises(user_id=None, patient_id=None):
     pro = _current_professional_or_403()
-    user = User.query.get_or_404(patient_id)
+
+    # Tolérance des deux noms de param
+    uid = user_id if user_id is not None else patient_id
+    if uid is None:
+        abort(404)
+
+    user = User.query.get_or_404(uid)
     if user.user_type != "patient":
         abort(404)
 
     # S'assure que le "case" existe (ne plante pas si erreur)
     try:
-        _ensure_patient_case(pro.id, user.id)
+        _ensure_patient_case(uid)
     except Exception:
         try: db.session.rollback()
         except Exception: pass
@@ -3180,11 +2892,10 @@ def pro_patient_exercises(patient_id: int):
             try:
                 due_date_val = datetime.strptime(due_date_raw, "%Y-%m-%d").date()
             except Exception:
-                # On n'échoue pas l'opération pour une date mal formée
                 flash("Date d'échéance invalide, ignorée.", "warning")
 
         try:
-            # 1) Nouveau ou existant
+            # 1) Exercice : nouveau OU sélection existante
             if title:
                 ex = Exercise(
                     owner_id=current_user.id, professional_id=pro.id,
@@ -3214,26 +2925,39 @@ def pro_patient_exercises(patient_id: int):
                     return redirect(url_for("pro_patient_exercises", patient_id=user.id))
                 ex = Exercise.query.get_or_404(ex_id)
 
-            # 2) Assignation (respecte patient_user_id si présent en modèle)
+            # 2) Anti-doublon d'assignation active
+            dup_q = ExerciseAssignment.query.filter(
+                ExerciseAssignment.professional_id == pro.id,
+                ExerciseAssignment.exercise_id == ex.id,
+                ExerciseAssignment.status == "active",
+            )
+            if hasattr(ExerciseAssignment, "patient_user_id"):
+                dup_q = dup_q.filter(ExerciseAssignment.patient_user_id == user.id)
+            else:
+                dup_q = dup_q.filter(ExerciseAssignment.patient_id == user.id)
+            if dup_q.first():
+                flash("Cet exercice est déjà assigné (actif) pour ce patient.", "info")
+                return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+
+            # 3) Assignation (remplir patient_id ET patient_user_id si dispo)
             if hasattr(ExerciseAssignment, "patient_user_id"):
                 ea = ExerciseAssignment(
                     exercise_id=ex.id,
                     professional_id=pro.id,
                     patient_id=user.id,
-                    patient_user_id=user.id,   # <<< indispensable dans ta base
+                    patient_user_id=user.id,
                     status="active",
                     due_date=due_date_val,
                 )
                 db.session.add(ea)
                 db.session.commit()
             else:
-                # fallback : tu gardes le helper si l'ancien schéma est actif
+                # Schéma legacy
                 _assign_exercise_to_patient(ex, pro.id, user.id, due_date_raw)
-                # Si le helper commit déjà OK; sinon:
                 try: db.session.commit()
                 except Exception: db.session.rollback()
 
-            # 3) Notifications (thread + email)
+            # 4) Notifications (thread + email)
             try:
                 thread = _get_or_create_thread(pro.id, user.id)
                 _notify_in_thread(thread, current_user.id, f"Un exercice vous a été assigné : {ex.title}.")
@@ -3246,14 +2970,12 @@ def pro_patient_exercises(patient_id: int):
                                f"{BRAND_NAME} — Nouvel exercice",
                                f"Un nouvel exercice « {ex.title} » est disponible dans votre espace patient.")
             except Exception:
-                # email best-effort, ne casse pas la page
                 pass
 
             flash("Exercice envoyé au patient.", "success")
             return redirect(url_for("pro_patient_exercises", patient_id=user.id))
 
         except SQLAlchemyError:
-            # Toute erreur SQL → rollback immédiat pour éviter l'état "aborted"
             db.session.rollback()
             flash("Impossible d’assigner l’exercice.", "danger")
         except Exception:
@@ -3291,12 +3013,12 @@ def pro_patient_exercises(patient_id: int):
         except Exception: pass
         existing = []
 
-    # Sécurité: s'assurer qu'aucune transaction "aborted" ne traîne avant le rendu Jinja
     try: db.session.rollback()
     except Exception: pass
 
     return render_or_text("pro/patient_exercises.html", "Exercices du patient",
                           professional=pro, patient=user, assignments=assigns, library=existing)
+
 
 # ====== Côté patient : liste ================================================
 @app.route("/patient/exercises", methods=["GET"], endpoint="patient_exercises")
@@ -3310,6 +3032,8 @@ def patient_exercises():
         q = q.filter_by(patient_id=current_user.id)
     assigns = (q.order_by(ExerciseAssignment.created_at.desc().nullslast()).all()
                if hasattr(ExerciseAssignment, "created_at") else q.all())
+    try: db.session.rollback()
+    except Exception: pass
     return render_or_text("patient/exercises.html", "Mes exercices", assignments=assigns)
 
 # ====== Côté patient : détail + remise ======================================
@@ -3356,7 +3080,7 @@ def patient_exercise_detail(assign_id: int):
         thread = _get_or_create_thread(a.professional_id, current_user.id)
         body = f"Le patient a rendu l'exercice : {getattr(ex,'title','Exercice')}."
         if text_answer: body += f"\n\nRéponse :\n{text_answer[:2000]}"
-        _notify_in_thread(thread, current_user.id, body, file_url)
+        _notify_in_thread(thread, current_user.id, body)
         _email_or_pass(getattr(pro, "email", None),
                        f"{BRAND_NAME} — Réponse d'exercice",
                        f"Votre patient a rendu l'exercice « {getattr(ex,'title','Exercice')} ».")        
@@ -3366,6 +3090,8 @@ def patient_exercise_detail(assign_id: int):
             db.session.rollback(); flash("Impossible d'enregistrer la réponse.", "danger")
         return redirect(url_for("patient_exercise_detail", assign_id=a.id))
 
+    try: db.session.rollback()
+    except Exception: pass
     return render_or_text("patient/exercise_detail.html", "Exercice",
                           assignment=a, exercise=ex, professional=pro)
 
