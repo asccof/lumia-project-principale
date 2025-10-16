@@ -25,6 +25,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from jinja2 import TemplateNotFound
 from sqlalchemy import or_, and_, text, func, case
+# app.py (imports)
+from sqlalchemy import text  # <-- AJOUTER CETTE LIGNE
 
 # === Extensions (db) ===
 from extensions import db  # db.init_app(app) sera appelé après config
