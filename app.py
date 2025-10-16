@@ -4192,6 +4192,9 @@ def patient_confirm_booking():
     flash("Demande envoyée. Vous serez notifié(e) après validation du professionnel.", "success")
     return redirect(url_for("patient_appointments"))
 
+# app.py (à la fin)
+from auditor import audit as audit_command
+app.cli.add_command(audit_command)
 
 # =========================
 #   BOOT (migrations légères + admin seed + TAXONOMIE)
