@@ -2966,7 +2966,7 @@ def pro_support():
 @app.route("/pro/patients/<int:patient_id>/dossier", methods=["GET", "POST"])
 @login_required
 def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
-    # Autorisation pro (utilise ton helper existant)
+    # Autorisation pro (ton helper existant)
     pro = _current_professional_or_403()
 
     # Tolérance : certains templates passent patient_id, d'autres user_id
@@ -2983,7 +2983,7 @@ def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
     if request.method == "POST":
         f = request.form
 
-        # === Mise à jour du PatientProfile (uniquement colonnes EXISTANTES) ===
+        # === Mise à jour du PatientProfile (colonnes existantes) ===
         profile.first_name = f.get("first_name") or profile.first_name
         profile.last_name = f.get("last_name") or profile.last_name
         profile.language = f.get("language") or profile.language
@@ -2995,11 +2995,12 @@ def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
         birth_date_raw = (f.get("birth_date") or "").strip()
         if birth_date_raw:
             try:
-                profile.birth_date = datetime.strptime(birth_date_raw, "%Y-%m-%d").date()
+                from datetime import datetime as _dt
+                profile.birth_date = _dt.strptime(birth_date_raw, "%Y-%m-%d").date()
             except ValueError:
                 flash("Date de naissance invalide (format attendu : YYYY-MM-DD).", "warning")
 
-        # === Historique médical : mise à jour douce si présent (pas de doublon) ===
+        # === Historique médical : mise à jour douce si présent (éviter doublons) ===
         if history:
             title = f.get("mh_title")
             details = f.get("mh_details")
@@ -3016,6 +3017,7 @@ def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
                 history.custom_fields = custom
             db.session.add(history)
 
+        # Commit global (profil + éventuelle MAJ historique)
         db.session.add(profile)
         try:
             db.session.commit()
@@ -3024,19 +3026,20 @@ def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
             db.session.rollback()
             flash("Échec de l'enregistrement du dossier (vérifier les champs).", "danger")
 
-        # IMPORTANT : compat avec le template qui appelle url_for(..., patient_id=u.id)
+        # Compat : certains liens utilisent patient_id
         return redirect(url_for("pro_patient_dossier", patient_id=user.id))
 
-    # --- GET : simplement afficher ---
-return render_or_text(
-    "pro/patient_dossier.html",
-    "Dossier patient",          # <-- fallback_title OBLIGATOIRE
-    user=user,
-    patient=user,               # <-- alias pour compat template
-    profile=profile,
-    history=history,
-    professional=pro,
-)
+    # --- GET : affichage ---
+    return render_or_text(
+        "pro/patient_dossier.html",
+        "Dossier patient",          # fallback_title OBLIGATOIRE
+        user=user,
+        patient=user,               # alias pour compat des templates
+        profile=profile,
+        history=history,
+        professional=pro,
+    )
+
 
 
 
