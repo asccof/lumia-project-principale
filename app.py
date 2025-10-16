@@ -2820,77 +2820,104 @@ def pro_library():
 
 # --- Assignations d’exercices aux patients
 # --- Assignations d’exercices aux patients (fix contrat) ---
-@app.route("/pro/assign", methods=["POST"], endpoint="pro_assign_exercise")
+# --- Exercices (côté PRO) : liste + assignation ---
+@app.route("/pro/patients/<int:user_id>/exercises", methods=["GET", "POST"], endpoint="pro_patient_exercises")
+@app.route("/pro/patients/<int:patient_id>/exercises", methods=["GET", "POST"])
 @login_required
-def pro_assign_exercise():
-    from datetime import datetime
+def pro_patient_exercises(user_id=None, patient_id=None):
     pro = _current_professional_or_403()
 
-    exercise_id = request.form.get("exercise_id", type=int)
-    patient_param = request.form.get("patient_id")  # peut être un user_id
-    due_raw = request.form.get("due_date")
+    # Tolérance paramètre
+    uid = user_id if user_id is not None else patient_id
+    if uid is None:
+        abort(404)
 
-    if not (exercise_id and patient_param):
-        abort(400)
-
-    # normaliser la due_date en date (ou None)
-    def _norm_due_date(s):
-        try:
-            return datetime.fromisoformat(s).date() if s else None
-        except Exception:
-            return None
-    due_date = _norm_due_date(due_raw)
-
-    # Résoudre patient_user_id (et patient_id si 2 colonnes existent)
-    try:
-        uid = int(patient_param)
-    except Exception:
-        abort(400)
-
+    # Charger l'utilisateur (patient)
     user = User.query.get_or_404(uid)
 
-    # Construire l’assignement en couvrant les 2 colonnes possibles
-    assign_fields = dict(
-        exercise_id=exercise_id,
-        professional_id=pro.id,
-        status="active",
-        due_date=due_date
-    )
-    # Remplir patient_user_id si la colonne existe
-    if hasattr(ExerciseAssignment, "patient_user_id"):
-        assign_fields["patient_user_id"] = user.id
-    # Remplir patient_id si présent (compat)
-    if hasattr(ExerciseAssignment, "patient_id"):
-        assign_fields["patient_id"] = user.id
+    # === POST : créer une assignation ===
+    if request.method == "POST":
+        f = request.form
+        ex_id_raw = (f.get("exercise_id") or "").strip()
+        due_raw   = (f.get("due_date") or "").strip()  # optionnel (YYYY-MM-DD)
 
-    # Anti-doublon: même exercice, même patient, même pro, même échéance
-    q = ExerciseAssignment.query.filter_by(
-        exercise_id=exercise_id,
-        professional_id=pro.id,
-        **({ "patient_user_id": user.id } if hasattr(ExerciseAssignment, "patient_user_id") else {}),
-        **({ "patient_id": user.id } if hasattr(ExerciseAssignment, "patient_id") else {}),
-    )
-    if due_date is None:
-        q = q.filter(ExerciseAssignment.due_date.is_(None))
-    else:
-        q = q.filter(ExerciseAssignment.due_date == due_date)
+        # validations de base
+        if not ex_id_raw.isdigit():
+            flash("Exercise ID invalide.", "warning")
+            return redirect(url_for("pro_patient_exercises", patient_id=user.id))
 
-    existing = q.first()
-    if existing:
-        flash("Exercice déjà assigné à ce patient pour cette échéance.", "warning")
+        exercise = Exercise.query.get(int(ex_id_raw))
+        if not exercise:
+            flash("Exercice introuvable.", "warning")
+            return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+
+        # due_date optionnelle
+        due_date = None
+        if due_raw:
+            try:
+                due_date = datetime.strptime(due_raw, "%Y-%m-%d").date()
+            except Exception:
+                flash("Date d'échéance invalide (format YYYY-MM-DD).", "warning")
+
+        # (anti-doublon) : même exo, même pro, même patient encore 'active'
+        existing = ExerciseAssignment.query.filter(
+            ExerciseAssignment.professional_id == pro.id,
+            or_(
+                ExerciseAssignment.patient_user_id == user.id,
+                ExerciseAssignment.patient_id == user.id,  # compat legacy
+            ),
+            ExerciseAssignment.exercise_id == exercise.id,
+            ExerciseAssignment.status == "active",
+        ).first()
+        if existing:
+            flash("Cet exercice est déjà assigné (actif) pour ce patient.", "info")
+            return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+
+        # ✅ IMPORTANT : RENSEIGNER LES 2 COLONNES (patient_id + patient_user_id)
+        ea = ExerciseAssignment(
+            exercise_id=exercise.id,
+            professional_id=pro.id,
+            patient_id=user.id,          # <= legacy / anciennes vues
+            patient_user_id=user.id,     # <= nouvelle logique
+            status="active",
+            due_date=due_date,
+        )
+        db.session.add(ea)
+        try:
+            db.session.commit()
+            flash("Exercice assigné.", "success")
+        except Exception:
+            db.session.rollback()
+            flash("Échec de l’assignation (conflit ou erreur DB).", "danger")
+
         return redirect(url_for("pro_patient_exercises", patient_id=user.id))
 
-    assign = ExerciseAssignment(**assign_fields)
-    db.session.add(assign)
-    try:
-        db.session.commit()
-        flash("Exercice assigné au patient.", "success")
-    except Exception:
-        db.session.rollback()
-        flash("Une erreur est survenue pendant l’assignation.", "danger")
+    # === GET : lister les assignations du patient ===
+    assignments = ExerciseAssignment.query.filter(
+        ExerciseAssignment.professional_id == pro.id,
+        or_(
+            ExerciseAssignment.patient_user_id == uid,
+            ExerciseAssignment.patient_id == uid,  # compat legacy
+        ),
+    ).order_by(ExerciseAssignment.created_at.desc()).all()
 
-    return redirect(url_for("pro_patient_exercises", patient_id=user.id))
+    # Si tu affiches aussi le catalogue d'exercices
+    exercises = Exercise.query.filter(
+        or_(
+            Exercise.visibility == "public",
+            Exercise.owner_id == current_user.id,
+            Exercise.professional_id == pro.id,
+        )
+    ).order_by(Exercise.created_at.desc()).all()
 
+    return render_or_text(
+        "pro/patient_exercises.html",
+        "Exercices du patient",
+        user=user,
+        professional=pro,
+        assignments=assignments,
+        exercises=exercises,
+    )
 
 
 # --- Factures & paiements
