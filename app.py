@@ -3027,15 +3027,17 @@ def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
         # IMPORTANT : compat avec le template qui appelle url_for(..., patient_id=u.id)
         return redirect(url_for("pro_patient_dossier", patient_id=user.id))
 
-    # --- GET : afficher ---
-    return render_or_text(
-        "pro/patient_dossier.html",
-        user=user,          # alias utilisé ailleurs
-        patient=user,       # <— requis par le template
-        profile=profile,
-        history=history,
-        professional=pro,
-    )
+    # --- GET : simplement afficher ---
+return render_or_text(
+    "pro/patient_dossier.html",
+    "Dossier patient",          # <-- fallback_title OBLIGATOIRE
+    user=user,
+    patient=user,               # <-- alias pour compat template
+    profile=profile,
+    history=history,
+    professional=pro,
+)
+
 
 
 
