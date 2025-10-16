@@ -4191,6 +4191,20 @@ def patient_confirm_booking():
 
     flash("Demande envoyée. Vous serez notifié(e) après validation du professionnel.", "success")
     return redirect(url_for("patient_appointments"))
+@app.route("/pro/stats", methods=["GET"], endpoint="pro_stats")
+@login_required
+def pro_stats():
+    pro = _current_professional_or_403()
+    total_sessions = TherapySession.query.filter_by(professional_id=pro.id).count() if "TherapySession" in globals() else 0
+    total_minutes = 0
+    total_invoices = Invoice.query.filter_by(professional_id=pro.id).count() if "Invoice" in globals() else 0
+    revenue = 0.0
+    if "Invoice" in globals():
+        revenue = db.session.query(db.func.coalesce(db.func.sum(Invoice.amount), 0.0))\
+                            .filter_by(professional_id=pro.id, status="paid").scalar() or 0.0
+    return render_or_text("pro/stats.html", "Statistiques",
+                          stats={"sessions": total_sessions, "minutes": total_minutes, "invoices": total_invoices, "revenue": revenue},
+                          professional=pro)
 
 # app.py (à la fin)
 from auditor import audit as audit_command
