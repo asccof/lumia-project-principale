@@ -4096,6 +4096,24 @@ def pro_stats():
     return render_or_text("pro/stats.html", "Statistiques",
                           stats={"sessions": total_sessions, "minutes": total_minutes, "invoices": total_invoices, "revenue": revenue},
                           professional=pro)
+# Alias pour un ancien endpoint appelé dans view_professional.html
+@app.route("/media/profile/<int:professional_id>/idx", methods=["GET"], endpoint="profile_photo_idx")
+def profile_photo_idx(professional_id: int):
+    # redirige vers la version indexée existante (index=0)
+    return redirect(url_for("profile_photo_n", professional_id=professional_id, index=0))
+
+# Alias pour servir des fichiers patients (appelé dans plusieurs templates)
+@app.route("/media/patient_file/<int:file_id>", methods=["GET"], endpoint="media_patient_file")
+@login_required
+def media_patient_file(file_id: int):
+    f = PatientFile.query.get_or_404(file_id) if "PatientFile" in globals() else None
+    # Si tu stockes l'URL finale:
+    if f and getattr(f, "file_url", None):
+        return redirect(f.file_url)
+    # Sinon, si stock local via u_attachments (ex: '/u/attachments/<name>')
+    if f and getattr(f, "file_name", None):
+        return redirect(url_for("u_attachments", filename=f.file_name))
+    abort(404)
 
 # app.py (à la fin)
 from auditor import audit as audit_command
