@@ -1610,69 +1610,6 @@ def _current_professional_or_403():
     return pro
 
 # =========================
-#   MESSAGERIE — PRO (INBOX)  ✅ unique, après app = Flask(...)
-# =========================
-@app.route("/pro/messages", methods=["GET"], endpoint="pro_messages")
-@login_required
-def pro_messages():
-    if getattr(current_user, "user_type", None) != "professional":
-        abort(403)
-    pro = _current_professional_or_403()
-
-    q = (request.args.get("q") or "").strip()
-    base = MessageThread.query.filter_by(professional_id=pro.id)
-
-    if q:
-        like = f"%{q}%"
-        # compat patient_id / patient_user_id
-        pid_col = MessageThread.patient_id if hasattr(MessageThread, "patient_id") else MessageThread.patient_user_id
-        base = (
-            base.join(User, User.id == pid_col)
-                .filter(or_(User.username.ilike(like),
-                            User.full_name.ilike(like),
-                            User.email.ilike(like),
-                            User.phone.ilike(like)))
-        )
-
-    threads = (base.order_by(MessageThread.updated_at.desc().nullslast(),
-                             MessageThread.id.desc()).all())
-
-    items = []
-    for th in threads:
-        pid = getattr(th, "patient_id", None) or getattr(th, "patient_user_id", None)
-        patient = User.query.get(pid) if pid else None
-
-        last_msg = (Message.query.filter_by(thread_id=getattr(th, "id", None))
-                              .order_by(Message.created_at.desc(), Message.id.desc())
-                              .first())
-
-        last_at = getattr(last_msg, "created_at", None)
-        last_text = (
-            getattr(last_msg, "body", None)
-            or ("📎 Pièce jointe" if getattr(last_msg, "attachment_id", None) else None)
-            or ("🔊 Message audio" if getattr(last_msg, "audio_url", None) else None)
-            or ""
-        )
-        sender_id = getattr(last_msg, "sender_user_id", None) or getattr(last_msg, "sender_id", None)
-        unread = bool(last_msg and sender_id and sender_id != getattr(current_user, "id", None))
-
-        items.append({
-            "thread": th,
-            "patient": patient,
-            "last_at": last_at,
-            "last_text": last_text,
-            "unread": unread,
-        })
-
-    unread_count = sum(1 for it in items if it["unread"])
-
-    return render_or_text("pro/messages_inbox.html", "Messagerie sécurisée",
-                          items=items, q=q, unread_count=unread_count, professional=pro)
-
-
-
-# =========================
-# =========================
 #   ESPACE PRO / RDV
 # =========================
 
