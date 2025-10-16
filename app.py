@@ -2931,19 +2931,27 @@ def pro_support():
     return render_or_text("pro/support.html", "Support & Guides", tickets=tickets, guides=guides, professional=pro)
 # ====== Dossier patient (auto-prérempli) =====================================
 # --- Dossier patient (côté PRO) : affichage + mise à jour compatibles avec models.py ---
+# --- Dossier patient (côté PRO) : affichage + mise à jour compatibles avec models.py ---
+# ➜ Accepte /pro/patients/<user_id>/dossier ET /pro/patients/<patient_id>/dossier
 @app.route("/pro/patients/<int:user_id>/dossier", methods=["GET", "POST"], endpoint="pro_patient_dossier")
+@app.route("/pro/patients/<int:patient_id>/dossier", methods=["GET", "POST"])
 @login_required
-def pro_patient_dossier(user_id: int):
-    # Autorisation pro (garde ton helper existant si tu l'as déjà)
-    pro = _current_professional_or_403()
-
+def pro_patient_dossier(user_id=None, patient_id=None, **kwargs):
     from datetime import datetime
 
+    # Autorisation pro (ton helper existant)
+    pro = _current_professional_or_403()
+
+    # Tolérance : certains templates passent patient_id, d'autres user_id
+    uid = user_id if user_id is not None else patient_id
+    if uid is None:
+        abort(404)
+
     # Charge/Crée proprement le user, son profil et (sans doublon) son dernier historique
-    data = _ensure_patient_case(user_id)
+    data = _ensure_patient_case(uid)
     user = data["user"]
     profile = data["profile"]
-    history = data["history"]  # peut être None si aucun historique existe
+    history = data["history"]  # peut être None
 
     if request.method == "POST":
         f = request.form
@@ -2964,10 +2972,9 @@ def pro_patient_dossier(user_id: int):
             except ValueError:
                 flash("Date de naissance invalide (format attendu : YYYY-MM-DD).", "warning")
 
-        # === Historique médical (on ne crée pas de doublon ici ; on met à jour s'il existe) ===
-        # Champs permis par ton modèle: title, details, summary, custom_fields
+        # === Historique médical : mise à jour douce si présent (pas de doublon) ===
+        # Champs permis : title, details, summary, custom_fields
         if history:
-            # Mise à jour douce : on n'écrase pas par des vides
             title = f.get("mh_title")
             details = f.get("mh_details")
             summary = f.get("mh_summary")
@@ -2981,10 +2988,9 @@ def pro_patient_dossier(user_id: int):
                 history.summary = summary
             if custom is not None and custom != "":
                 history.custom_fields = custom
-
             db.session.add(history)
 
-        # Commit global (profil + éventuelle maj historique)
+        # Commit global (profil + éventuelle MAJ historique)
         db.session.add(profile)
         try:
             db.session.commit()
@@ -2993,17 +2999,20 @@ def pro_patient_dossier(user_id: int):
             db.session.rollback()
             flash("Échec de l'enregistrement du dossier (vérifier les champs).", "danger")
 
-        return redirect(url_for("pro_patient_dossier", user_id=user.id))
+        # IMPORTANT : compat avec le template qui appelle patient_id=u.id
+        return redirect(url_for("pro_patient_dossier", patient_id=user.id))
 
     # --- GET : simplement afficher ---
     # Garde ton template existant si son nom diffère.
-    return render_template(
+    return render_or_text(
         "pro/patient_dossier.html",
+        "Dossier patient",
         user=user,
         profile=profile,
         history=history,
         professional=pro,
     )
+
 
 # ---- Helpers messagerie : thread + message -----------------------------------
 from sqlalchemy.exc import IntegrityError
