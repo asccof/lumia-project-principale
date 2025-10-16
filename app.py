@@ -16,7 +16,7 @@ import requests
 from dotenv import load_dotenv
 from flask import (
     Flask, render_template, request, redirect, url_for, flash, jsonify,
-    send_from_directory, Response, current_app, make_response, g, abort
+    send_from_directory, Response, current_app, make_response, g, abort, session
 )
 from flask_login import (
     LoginManager, login_user, login_required, logout_user, current_user
@@ -25,8 +25,6 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import generate_password_hash, check_password_hash
 from jinja2 import TemplateNotFound
 from sqlalchemy import or_, and_, text, func, case
-# app.py (imports)
-from sqlalchemy import text  # <-- AJOUTER CETTE LIGNE
 
 # === Extensions (db) ===
 from extensions import db  # db.init_app(app) sera appelé après config
@@ -81,7 +79,6 @@ app.config.update(
     MAX_CONTENT_LENGTH=MAX_CONTENT_LENGTH,
 )
 
-from flask import session
 @app.before_request
 def _keep_session_permanent():
     session.permanent = True
@@ -135,12 +132,43 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 # Initialiser la DB après config
 db.init_app(app)
 
+# --- Définir les migrations bootstrap AVANT de les appeler ---
+def run_bootstrap_migrations():
+    """
+    Exécute des ALTER TABLE idempotents pour aligner la base avec models.py.
+    Appelée au démarrage de l'app, dans un app_context.
+    """
+    stmts = [
+        # --- medical_histories : aligner la table sur le modèle SQLAlchemy
+        "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS title VARCHAR(200);",
+        "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS details TEXT;",
+        "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS summary TEXT;",
+        "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS custom_fields TEXT;",
+        "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();",
+        "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;",
+
+        # Index utiles (idempotents)
+        "CREATE INDEX IF NOT EXISTS ix_medical_histories_patient ON medical_histories(patient_id);",
+        "CREATE INDEX IF NOT EXISTS ix_medical_histories_professional ON medical_histories(professional_id);",
+        "CREATE INDEX IF NOT EXISTS ix_medical_histories_created ON medical_histories(created_at);",
+    ]
+    # Exécution atomique
+    with db.engine.begin() as conn:
+        for sql in stmts:
+            conn.execute(text(sql))
+
+# Créer les tables puis appliquer les migrations idempotentes
+with app.app_context():
+    db.create_all()
+    run_bootstrap_migrations()
+
 # Crée les dossiers d’upload si besoin
 for _p in (UPLOAD_ROOT, UPLOAD_FOLDER, ATTACHMENTS_FOLDER):
     try:
         _p.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         app.logger.warning("Impossible de créer le dossier %s : %s", _p, e)
+
 
 # -------------------------------------------------------------------
 # Models
