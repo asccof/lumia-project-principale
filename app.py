@@ -4515,8 +4515,14 @@ with app.app_context():
             "UPDATE therapy_sessions SET started_at = start_at WHERE started_at IS NULL AND start_at IS NOT NULL;",
 
             # --- medical_histories
+            # --- medical_histories : aligner la table sur le modèle SQLAlchemy
+            "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS title VARCHAR(255);",
+            "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS details TEXT;",
             "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS summary TEXT;",
             "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS custom_fields TEXT;",
+            "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();",
+            "ALTER TABLE medical_histories ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP;",
+
         ]
 
         for sql in stmts:
