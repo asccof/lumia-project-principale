@@ -2603,6 +2603,10 @@ def pro_messages_alias():
     except Exception:
         return redirect("/messages")
 
+@app.get("/pro/messages", endpoint="pro_messages")
+@login_required
+def pro_messages():
+    return redirect(url_for("pro_messages_alias"))
 
 @app.route("/pro/billing", methods=["GET"], endpoint="pro_billing")
 @login_required
