@@ -1921,7 +1921,7 @@ def professional_appointments():
         flash("Profil professionnel non trouvé"); return redirect(url_for("professional_dashboard"))
 
     status = (request.args.get("status") or "all").strip()
-    scope  = (request.args.get("scope")  or "upcoming").strip()
+    scope  = (request.args.get("scope")  or "all").strip()
 
     q = Appointment.query.filter_by(professional_id=pro.id)
     now = datetime.utcnow()
@@ -1937,9 +1937,23 @@ def professional_appointments():
     elif scope == "past" and date_col is not None:
         q = q.filter(date_col < now)
 
-    # Statuts utilisés dans tes templates
-    if status in ("en_attente", "confirme", "annule"):
-        q = q.filter_by(status=status)
+   # Statuts utilisés dans tes templates (normalisation FR/EN)
+if status in ("en_attente","confirme","annule"):
+    from sqlalchemy import func, or_
+    _norm = func.lower(func.trim(func.coalesce(Appointment.status, "")))
+    if status == "en_attente":
+        q = q.filter(or_(
+            _norm.in_(["", "en_attente","en attente","en-attente","requested","pending","awaiting","new","waiting"]),
+            _norm.like("pending%"),
+            _norm.like("awaiting%"),
+            _norm.like("new%"),
+            _norm.like("waiting%")
+        ))
+    elif status == "confirme":
+        q = q.filter(_norm.in_(["confirme","confirmé","confirmed"]))
+    elif status == "annule":
+        q = q.filter(_norm.in_(["annule","annulé","cancelled","canceled"]))
+
 
     # Tri robuste
     if date_col is not None:
