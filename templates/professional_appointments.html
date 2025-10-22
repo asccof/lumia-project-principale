@@ -25,6 +25,8 @@
 <body class="bg-light">
 <div class="container py-3">
 
+  <!-- MARKER: pro_appts v2 -->
+
   <div class="d-flex justify-content-between align-items-center">
     <h1 class="h4 mb-0">Mes rendez-vous</h1>
     <div class="d-flex gap-2">
@@ -76,20 +78,21 @@
           {% set patient_phone = p.phone if p else '' %}
           {% set patient_email = p.email if p else '' %}
           {% set ts = ap.appointment_date.timestamp() if ap.appointment_date else 0 %}
+
+          {# --- Normalisation statut (FR/EN) pour filtres et badges --- #}
           {% set _raw = (ap.status or '').lower().strip() %}
-{% if _raw in ['en_attente','en attente','en-attente','requested','pending','awaiting','new','waiting']
-       or _raw.startswith('pending')
-       or _raw.startswith('awaiting')
-       or _raw.startswith('new')
-       or _raw.startswith('waiting') %}
-  {% set status = 'en_attente' %}
-{% elif _raw in ['confirme','confirmé','confirmed'] %}
-  {% set status = 'confirme' %}
-{% elif _raw in ['annule','annulé','cancelled','canceled'] %}
-  {% set status = 'annule' %}
-{% else %}
-  {% set status = 'en_attente' %}
-{% endif %}
+          {% if _raw in ['en_attente','en attente','en-attente','requested','pending','awaiting','new','waiting']
+                 or _raw.startswith('pending') or _raw.startswith('awaiting')
+                 or _raw.startswith('new') or _raw.startswith('waiting') %}
+            {% set status = 'en_attente' %}
+          {% elif _raw in ['confirme','confirmé','confirmed'] %}
+            {% set status = 'confirme' %}
+          {% elif _raw in ['annule','annulé','cancelled','canceled'] %}
+            {% set status = 'annule' %}
+          {% else %}
+            {% set status = 'en_attente' %}
+          {% endif %}
+          <!-- DEBUG statut brut={{ (ap.status or '')|lower }} ⇒ mappé={{ status }} -->
 
           <tr
             class="appt-row"
