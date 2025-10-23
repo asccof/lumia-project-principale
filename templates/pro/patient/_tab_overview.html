@@ -13,9 +13,15 @@
       <div class="fw-semibold mb-2">Indicateurs</div>
       <ul class="list-unstyled small mb-0">
         <li>Nombre de séances : {{ (sessions|length) if sessions else 0 }}</li>
-        <li>Dernière séance : {% if sessions and sessions[0].start_at %}{{ sessions[0].start_at }}{% else %}—{% endif %}</li>
-        <li>Exercices assignés : <a href="{{ url_for('pro_patient_exercises', patient_id=patient.id) }}">voir</a></li>
-        <li>Messagerie : <a href="{{ url_for('pro_thread', patient_id=patient.id) }}">ouvrir</a></li>
+        <li>Dernière séance :
+          {% if sessions and sessions[0].start_at %}{{ sessions[0].start_at }}{% else %}—{% endif %}
+        </li>
+        <li>Exercices assignés :
+          <a href="{{ url_for('pro_patient_exercises', patient_id=patient.id) }}">voir</a>
+        </li>
+        <li>Messagerie :
+          <a href="{{ url_for('pro_thread', patient_id=patient.id) }}">ouvrir</a>
+        </li>
       </ul>
     </div></div>
   </div>
