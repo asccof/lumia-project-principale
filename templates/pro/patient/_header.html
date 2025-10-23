@@ -5,7 +5,6 @@
     <div class="flex-grow-1">
       <div class="d-flex flex-wrap align-items-center gap-2">
         <h2 class="h5 mb-0">{{ patient.full_name or patient.username }}</h2>
-        <!-- Badges -->
         {% set city = (profile.city if profile else None) %}
         {% if city %}<span class="badge text-bg-light">{{ city }}</span>{% endif %}
         {% if profile and profile.gender %}<span class="badge text-bg-light">{{ profile.gender }}</span>{% endif %}
@@ -21,17 +20,12 @@
         <i class="fa-solid fa-envelope"></i> {{ patient.email or '—' }}
       </div>
     </div>
-    <!-- Actions rapides -->
     <div class="d-flex flex-wrap gap-2">
       <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('pro_thread', patient_id=patient.id) }}"><i class="fa-solid fa-comments me-1"></i>Message</a>
       <a class="btn btn-sm btn-outline-primary" href="{{ url_for('pro_patient_exercises', patient_id=patient.id) }}"><i class="fa-solid fa-dumbbell me-1"></i>Exercice</a>
       <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('professional_appointments') }}"><i class="fa-solid fa-calendar-days me-1"></i>RDV</a>
-      <!-- Les actions Note / Fichier seront branchées en Phase 1b/2 -->
       <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Bientôt"><i class="fa-solid fa-note-sticky me-1"></i>Note</button>
       <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Bientôt"><i class="fa-solid fa-paperclip me-1"></i>Fichier</button>
-      {% if medhist %}
-        <span class="btn btn-sm btn-outline-warning disabled"><i class="fa-solid fa-triangle-exclamation me-1"></i>Marquer “à risque”</span>
-      {% endif %}
     </div>
   </div>
 </div>
