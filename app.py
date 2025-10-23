@@ -2114,11 +2114,27 @@ def pro_patient_entry():
 # --- Alias rétro-compatibilité ---
 # Certains templates appellent encore url_for('pro_patient_dossier', patient_id=...)
 # On ajoute un endpoint alias pour éviter tout 500 et rediriger vers l'entrée officielle.
-# --- Alias "dossier patient" vers la page centrale, enregistrement conditionnel ---
+# --- Alias "dossier patient" vers la page centrale (enregistrement conditionnel, sans code hors-fonction) ---
 def _pro_patient_dossier_alias(patient_id: int):
-    _ = _current_professional_or_403()
-    return redirect(url_for("pro_patient_detail", patient_id=patient_id))
+    # Sécurité : exige un PRO connecté (aborts 403 sinon) et retourne l'objet pro
+    pro = _current_professional_or_403()
 
+    # Vérifier le lien pro<->patient (accès autorisé seulement si un rendez-vous les relie)
+    link = (
+        db.session.query(Appointment.id)
+        .filter(Appointment.professional_id == pro.id, Appointment.patient_id == patient_id)
+        .first()
+    )
+
+    if link:
+        # OK: redirige vers la page centrale du dossier
+        return redirect(url_for("pro_patient_detail", patient_id=patient_id))
+
+    # Sinon, avertir et renvoyer vers la liste des patients
+    flash("Ce patient n'est pas lié à vos rendez-vous.", "warning")
+    return redirect(url_for("pro_patients"))
+
+# Enregistrer la route UNE SEULE FOIS (évite l'AssertionError si déjà ajoutée ailleurs)
 if "pro_patient_dossier" not in app.view_functions:
     app.add_url_rule(
         "/pro/patient/dossier/<int:patient_id>",
@@ -2126,32 +2142,6 @@ if "pro_patient_dossier" not in app.view_functions:
         view_func=login_required(_pro_patient_dossier_alias),
         methods=["GET"],
     )
-
-
-    # Récupération du PRO comme ci-dessus
-    pro = None
-    try:
-        pro = getattr(current_user, "professional", None)
-    except Exception:
-        pro = None
-    if not pro:
-        pro = Professional.query.filter_by(name=current_user.username).first()
-
-    if not pro:
-        flash("Profil professionnel non trouvé.", "danger")
-        return redirect(url_for("professional_dashboard"))
-
-    # Vérifier le lien pro<->patient avant de montrer le dossier
-    link = (
-        db.session.query(Appointment.id)
-        .filter(Appointment.professional_id == pro.id, Appointment.patient_id == patient_id)
-        .first()
-    )
-    if link:
-        return redirect(url_for("pro_patient_detail", patient_id=patient_id))
-
-    flash("Ce patient n'est pas lié à vos rendez-vous.", "warning")
-    return redirect(url_for("pro_patients"))
 
 
 # =========================
