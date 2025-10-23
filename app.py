@@ -1920,42 +1920,45 @@ def professional_appointments():
     if not pro:
         flash("Profil professionnel non trouvé"); return redirect(url_for("professional_dashboard"))
 
+    # IMPORTANT : scope par défaut = "all" (pas "upcoming")
     status = (request.args.get("status") or "all").strip()
     scope  = (request.args.get("scope")  or "all").strip()
 
     q = Appointment.query.filter_by(professional_id=pro.id)
     now = datetime.utcnow()
 
-    # Supporte appointment_date OU start_at selon ton modèle
+    # Colonne date selon modèle
     if hasattr(Appointment, "appointment_date"):
         date_col = Appointment.appointment_date
     else:
         date_col = getattr(Appointment, "start_at", None)
 
+    # Filtres portée (à venir / passés)
     if scope == "upcoming" and date_col is not None:
         q = q.filter(date_col >= now)
     elif scope == "past" and date_col is not None:
         q = q.filter(date_col < now)
 
-   # Statuts utilisés dans tes templates (normalisation FR/EN)
-if status in ("en_attente","confirme","annule"):
-    from sqlalchemy import func, or_
-    _norm = func.lower(func.trim(func.coalesce(Appointment.status, "")))
-    if status == "en_attente":
-        q = q.filter(or_(
-            _norm.in_(["", "en_attente","en attente","en-attente","requested","pending","awaiting","new","waiting"]),
-            _norm.like("pending%"),
-            _norm.like("awaiting%"),
-            _norm.like("new%"),
-            _norm.like("waiting%")
-        ))
-    elif status == "confirme":
-        q = q.filter(_norm.in_(["confirme","confirmé","confirmed"]))
-    elif status == "annule":
-        q = q.filter(_norm.in_(["annule","annulé","cancelled","canceled"]))
+    # Filtres statut (robuste FR/EN)
+    if status in ("en_attente", "confirme", "annule"):
+        from sqlalchemy import func, or_
+        _norm = func.lower(func.trim(func.coalesce(Appointment.status, "")))
 
+        if status == "en_attente":
+            q = q.filter(or_(
+                _norm.in_(["", "en_attente", "en attente", "en-attente",
+                           "requested", "pending", "awaiting", "new", "waiting"]),
+                _norm.like("pending%"),
+                _norm.like("awaiting%"),
+                _norm.like("new%"),
+                _norm.like("waiting%")
+            ))
+        elif status == "confirme":
+            q = q.filter(_norm.in_(["confirme", "confirmé", "confirmed"]))
+        elif status == "annule":
+            q = q.filter(_norm.in_(["annule", "annulé", "cancelled", "canceled"]))
 
-    # Tri robuste
+    # Tri
     if date_col is not None:
         q = q.order_by(date_col.desc())
     else:
@@ -1970,6 +1973,7 @@ if status in ("en_attente","confirme","annule"):
         status=status,
         scope=scope
     )
+
 
 # ===== Action RDV (confirmer / annuler / etc.) =====
 @app.route(
