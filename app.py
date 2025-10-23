@@ -2026,24 +2026,46 @@ def professional_appointment_action(appointment_id: int, action: str):
     return redirect(request.referrer or url_for("professional_appointments"))
 
 
-# ====== Entrée "Dossier patient" (alias smart) ======
+# ====== Entrée "Dossier patient" (entrée intelligente + alias rétro-compat) ======
+from flask import redirect, url_for, request, flash
+from flask_login import login_required, current_user
+
+# NOTE: on suppose que ces modèles/objets existent déjà dans ton app :
+# - db, User, Professional, Appointment
+# - route 'pro_patients', 'pro_patient_detail', 'professional_dashboard', 'index'
+
 @app.route("/pro/patient", methods=["GET"], endpoint="pro_patient_entry")
 @login_required
 def pro_patient_entry():
-    from sqlalchemy import or_
-    if current_user.user_type != "professional":
+    """
+    Point d'entrée unique pour ouvrir un dossier patient côté PRO.
+    - Si ?patient_id=... (ou ?id=...), on vérifie le lien pro<->patient via Appointment.
+    - Si ?q=..., on cherche les patients liés à ce PRO et on route en conséquence.
+    - Sinon, on renvoie vers la liste des patients.
+    """
+    if getattr(current_user, "user_type", None) != "professional":
         flash("Accès réservé aux professionnels.", "warning")
         return redirect(url_for("index"))
 
-    pro = Professional.query.filter_by(name=current_user.username).first()
+    # Récupération du profil pro
+    pro = None
+    try:
+        # Si tu as une relation current_user.professional, elle est préférable.
+        pro = getattr(current_user, "professional", None)
+    except Exception:
+        pro = None
     if not pro:
-        flash("Profil professionnel non trouvé", "danger")
+        pro = Professional.query.filter_by(name=current_user.username).first()
+
+    if not pro:
+        flash("Profil professionnel non trouvé.", "danger")
         return redirect(url_for("professional_dashboard"))
 
+    # Paramètres d'entrée
     patient_id = request.args.get("id", type=int) or request.args.get("patient_id", type=int)
     q = (request.args.get("q") or "").strip()
 
-    # 1) Accès direct par id
+    # 1) Accès direct par patient_id : on vérifie le lien pro<->patient
     if patient_id:
         link = (
             db.session.query(Appointment.id)
@@ -2052,12 +2074,12 @@ def pro_patient_entry():
         )
         if link:
             return redirect(url_for("pro_patient_detail", patient_id=patient_id))
-        else:
-            flash("Ce patient n'est pas lié à vos rendez-vous.", "warning")
-            return redirect(url_for("pro_patients"))
+        flash("Ce patient n'est pas lié à vos rendez-vous.", "warning")
+        return redirect(url_for("pro_patients"))
 
-    # 2) Recherche par q
+    # 2) Recherche par 'q' dans les patients rattachés à ce PRO
     if q:
+        from sqlalchemy import or_  # import local pour éviter collision globale
         like = f"%{q}%"
         subq = (
             db.session.query(Appointment.patient_id.label("pid"))
@@ -2082,8 +2104,50 @@ def pro_patient_entry():
         ids = [m.id for m in matches]
         if len(ids) == 1:
             return redirect(url_for("pro_patient_detail", patient_id=ids[0]))
+        # Plusieurs résultats ou 0 → on renvoie vers la liste avec le filtre
         return redirect(url_for("pro_patients", q=q))
 
+    # 3) Par défaut : liste des patients
+    return redirect(url_for("pro_patients"))
+
+
+# --- Alias rétro-compatibilité ---
+# Certains templates appellent encore url_for('pro_patient_dossier', patient_id=...)
+# On ajoute un endpoint alias pour éviter tout 500 et rediriger vers l'entrée officielle.
+@app.route("/pro/patient/<int:patient_id>/dossier", methods=["GET"], endpoint="pro_patient_dossier")
+@login_required
+def _pro_patient_dossier_alias(patient_id: int):
+    """
+    Alias rétrocompatible pour les anciens templates: 
+    résout url_for('pro_patient_dossier', patient_id=...) → vérifie le lien et redirige.
+    """
+    if getattr(current_user, "user_type", None) != "professional":
+        flash("Accès réservé aux professionnels.", "warning")
+        return redirect(url_for("index"))
+
+    # Récupération du PRO comme ci-dessus
+    pro = None
+    try:
+        pro = getattr(current_user, "professional", None)
+    except Exception:
+        pro = None
+    if not pro:
+        pro = Professional.query.filter_by(name=current_user.username).first()
+
+    if not pro:
+        flash("Profil professionnel non trouvé.", "danger")
+        return redirect(url_for("professional_dashboard"))
+
+    # Vérifier le lien pro<->patient avant de montrer le dossier
+    link = (
+        db.session.query(Appointment.id)
+        .filter(Appointment.professional_id == pro.id, Appointment.patient_id == patient_id)
+        .first()
+    )
+    if link:
+        return redirect(url_for("pro_patient_detail", patient_id=patient_id))
+
+    flash("Ce patient n'est pas lié à vos rendez-vous.", "warning")
     return redirect(url_for("pro_patients"))
 
 
