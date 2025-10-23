@@ -1,0 +1,22 @@
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card h-100"><div class="card-body">
+      <div class="fw-semibold mb-2">Résumé clinique</div>
+      <div class="text-muted small">
+        {% if medhist and medhist.summary %}{{ medhist.summary|truncate(400) }}
+        {% else %}<em>Aucun résumé saisi.</em>{% endif %}
+      </div>
+    </div></div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100"><div class="card-body">
+      <div class="fw-semibold mb-2">Indicateurs</div>
+      <ul class="list-unstyled small mb-0">
+        <li>Nombre de séances : {{ (sessions|length) if sessions else 0 }}</li>
+        <li>Dernière séance : {% if sessions and sessions[0].start_at %}{{ sessions[0].start_at }}{% else %}—{% endif %}</li>
+        <li>Exercices assignés : <a href="{{ url_for('pro_patient_exercises', patient_id=patient.id) }}">voir</a></li>
+        <li>Messagerie : <a href="{{ url_for('pro_thread', patient_id=patient.id) }}">ouvrir</a></li>
+      </ul>
+    </div></div>
+  </div>
+</div>
