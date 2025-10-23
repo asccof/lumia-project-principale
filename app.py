@@ -2114,6 +2114,18 @@ def pro_patient_entry():
 # --- Alias rétro-compatibilité ---
 # Certains templates appellent encore url_for('pro_patient_dossier', patient_id=...)
 # On ajoute un endpoint alias pour éviter tout 500 et rediriger vers l'entrée officielle.
+# --- Alias "dossier patient" vers la page centrale, enregistrement conditionnel ---
+def _pro_patient_dossier_alias(patient_id: int):
+    _ = _current_professional_or_403()
+    return redirect(url_for("pro_patient_detail", patient_id=patient_id))
+
+if "pro_patient_dossier" not in app.view_functions:
+    app.add_url_rule(
+        "/pro/patient/dossier/<int:patient_id>",
+        endpoint="pro_patient_dossier",
+        view_func=login_required(_pro_patient_dossier_alias),
+        methods=["GET"],
+    )
 
 
     # Récupération du PRO comme ci-dessus
