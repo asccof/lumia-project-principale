@@ -2604,6 +2604,12 @@ def pro_patient_detail(patient_id: int):
                           professional=pro, patient=patient, profile=profile, medhist=medhist, sessions=sessions, thread=thread)
 
 
+@app.get("/pro/patient/dossier/<int:patient_id>", endpoint="pro_patient_dossier")
+@login_required
+def pro_patient_dossier(patient_id: int):
+    _ = _current_professional_or_403()
+    return redirect(url_for("pro_patient_detail", patient_id=patient_id))
+
 @app.route("/pro/threads/<int:patient_id>", methods=["GET","POST"], endpoint="pro_thread")
 @login_required
 def pro_thread(patient_id: int):
