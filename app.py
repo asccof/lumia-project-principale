@@ -2571,7 +2571,7 @@ def pro_patients():
         professional=pro
     )
 
-
+@app.route("/pro/patient/detail/<int:patient_id>", methods=["GET","POST"])
 @app.route("/pro/patients/<int:patient_id>", methods=["GET","POST"], endpoint="pro_patient_detail")
 @login_required
 def pro_patient_detail(patient_id: int):
