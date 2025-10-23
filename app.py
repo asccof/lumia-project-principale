@@ -2111,39 +2111,6 @@ def pro_patient_entry():
     return redirect(url_for("pro_patients"))
 
 
-# --- Alias rétro-compatibilité ---
-# Certains templates appellent encore url_for('pro_patient_dossier', patient_id=...)
-# On ajoute un endpoint alias pour éviter tout 500 et rediriger vers l'entrée officielle.
-# --- Alias "dossier patient" vers la page centrale (enregistrement conditionnel, sans code hors-fonction) ---
-def _pro_patient_dossier_alias(patient_id: int):
-    # Sécurité : exige un PRO connecté (aborts 403 sinon) et retourne l'objet pro
-    pro = _current_professional_or_403()
-
-    # Vérifier le lien pro<->patient (accès autorisé seulement si un rendez-vous les relie)
-    link = (
-        db.session.query(Appointment.id)
-        .filter(Appointment.professional_id == pro.id, Appointment.patient_id == patient_id)
-        .first()
-    )
-
-    if link:
-        # OK: redirige vers la page centrale du dossier
-        return redirect(url_for("pro_patient_detail", patient_id=patient_id))
-
-    # Sinon, avertir et renvoyer vers la liste des patients
-    flash("Ce patient n'est pas lié à vos rendez-vous.", "warning")
-    return redirect(url_for("pro_patients"))
-
-# Enregistrer la route UNE SEULE FOIS (évite l'AssertionError si déjà ajoutée ailleurs)
-if "pro_patient_dossier" not in app.view_functions:
-    app.add_url_rule(
-        "/pro/patient/dossier/<int:patient_id>",
-        endpoint="pro_patient_dossier",
-        view_func=login_required(_pro_patient_dossier_alias),
-        methods=["GET"],
-    )
-
-
 # =========================
 #   BUREAU VIRTUEL — PRO
 # =========================
