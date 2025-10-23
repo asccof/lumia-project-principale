@@ -2114,16 +2114,7 @@ def pro_patient_entry():
 # --- Alias rétro-compatibilité ---
 # Certains templates appellent encore url_for('pro_patient_dossier', patient_id=...)
 # On ajoute un endpoint alias pour éviter tout 500 et rediriger vers l'entrée officielle.
-@app.route("/pro/patient/<int:patient_id>/dossier", methods=["GET"], endpoint="pro_patient_dossier")
-@login_required
-def _pro_patient_dossier_alias(patient_id: int):
-    """
-    Alias rétrocompatible pour les anciens templates: 
-    résout url_for('pro_patient_dossier', patient_id=...) → vérifie le lien et redirige.
-    """
-    if getattr(current_user, "user_type", None) != "professional":
-        flash("Accès réservé aux professionnels.", "warning")
-        return redirect(url_for("index"))
+
 
     # Récupération du PRO comme ci-dessus
     pro = None
