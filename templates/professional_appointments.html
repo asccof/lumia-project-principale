@@ -2,6 +2,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+  <!-- MARKER: pro_appts v2 -->
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mes rendez-vous — Espace Pro</title>
@@ -25,8 +26,6 @@
 <body class="bg-light">
 <div class="container py-3">
 
-  <!-- MARKER: pro_appts v2 -->
-
   <div class="d-flex justify-content-between align-items-center">
     <h1 class="h4 mb-0">Mes rendez-vous</h1>
     <div class="d-flex gap-2">
@@ -36,6 +35,21 @@
       {% endif %}
     </div>
   </div>
+
+  {# Bannière debug si ?debug=1 #}
+  {% set _debug = request.args.get('debug') %}
+  {% if _debug %}
+    <div class="alert alert-warning">
+      <div><strong>DEBUG</strong> — status={{ status|default('') }}, scope={{ scope|default('') }}, len(appointments)={{ appointments|length }}</div>
+      {% if appointments %}
+        <ul class="mb-0">
+        {% for ap in appointments[:5] %}
+          <li>#{{ ap.id }} — brut={{ (ap.status or '')|lower }} — date={{ ap.appointment_date }}</li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  {% endif %}
 
   <div class="page-head">
     <div class="tools">
@@ -78,26 +92,23 @@
           {% set patient_phone = p.phone if p else '' %}
           {% set patient_email = p.email if p else '' %}
           {% set ts = ap.appointment_date.timestamp() if ap.appointment_date else 0 %}
-
-          {# --- Normalisation statut (FR/EN) pour filtres et badges --- #}
           {% set _raw = (ap.status or '').lower().strip() %}
           {% if _raw in ['en_attente','en attente','en-attente','requested','pending','awaiting','new','waiting']
-                 or _raw.startswith('pending') or _raw.startswith('awaiting')
-                 or _raw.startswith('new') or _raw.startswith('waiting') %}
-            {% set status = 'en_attente' %}
+                or _raw.startswith('pending') or _raw.startswith('awaiting')
+                or _raw.startswith('new') or _raw.startswith('waiting') %}
+            {% set status_map = 'en_attente' %}
           {% elif _raw in ['confirme','confirmé','confirmed'] %}
-            {% set status = 'confirme' %}
+            {% set status_map = 'confirme' %}
           {% elif _raw in ['annule','annulé','cancelled','canceled'] %}
-            {% set status = 'annule' %}
+            {% set status_map = 'annule' %}
           {% else %}
-            {% set status = 'en_attente' %}
+            {% set status_map = 'en_attente' %}
           {% endif %}
-          <!-- DEBUG statut brut={{ (ap.status or '')|lower }} ⇒ mappé={{ status }} -->
 
           <tr
             class="appt-row"
             data-ts="{{ (ts * 1000) | int }}"
-            data-status="{{ status }}"
+            data-status="{{ status_map }}"
             data-text="{{ (patient_name ~ ' ' ~ (patient_phone or '') ~ ' ' ~ (patient_email or '')) | lower }}"
           >
             <td>
@@ -128,15 +139,16 @@
             </td>
 
             <td>
-              <span class="badge status-badge status-{{ status }}">
-                {% if status == 'confirme' %}Confirmé{% elif status == 'annule' %}Annulé{% else %}En attente{% endif %}
+              <span class="badge status-badge status-{{ status_map }}">
+                {% if _debug %}<div class="small text-muted">DEBUG statut brut={{ _raw }} ⇒ mappé={{ status_map }}</div>{% endif %}
+                {% if status_map == 'confirme' %}Confirmé{% elif status_map == 'annule' %}Annulé{% else %}En attente{% endif %}
               </span>
             </td>
 
             <td class="text-end">
               {% set csrf = csrf_token() if csrf_token is defined else '' %}
 
-              {% if status == 'en_attente' %}
+              {% if status_map == 'en_attente' %}
                 <form class="d-inline" method="post" action="{{ url_for('professional_appointment_action', appointment_id=ap.id, action='accept') }}">
                   {% if csrf %}<input type="hidden" name="csrf_token" value="{{ csrf }}">{% endif %}
                   <button class="btn btn-sm btn-success">Accepter</button>
@@ -152,7 +164,7 @@
                   type="button"
                 >Refuser</button>
 
-              {% elif status == 'confirme' %}
+              {% elif status_map == 'confirme' %}
                 <button
                   class="btn btn-sm btn-outline-secondary"
                   data-bs-toggle="modal"
